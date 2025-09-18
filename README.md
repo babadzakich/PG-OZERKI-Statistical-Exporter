@@ -1,1 +1,1 @@
-# PG-OZERKI-SRE
+# PG OZERKI Statistical Exporter
