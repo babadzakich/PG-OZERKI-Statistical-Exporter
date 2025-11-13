@@ -213,6 +213,105 @@ CREATE FUNCTION get_namespace(relation oid) RETURNS OID AS $$
 $$ LANGUAGE plpgsql;
 
 
+CREATE FUNCTION dump_statistic_ext(relid oid) RETURNS SETOF TEXT AS $$
+	DECLARE
+		result	text;
+		r		record;
+		cmd		text;
+		
+		relname	text;
+		qualname text;
+		statcols text;
+		statkinds text;
+		exprs text;
+		
+	BEGIN
+		for r in
+			SELECT se.oid, se.stxname, n.nspname, 
+				   array_agg(att.attname ORDER BY u.attnum) as attnames,
+				   array_agg(att.attnum ORDER BY u.attnum) as attnums,
+				   se.stxkind,
+				   sed.stxdinherit,
+				   sed.stxdndistinct,
+				   sed.stxddependencies,
+				   sed.stxdmcv
+			FROM pg_statistic_ext se
+			JOIN pg_namespace n ON n.oid = se.stxnamespace
+			JOIN LATERAL unnest(se.stxkeys) WITH ORDINALITY AS u(attnum, ord) ON true
+			JOIN pg_attribute att ON att.attrelid = se.stxrelid AND att.attnum = u.attnum
+			LEFT JOIN pg_statistic_ext_data sed ON sed.stxoid = se.oid
+			WHERE se.stxrelid = relid
+				AND n.nspname NOT IN ('information_schema', 'pg_catalog')
+			GROUP BY se.oid, se.stxname, n.nspname, se.stxkind, 
+					 sed.stxdinherit, sed.stxdndistinct, 
+					 sed.stxddependencies, sed.stxdmcv
+		loop
+			
+			relname := to_schema_qualified_relation(relid);
+			qualname := quote_ident(r.nspname) || '.' || quote_ident(r.stxname);
+			
+			statcols := '';
+			FOR i IN 1..array_length(r.attnames, 1) LOOP
+				IF i > 1 THEN
+					statcols := statcols || ', ';
+				END IF;
+				statcols := statcols || quote_ident(r.attnames[i]);
+			END LOOP;
+			
+			statkinds := '''{'';
+			FOR i IN 1..array_length(r.stxkind, 1) LOOP
+				IF i > 1 THEN
+					statkinds := statkinds || '', '';
+				END IF;
+				statkinds := statkinds || quote_literal(r.stxkind[i]);
+			END LOOP;
+			statkinds := statkinds || ''}''::char[]';
+			
+			result := format('CREATE STATISTICS %s ON %s FROM %s;',
+						   qualname, statcols, relname);
+			return next result;
+			
+			IF r.stxdndistinct IS NOT NULL OR r.stxddependencies IS NOT NULL OR r.stxdmcv IS NOT NULL THEN
+				cmd := 'INSERT INTO pg_statistic_ext_data (stxoid, stxdinherit, stxdndistinct, stxddependencies, stxdmcv) VALUES (';
+				cmd := cmd || format('''%s''::regclass, ', qualname);
+				cmd := cmd || COALESCE(r.stxdinherit::text, 'NULL') || ', ';
+				cmd := cmd || COALESCE(quote_literal(r.stxdndistinct::text) || '::pg_ndistinct', 'NULL') || ', ';
+				cmd := cmd || COALESCE(quote_literal(r.stxddependencies::text) || '::pg_dependencies', 'NULL') || ', ';
+				cmd := cmd || COALESCE(quote_literal(r.stxdmcv::text) || '::pg_mcv_list', 'NULL') || ');';
+				
+				return next cmd;
+			END IF;
+			
+		end loop;
+		
+		return;
+	END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE FUNCTION dump_statistic_ext() RETURNS SETOF TEXT AS $$
+	DECLARE
+		relid	oid;
+		i		text;
+		
+	BEGIN
+		for relid in
+			SELECT pg_class.oid
+			FROM pg_namespace
+			INNER JOIN pg_class ON relnamespace = pg_namespace.oid
+			WHERE nspname NOT IN ('information_schema', 'pg_catalog')
+		loop
+			for i in select dump_statistic_ext(relid) loop
+				return next i;
+			end loop;
+		end loop;
+		
+		return;
+	END;
+$$ LANGUAGE plpgsql;
+
+
 CREATE FUNCTION dump_statistic(relid oid) RETURNS SETOF TEXT AS $$
 	DECLARE
 		result	text;
@@ -224,18 +323,19 @@ CREATE FUNCTION dump_statistic(relid oid) RETURNS SETOF TEXT AS $$
 		fstaop	text := '%s::regoperator';
 		arr_in	text := 'array_in(%s, %s::regtype, -1)::anyarray';
 		
-		stacols text[] = ARRAY['stakind', 'staop',
+		stacols text[] = ARRAY['stakind', 'staop', 'stacoll',
 							   'stanumbers', 'stavalues' ];
 		
 		r		record;
 		i		int;
 		j		text;
-		ncols	int := 26;	-- number of columns in pg_statistic
+		ncols	int := 31;	-- number of columns in pg_statistic
 		
 		stanum	text[];		-- stanumbers{1, 5}
 		staval	text[];		-- stavalues{1, 5}
 		staop	text[];		-- staop{1, 5}
-		
+		stacoll text[];
+
 		relname	text;		-- quoted relation name
 		attname	text;		-- quoted attribute name
 		atttype text;		-- quoted attribute type
@@ -277,11 +377,11 @@ CREATE FUNCTION dump_statistic(relid oid) RETURNS SETOF TEXT AS $$
 				end if;
 			end loop;
 				
-			for j in 1..4 loop
+			for j in 1..5 loop
 				for i in 1..5 loop
 					up_args := up_args || format('%s%s = %%s', stacols[j], i);
 
-					if i * j != 20 then
+					if i * j != 25 then
 						up_args := up_args || ', ';
 					end if;
 				end loop;
@@ -295,11 +395,20 @@ CREATE FUNCTION dump_statistic(relid oid) RETURNS SETOF TEXT AS $$
 						   format(fstaop, quote_literal(to_schema_qualified_operator(r.staop4))),
 						   format(fstaop, quote_literal(to_schema_qualified_operator(r.staop5)))];
 
+			stacoll := array[r.stacoll1::text,
+							r.stacoll2::text,
+							r.stacoll3::text,
+							r.stacoll4::text,
+							r.stacoll5::text];
+
+			
 			stanum := array[r.stanumbers1::text,
 							r.stanumbers2::text,
 							r.stanumbers3::text,
 							r.stanumbers4::text,
 							r.stanumbers5::text];
+
+			
 							
 			for i in 1..5 loop
 				if stanum[i] is null then
@@ -367,6 +476,8 @@ CREATE FUNCTION dump_statistic(relid oid) RETURNS SETOF TEXT AS $$
 							 r.stakind1, r.stakind2, r.stakind3, r.stakind4, r.stakind5,
 							 -- staop
 							 staop[1], staop[2], staop[3], staop[4], staop[5],
+							 -- stacolls
+							 stacoll[1], stacoll[2], stacoll[3], stacoll[4], stacoll[5],
 							 -- stanumbers
 							 stanum[1], stanum[2], stanum[3], stanum[4], stanum[5],
 							 -- stavalues
@@ -383,6 +494,8 @@ CREATE FUNCTION dump_statistic(relid oid) RETURNS SETOF TEXT AS $$
 							 r.stakind1, r.stakind2, r.stakind3, r.stakind4, r.stakind5,
 							 -- staop
 							 staop[1], staop[2], staop[3], staop[4], staop[5],
+							 -- stacoll
+							 stacoll[1], stacoll[2], stacoll[3], stacoll[4], stacoll[5],
 							 -- stanumbers
 							 stanum[1], stanum[2], stanum[3], stanum[4], stanum[5],
 							 -- stavalues
@@ -429,7 +542,6 @@ CREATE FUNCTION dump_statistic(schema_name text) RETURNS SETOF TEXT AS $$
 		i		text;
 		
 	BEGIN
-		-- validate schema name
 		perform to_namespace(schema_name);
 	
 		for relid in
@@ -472,5 +584,43 @@ CREATE FUNCTION dump_statistic() RETURNS SETOF TEXT AS $$
 		end loop;
 		
 		return;
+	END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE FUNCTION dump_all_statistics(relid oid) RETURNS SETOF TEXT AS $$
+	DECLARE
+		i text;
+	BEGIN
+		FOR i IN SELECT dump_statistic(relid) LOOP
+			RETURN NEXT i;
+		END LOOP;
+		
+		FOR i IN SELECT dump_statistic_ext(relid) LOOP
+			RETURN NEXT i;
+		END LOOP;
+		
+		RETURN;
+	END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+CREATE FUNCTION dump_all_statistics() RETURNS SETOF TEXT AS $$
+	DECLARE
+		i text;
+	BEGIN
+		FOR i IN SELECT dump_statistic() LOOP
+			RETURN NEXT i;
+		END LOOP;
+		
+		FOR i IN SELECT dump_statistic_ext() LOOP
+			RETURN NEXT i;
+		END LOOP;
+		
+		RETURN;
 	END;
 $$ LANGUAGE plpgsql;
