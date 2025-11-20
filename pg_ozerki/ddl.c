@@ -480,7 +480,7 @@ generate_schemas_ddl(StringInfo buf) {
             char* owner = SPI_getvalue(tuple, tupdesc, 3);
             char* description = SPI_getvalue(tuple, tupdesc, 4);
             
-            if (nspname)
+            if (nspname && strcmp(nspname, "public") != 0)
             {
                 
                 appendStringInfo(buf, "CREATE SCHEMA %s", nspname);
