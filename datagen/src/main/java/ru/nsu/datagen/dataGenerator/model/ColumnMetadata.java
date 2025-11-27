@@ -1,7 +1,12 @@
 package ru.nsu.datagen.dataGenerator.model;
 
 import java.util.Objects;
+import java.util.Map;
 
+import lombok.Builder;
+import lombok.Getter;
+
+@Builder
 public class ColumnMetadata {
     private final String name;
     private final String dataType;
@@ -12,10 +17,13 @@ public class ColumnMetadata {
     private final int recordCount;
     private final Integer maxLength;
     private final ForeignKeyMetadata foreignKeyMetadata;
+    @Getter private final Map<String, Integer> mvc;
+    @Getter private final int avgTupleSize;
 
     public ColumnMetadata(String name, String dataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
-                          int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata) {
+                          int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
+                          Map<String, Integer> mvc, int avgTupleSize) {
         this.name = name;
         this.dataType = dataType;
         this.isPrimaryKey = isPrimaryKey;
@@ -25,6 +33,8 @@ public class ColumnMetadata {
         this.recordCount = recordCount;
         this.maxLength = maxLength;
         this.foreignKeyMetadata = foreignKeyMetadata;
+        this.mvc = mvc;
+        this.avgTupleSize = avgTupleSize;
     }
 
     public String getName() { return name; }
