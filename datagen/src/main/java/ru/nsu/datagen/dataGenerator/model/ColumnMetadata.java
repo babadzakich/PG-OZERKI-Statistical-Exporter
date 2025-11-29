@@ -17,13 +17,13 @@ public class ColumnMetadata {
     private final int recordCount;
     private final Integer maxLength;
     private final ForeignKeyMetadata foreignKeyMetadata;
-    @Getter private final Map<String, Integer> mvc;
+    @Getter private final Map<String, Double> mvc;
     @Getter private final int avgTupleSize;
 
     public ColumnMetadata(String name, String dataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<String, Integer> mvc, int avgTupleSize) {
+                          Map<String, Double> mvc, int avgTupleSize) {
         this.name = name;
         this.dataType = dataType;
         this.isPrimaryKey = isPrimaryKey;

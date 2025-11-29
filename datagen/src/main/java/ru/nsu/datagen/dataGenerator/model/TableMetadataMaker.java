@@ -77,21 +77,18 @@ public class TableMetadataMaker {
         return tableMetadataList;
     }
 
-    private static Map<String, Integer> processMCV(String rawMCVArray, String rawMCFArray, int rowCount) {
+    private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount) {
         List<String> processedMCV = parsePgArrayString(rawMCVArray);
         List<String> processedMCF = parsePgArrayString(rawMCFArray);
-        Map<String, Integer> resultDistribution = IntStream.range(0, processedMCV.size())
-            .boxed() // Создаем поток Integer (индексов)
+        Map<String, Double> resultDistribution = IntStream.range(0, processedMCV.size())
+            .boxed()
             .collect(Collectors.toMap(
-                // Ключ: Значение MCV (берется из mcvList по индексу)
                 processedMCV::get, 
                 
-                // Значение: Абсолютный счетчик (расчитывается из mcfList по индексу)
                 index -> {
                     Double frequency = Double.parseDouble(processedMCF.get(index));
-                    // Расчет абсолютного количества и округление до ближайшего целого
-                    long absoluteCount = Math.round(frequency * rowCount);
-                    return (int) absoluteCount; // Приведение к Integer
+                    // long absoluteCount = Math.round(frequency * rowCount);
+                    return frequency;
                 }
             ));
 

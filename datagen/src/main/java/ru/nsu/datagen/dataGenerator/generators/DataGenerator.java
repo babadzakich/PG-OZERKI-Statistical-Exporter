@@ -4,7 +4,8 @@ import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.TypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.pk.PrimaryKeyGeneratorFactory;
-import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
+import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
@@ -14,13 +15,11 @@ public class DataGenerator {
     private final PrimaryKeyGeneratorFactory pkGeneratorFactory;
     private final ForeignKeyGeneratorFactory fkGeneratorFactory;
     private final NormalValueGenerator normalValueGenerator;
-    private final UniqueKeyGenerator uniqueGenerator;
 
     public DataGenerator() {
         this.pkGeneratorFactory = new PrimaryKeyGeneratorFactory();
         this.fkGeneratorFactory = new ForeignKeyGeneratorFactory();
         this.normalValueGenerator = new TypeBasedGenerator();
-        uniqueGenerator = new UniqueKeyGenerator();
     }
 
     /**
@@ -96,7 +95,7 @@ public class DataGenerator {
         // Сначала генерируем PK, потом обычные колонки, потом FK
         generatePrimaryKeys(table, columnData);
         generateNormalColumns(table, columnData);
-        
+        generateUniqueConstraint(table, columnData);
         generateForeignKeys(table, columnData, existingData, referencedData);
 
         return columnData;
@@ -153,13 +152,13 @@ public class DataGenerator {
     private void generateUniqueConstraint(
         TableMetadata table,
         Map<String, List<Object>> columnData) {
-
-
+            List<ColumnMetadata> uniqueList = new ArrayList<>();
             for (ColumnMetadata column : table.getColumns().values()) {
                 if (column.isUnique()) {
-                    columnData.put(column.getName(), null);
+                    uniqueList.add(column);
                 }
             }
+            UniqueKeyGeneratorChooser.generate(uniqueList, columnData, GeneratorsTypes.MARKOV);
     }
 
     public PrimaryKeyGeneratorFactory getPkGeneratorFactory() {
