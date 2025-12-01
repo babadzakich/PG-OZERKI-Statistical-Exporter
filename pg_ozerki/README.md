@@ -18,7 +18,7 @@
 ***Схема:***
 
 ```bash
-./psql -XAq -c "SELECT dump_schema();" <имя_БД> > schema.sql
+./psql -XAtq -c "SELECT dump_schema();" <имя_БД> > schema.sql
  ```
 
 ***ВАЖНО:*** схема импортируется в только что созданную БД, т.е. нужно перед этим сделать
