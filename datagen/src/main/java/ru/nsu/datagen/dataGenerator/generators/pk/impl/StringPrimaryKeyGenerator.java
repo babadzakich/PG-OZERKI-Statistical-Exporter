@@ -15,8 +15,8 @@ public class StringPrimaryKeyGenerator implements PrimaryKeyGenerator {
 
         for (int i = 0; i <= recordCount; i++) {
             String prefix = i / alphabet.length() > 0 ? (String) keys.get(i / alphabet.length() - 1) : "";
-            String key = prefix + alphabet.charAt(i % alphabet.length()); //"PK_" + i;
-            if (maxLength != null && key.length() > maxLength) {
+            String key = prefix + alphabet.charAt(i % alphabet.length());
+            if (maxLength != -1 && key.length() > maxLength) {
                 key = key.substring(0, maxLength);
             }
             keys.add(key);
