@@ -13,7 +13,7 @@ public class StringPrimaryKeyGenerator implements PrimaryKeyGenerator {
         int recordCount = columnMetadata.getRecordCount();
         Integer maxLength = columnMetadata.getMaxLength();
 
-        for (int i = 0; i <= recordCount; i++) {
+        for (int i = 0; i < recordCount; i++) {
             String prefix = i / alphabet.length() > 0 ? (String) keys.get(i / alphabet.length() - 1) : "";
             String key = prefix + alphabet.charAt(i % alphabet.length());
             if (maxLength != -1 && key.length() > maxLength) {
