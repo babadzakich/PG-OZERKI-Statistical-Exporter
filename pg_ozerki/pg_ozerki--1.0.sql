@@ -608,11 +608,11 @@ fk_constraints AS (
         con_tbl_ns.nspname AS table_schema,
         conf_tbl.relname AS referenced_table,
         conf_tbl_ns.nspname AS referenced_schema,
-        -- Получаем имя referenced колонки
         (SELECT attname FROM pg_attribute 
-         WHERE attrelid = con.confrelid AND attnum = con.confkey[1]) AS referenced_column
+         WHERE attrelid = con.confrelid AND attnum = con.confkey[gs.pos]) AS referenced_column
     FROM pg_constraint con
-    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
+    JOIN LATERAL generate_subscripts(con.conkey, 1) AS gs(pos) ON true
+    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[gs.pos]
     JOIN pg_class con_tbl ON con_tbl.oid = con.conrelid
     JOIN pg_namespace con_tbl_ns ON con_tbl_ns.oid = con_tbl.relnamespace
     JOIN pg_class conf_tbl ON conf_tbl.oid = con.confrelid
@@ -640,19 +640,7 @@ relation_types AS (
         fk.referenced_table,
         fk.referenced_column,
         CASE
-            -- Если FK колонка является частью PK или уникального ограничения
-            WHEN cc.is_pk OR cc.is_unique_constraint THEN
-                -- И целевая колонка тоже является частью PK или уникального ограничения
-                CASE WHEN EXISTS (
-                    SELECT 1 FROM column_constraints ref_cc
-                    JOIN pg_class ref_tbl ON ref_tbl.oid = ref_cc.attrelid
-                    JOIN pg_namespace ref_ns ON ref_ns.oid = ref_tbl.relnamespace
-                    WHERE ref_ns.nspname = fk.referenced_schema
-                    AND ref_tbl.relname = fk.referenced_table
-                    AND ref_cc.attname = fk.referenced_column
-                    AND (ref_cc.is_pk OR ref_cc.is_unique_constraint)
-                ) THEN 'ONE_TO_ONE' ELSE 'ONE_TO_ONE' END
-            -- Если FK колонка не уникальна, это OTM
+            WHEN cc.is_pk OR cc.is_unique_constraint THEN 'ONE_TO_ONE'
             ELSE 'ONE_TO_MANY'
         END AS relation_type
     FROM fk_constraints fk
@@ -695,10 +683,7 @@ SELECT
     tc.row_count,
     CASE 
         WHEN tc.row_count = 0 THEN 0
-        ELSE ROUND(
-            (s.null_frac * 100)::numeric, 
-            2
-        )
+        ELSE ROUND((s.null_frac * 100)::numeric, 2)
     END AS null_percent,
     TRIM(
         CASE WHEN cs.is_primary_key > 0 THEN 'PK ' ELSE '' END ||
