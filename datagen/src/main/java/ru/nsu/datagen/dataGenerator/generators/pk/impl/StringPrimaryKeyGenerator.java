@@ -6,14 +6,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class StringPrimaryKeyGenerator implements PrimaryKeyGenerator {
-    //private String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuwxyz0123456789"
+    private final String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuwxyz0123456789";
+
     public List<Object> generatePrimaryKeys(ColumnMetadata columnMetadata) {
         List<Object> keys = new ArrayList<>();
         int recordCount = columnMetadata.getRecordCount();
         Integer maxLength = columnMetadata.getMaxLength();
-        // boolean hasFixedLength = columnMetadata.
-        for (int i = 1; i <= recordCount; i++) {
-            String key = String.valueOf(i); //"PK_" + i;
+
+        for (int i = 0; i <= recordCount; i++) {
+            String prefix = i / alphabet.length() > 0 ? (String) keys.get(i / alphabet.length() - 1) : "";
+            String key = prefix + alphabet.charAt(i % alphabet.length()); //"PK_" + i;
             if (maxLength != null && key.length() > maxLength) {
                 key = key.substring(0, maxLength);
             }
