@@ -75,21 +75,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             
             return padded;
         }
-        
-        // ========== NORMALIZATION ==========
-        
-    private static Map<String, Double> normalize(Map<String, Double> dist) {
-        double total = dist.values().stream().mapToDouble(Double::doubleValue).sum();
-        if (total <= 0) {
-            throw new IllegalArgumentException("Сумма весов должна быть > 0");
-        }
-        
-        Map<String, Double> normalized = new HashMap<>();
-        for (Map.Entry<String, Double> entry : dist.entrySet()) {
-            normalized.put(entry.getKey(), entry.getValue() / total);
-        }
-        return normalized;
-    }
     
     // ========== BUILD DEFAULT TRANSITIONS ==========
     

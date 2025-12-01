@@ -1,5 +1,7 @@
 package ru.nsu.datagen.importer;
 
+import com.opencsv.CSVParser;
+import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
 import com.opencsv.exceptions.CsvException;
@@ -31,12 +33,16 @@ public class Importer {
         try {
             System.out.println(new File(path).exists());
             FileReader filereader = new FileReader(path);
-            CSVReader csvReader = new CSVReaderBuilder(filereader).withSkipLines(1).build();
+            // CSVParser parser = new CSVParserBuilder().withSeparator('|').build();
+            CSVReader csvReader = new CSVReaderBuilder(filereader)
+                    .withSkipLines(1)
+                    // .withCSVParser(parser)
+                    .build();
             List<String[]> allData = csvReader.readAll();
-            //
-            //System.out.println(allData);
-            //allData.forEach(arr -> System.out.println(arr));
-             //
+            
+            // System.out.println(allData);
+            // allData.forEach(arr -> System.out.println(arr[0]));
+             
 
             return allData;
             // OLD:

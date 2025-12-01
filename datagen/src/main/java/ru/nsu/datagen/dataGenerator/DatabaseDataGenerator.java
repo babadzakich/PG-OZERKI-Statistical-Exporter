@@ -29,7 +29,7 @@ public class DatabaseDataGenerator {
         dependencyGraph.buildDependencies();
         List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
         // generate
-        Map<String, Map<String, List<Object>>> generatedData = new HashMap();
+        Map<String, Map<String, List<Object>>> generatedData = new HashMap<>();
         DataGenerator dataGenerator = new DataGenerator();
         for (TableMetadata table : generationOrder) {
             System.out.println("Generate table: " + table.getTableName());

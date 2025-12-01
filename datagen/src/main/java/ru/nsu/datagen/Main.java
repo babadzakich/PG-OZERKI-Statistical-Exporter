@@ -19,7 +19,7 @@ public class Main {
         );
          */
         Pipeline.startPipeline(
-                "localhost", 5433, "pg_ozerki_example", "postgres",
-                "postgres", "./scripts/schema.sql", "./scripts/data-3m.csv");
+                "localhost", 5432, "postgres", "kubicl",
+                "postgres", "./scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/data.csv");
     }
 }

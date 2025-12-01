@@ -3,6 +3,7 @@ package ru.nsu.datagen.dataGenerator.model;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,11 +32,14 @@ public class TableMetadataMaker {
         Map<String, List<ColumnMetadata>> columnDataGroupedByTablename = new HashMap<>();
 
         for (String[] line : rawData) {
+            
             ForeignKeyMetadata fkMetadata = line[6].contains("FK")
                     ? new ForeignKeyMetadata(line[9], line[10], line[9].equals("NULL") ? null : RelationshipType.valueOf(line[8]))
                     : null;
+            
             int recordCountValue = Integer.parseInt(line[4]) == -1 ? 0 : Integer.parseInt(line[4]);
-            double nullPercentageValue = (line[5] == null || line[5].isEmpty()) ? 0.0 : Double.parseDouble(line[5]);
+            
+            double nullPercentageValue = (line[5] == null || line[5].isEmpty() || line[5].equals("NULL")) ? 0.0 : Double.parseDouble(line[5]);
             ColumnMetadata columnMetadata = ColumnMetadata.builder()
                 .name(line[2])
                 .dataType(line[3])
@@ -47,7 +51,7 @@ public class TableMetadataMaker {
                 .nullPercentage(nullPercentageValue)
                 .recordCount(recordCountValue)
                 .maxLength(line[7].equals("-1") ? null : Integer.parseInt(line[7])) // Обработка -1 для длины
-                .avgTupleSize(Integer.parseInt(line[13]))
+                .avgTupleSize((line[13].length() == 0 || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
                 
                 .foreignKeyMetadata(fkMetadata)
                 .mvc(processMCV(line[11], line[12], recordCountValue))
@@ -79,27 +83,45 @@ public class TableMetadataMaker {
 
     private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount) {
         List<String> processedMCV = parsePgArrayString(rawMCVArray);
-        List<String> processedMCF = parsePgArrayString(rawMCFArray);
-        Map<String, Double> resultDistribution = IntStream.range(0, processedMCV.size())
-            .boxed()
-            .collect(Collectors.toMap(
-                processedMCV::get, 
-                
-                index -> {
-                    Double frequency = Double.parseDouble(processedMCF.get(index));
-                    // long absoluteCount = Math.round(frequency * rowCount);
-                    return frequency;
-                }
-            ));
+        List<Double> processedMCF = parseMCFArray(rawMCFArray);
+        System.err.println(processedMCF.size());
+        System.err.println(processedMCV.size());
+        for (String line : processedMCV) {
+            System.err.println("Data: " + line + " End of data");
+        }
+        Map<String, Double> resultDistribution = new HashMap<>();
+
+        for (int i = 0; i < processedMCV.size(); i++) {
+            resultDistribution.put(processedMCV.get(i), processedMCF.get(i));
+        }
 
         return resultDistribution;
+    }
+
+    /**
+     * Парсит массив частот PostgreSQL (например, "{0.5,0.3,0.2}") в список Double.
+     */
+    private static List<Double> parseMCFArray(String arrayString) {
+        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
+            return List.of();
+        }
+
+        String cleanedString = arrayString.substring(1, arrayString.length() - 1);
+        if (cleanedString.isEmpty()) {
+            return List.of();
+        }
+
+        return Arrays.stream(cleanedString.split(","))
+                .map(String::trim)
+                .map(Double::parseDouble)
+                .collect(Collectors.toList());
     }
 
     /**
      * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список строк Java.
      */
     public static List<String> parsePgArrayString(String arrayString) {
-        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString)) {
+        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
             return List.of(); // Возвращаем пустой список для пустых массивов
         }
 
@@ -108,21 +130,29 @@ public class TableMetadataMaker {
             return List.of();
         }
 
-        // 2. Регулярное выражение для разделения
-        // Ищет элемент, который либо в кавычках ("...") либо не содержит запятых и кавычек
-        Pattern pattern = Pattern.compile("(\"[^\"]*\"|[^,]+)");
-        Matcher matcher = pattern.matcher(cleanedString);
+        // Разделение по ","
+        List<String> result = new ArrayList<>();
+        String[] parts = cleanedString.split(",");
         
-        return matcher.results()
-            .map(match -> match.group(1).trim()) // Получаем элемент и удаляем внешний пробел
-            .map(element -> {
-                // 3. Удаление внешних кавычек (для экранированных строк)
-                if (element.startsWith("\"") && element.endsWith("\"")) {
-                    // Если элемент в кавычках, удаляем их и, возможно, обрабатываем внутренние эскейп-последовательности
-                    return element.substring(1, element.length() - 1).replace("\"\"", "\"");
-                }
-                return element;
-            })
-            .collect(Collectors.toList());
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            
+            // Удаляем ведущую кавычку у первого элемента
+            if (i == 0 && part.startsWith("\"")) {
+                part = part.substring(1);
+            }
+            
+            // Удаляем завершающую кавычку у последнего элемента
+            if (i == parts.length - 1 && part.endsWith("\"")) {
+                part = part.substring(0, part.length() - 1);
+            }
+            
+            // Обрабатываем экранирование двойных кавычек
+            part = part.replace("\"\"", "\"");
+            
+            result.add(part);
+        }
+        
+        return result;
     }
 }
