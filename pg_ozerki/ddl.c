@@ -262,11 +262,15 @@ void generate_extensions_ddl(StringInfo buf) {
                 
                 appendStringInfo(buf, "CREATE EXTENSION IF NOT EXISTS %s", extname);
                 
-                
+                //ereport(LOG, "%s\n\n", nspname);
+
                 if (nspname)
                 {
-                    
-                    appendStringInfo(buf, " WITH SCHEMA %s", nspname);
+                    if (!strcmp(extname, "pg_ozerki")) {
+                        appendStringInfoString(buf, " WITH SCHEMA public");
+                    } else {
+                        appendStringInfo(buf, " WITH SCHEMA %s", nspname);
+                    }
                 }
                 
                 
@@ -334,7 +338,8 @@ void generate_tables_ddl(StringInfo buf) {
 void generate_views_ddl(StringInfo buf) {
     int ret;
     char *query;
-    
+    SPI_execute("SET search_path = ''", false, 0);
+
     query = "SELECT c.oid, n.nspname, c.relname, "
             "pg_catalog.pg_get_viewdef(c.oid, true) as definition "
             "FROM pg_class c "
@@ -402,7 +407,8 @@ int ret;
             "JOIN pg_namespace n ON n.oid = i.relnamespace "
             "WHERE i.relkind = 'i' "
             "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-            "AND NOT x.indisprimary "  
+            "AND NOT x.indisprimary "
+            "AND NOT x.indisunique "  
             "ORDER BY n.nspname, c.relname, i.relname";
     
     ret = SPI_execute(query, true, 0);
@@ -628,4 +634,71 @@ generate_table_ddl(StringInfo buf, Oid tableOid)
     
     pfree(relname);
     pfree(nspname);
+}
+
+
+void generate_functions_ddl(StringInfo buf)
+{
+    int ret;
+    char *query;
+
+    SPI_execute("SET search_path = ''", false, 0);
+
+    query =
+        "SELECT p.oid, n.nspname, p.proname, "
+        "pg_catalog.pg_get_functiondef(p.oid) AS definition "
+        "FROM pg_proc p "
+        "JOIN pg_namespace n ON p.pronamespace = n.oid "
+        "WHERE n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
+        "AND NOT EXISTS ("
+        "    SELECT 1 FROM pg_depend d "
+        "    WHERE d.objid = p.oid "
+        "      AND d.deptype = 'e'"      
+        ") "
+        "ORDER BY n.nspname, p.proname";
+
+    ret = SPI_execute(query, true, 0);
+    if (ret == SPI_OK_SELECT && SPI_processed > 0)
+    {
+        TupleDesc tupdesc = SPI_tuptable->tupdesc;
+
+        appendStringInfoString(buf, "--\n-- Functions\n--\n\n");
+
+        for (int i = 0; i < SPI_processed; i++)
+        {
+            HeapTuple tuple = SPI_tuptable->vals[i];
+            bool isNull = false;
+
+            char *nspname    = SPI_getvalue(tuple, tupdesc, 2);
+            char *proname    = SPI_getvalue(tuple, tupdesc, 3);
+            char *definition = SPI_getvalue(tuple, tupdesc, 4);
+
+            if (nspname && proname && definition)
+            {
+                appendStringInfo(buf, "%s;\n\n", definition);
+
+                Datum oid_datum = SPI_getbinval(tuple, tupdesc, 1, &isNull);
+                if (!isNull)
+                {
+                    Oid funcOid = DatumGetObjectId(oid_datum);
+                    char *func_comment =
+                        GetComment(funcOid, ProcedureRelationId, 0);
+
+                    if (func_comment)
+                    {
+                        appendStringInfo(buf,
+                            "COMMENT ON FUNCTION %s.%s IS '%s';\n\n",
+                            nspname, proname, func_comment);
+                        pfree(func_comment);
+                    }
+                }
+
+                pfree(nspname);
+                pfree(proname);
+                pfree(definition);
+            }
+        }
+    }
+
+    SPI_execute("RESET search_path", false, 0);
 }
