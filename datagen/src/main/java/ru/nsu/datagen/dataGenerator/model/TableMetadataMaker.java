@@ -54,7 +54,7 @@ public class TableMetadataMaker {
                 .avgTupleSize((line[13].length() == 0 || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
                 
                 .foreignKeyMetadata(fkMetadata)
-                .mvc(processMCV(line[11], line[12], recordCountValue))
+                .mvc(processMCV(line[11], line[12], recordCountValue, line[3]))
                 
                 .build();
             if (!columnDataGroupedByTablename.containsKey(line[1])) {
@@ -81,11 +81,10 @@ public class TableMetadataMaker {
         return tableMetadataList;
     }
 
-    private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount) {
-        List<String> processedMCV = parsePgArrayString(rawMCVArray);
+    private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount, String dataType) {
+        List<String> processedMCV = parsePgArrayString(rawMCVArray, dataType);
         List<Double> processedMCF = parseMCFArray(rawMCFArray);
-        System.err.println(processedMCF.size());
-        System.err.println(processedMCV.size());
+
         for (String line : processedMCV) {
             System.err.println("Data: " + line + " End of data");
         }
@@ -120,7 +119,7 @@ public class TableMetadataMaker {
     /**
      * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список строк Java.
      */
-    public static List<String> parsePgArrayString(String arrayString) {
+    public static List<String> parsePgArrayString(String arrayString, String datatype) {
         if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
             return List.of(); // Возвращаем пустой список для пустых массивов
         }
@@ -129,7 +128,9 @@ public class TableMetadataMaker {
         if (cleanedString.isEmpty()) {
             return List.of();
         }
+        if (datatype.equals("integer[]")) {
 
+        }
         // Разделение по ","
         List<String> result = new ArrayList<>();
         String[] parts = cleanedString.split(",");
