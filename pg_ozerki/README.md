@@ -14,6 +14,15 @@
 
 Экспорт в .sql скрипт:
 
+
+***Схема***:
+
 ```bash
- ./psql <имя_БД> -t -X -A -c "SELECT dump_schema();" > test.sql
+./psql -XAq -c "SELECT dump_schema();" <имя_БД> > schema.sql
  ```
+
+ ***Статистика***
+
+```bash
+ ./psql -P 'null=NULL' --csv -c "SELECT * from dump_statistic();" <имя_БД> > stats.csv
+``` 
