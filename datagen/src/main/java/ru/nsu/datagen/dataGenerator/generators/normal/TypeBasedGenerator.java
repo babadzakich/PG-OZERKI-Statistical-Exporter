@@ -1,11 +1,15 @@
 package ru.nsu.datagen.dataGenerator.generators.normal;
 
+import ru.nsu.datagen.dataGenerator.DataGeneratorException;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import org.postgresql.util.PGobject;
+import org.postgresql.geometric.PGpoint;
 
 public class TypeBasedGenerator implements NormalValueGenerator {
     private final Random random = new Random();
@@ -65,6 +69,10 @@ public class TypeBasedGenerator implements NormalValueGenerator {
             case "json":
                 return generateJson();
             default:
+                // always return numeric(
+                if (dataType.contains("numeric(")) {
+                    return (long)random.nextInt(0, 10) / 10.0;
+                }
                 return "value_" + random.nextInt(1000);
         }
     }
@@ -136,10 +144,10 @@ public class TypeBasedGenerator implements NormalValueGenerator {
         return "[\"" + startStr + "\",\"" + endStr + "\")";
     }
 
-    private String generatePoint() {
+    private PGpoint generatePoint() {
         double x = Math.round((random.nextDouble() * 180 - 90) * 1000000.0) / 1000000.0;
         double y = Math.round((random.nextDouble() * 360 - 180) * 1000000.0) / 1000000.0;
-        return "(" + x + "," + y + ")";
+        return new PGpoint(x, y);
     }
 
     private String generateJson() {

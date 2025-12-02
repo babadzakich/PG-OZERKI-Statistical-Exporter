@@ -14,11 +14,10 @@ public class Pipeline {
             String host, Integer port, String dbname, String user, String password,
             String schemaScriptPath, String statisticData
     ) throws SQLException {
-        String url = "jdbc:postgresql://" + host + ":" + port + "/" + dbname;
+        String url = "jdbc:postgresql://" + host + ":" + port + "/" + dbname + "?currentSchema=bookings";
         try (Connection conn = DriverManager.getConnection(url, user, password)) {
-            Statement statement = conn.createStatement();
-            List<String[]> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, conn, statement);
-            DatabaseDataGenerator.generateData(rawImportedData);
+            List<String[]> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, conn);
+            DatabaseDataGenerator.generateData(rawImportedData, conn);
         } catch (Exception e) {
             System.err.println(e);
             throw e;

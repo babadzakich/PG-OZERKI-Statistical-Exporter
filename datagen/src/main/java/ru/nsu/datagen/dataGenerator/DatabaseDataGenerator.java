@@ -4,7 +4,11 @@ import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
+import ru.nsu.datagen.dataGenerator.store.TableStore;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +23,7 @@ TODO:
   1. запустить скрипт
  */
 public class DatabaseDataGenerator {
-    public static void generateData(List<String[]> rawData) {
+    public static void generateData(List<String[]> rawData, Connection conn) throws SQLException {
         // Get table metadata list
         List<TableMetadata> tableMetadataList = TableMetadataMaker.processRawTableMetadata(rawData);
         // Fill dependency graph
@@ -28,12 +32,16 @@ public class DatabaseDataGenerator {
         // Get generation order
         dependencyGraph.buildDependencies();
         List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
+        // Init table store
+        TableStore tableStore = new TableStore(conn);
         // generate
         Map<String, Map<String, List<Object>>> generatedData = new HashMap<>();
         DataGenerator dataGenerator = new DataGenerator();
         for (TableMetadata table : generationOrder) {
             System.out.println("Generate table: " + table.getTableName());
             Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
+            // TODO: надо распараллелить
+            tableStore.storeTable(table, generatedTableData);
             generatedData.put(table.getTableName(), generatedTableData);
         }
         debugPrintData(generatedData);
@@ -41,14 +49,6 @@ public class DatabaseDataGenerator {
     }
 
     private static void debugPrintData(Map<String, Map<String, List<Object>>> generatedData) {
-//        for (Map.Entry<String, Map<String, List<Object>>> tableEntry : generatedData.entrySet()) {
-//            System.out.println("\nTable: " + tableEntry.getKey() + " rows num: " + generatedData.entrySet().size());
-//            Map<String, List<Object>> tableData = tableEntry.getValue();
-//
-//            for (Map.Entry<String, List<Object>> columnEntry : tableData.entrySet()) {
-//                System.out.println("  " + columnEntry.getKey() + ": " + columnEntry.getValue());
-//            }
-//        }
         for (String tableName : generatedData.keySet()) {
             for (int i = 0; i < 500; i++) {
                 StringBuilder data = new StringBuilder("[");

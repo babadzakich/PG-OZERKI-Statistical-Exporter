@@ -6,6 +6,7 @@ import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
 import com.opencsv.exceptions.CsvException;
 
+import javax.swing.plaf.nimbus.State;
 import java.io.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -16,13 +17,16 @@ import java.util.List;
 
 public class Importer {
     static public List<String[]> startImport(
-            String schemasScriptPath, String statisticDataPath, Connection conn, Statement statement
+            String schemasScriptPath, String statisticDataPath, Connection conn
     ) throws ImporterException {
         try {
+            Statement statement = conn.createStatement();
             importSchemas(schemasScriptPath, statement);
             return importStatistic(statisticDataPath, conn, statement);
         } catch (ImporterException e) {
             throw e;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 
