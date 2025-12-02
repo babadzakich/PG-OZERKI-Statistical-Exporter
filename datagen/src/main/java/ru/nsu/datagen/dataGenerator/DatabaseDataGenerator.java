@@ -50,12 +50,13 @@ public class DatabaseDataGenerator {
 //            }
 //        }
         for (String tableName : generatedData.keySet()) {
-            for (String columnName : generatedData.get(tableName).keySet()) {
-                System.out.println("\nColumn: " + columnName + " rows num: " + generatedData.get(tableName).get(columnName).size());
-                int i = 0;
-                for (Object object : generatedData.get(tableName).get(columnName)) {
-                    System.out.println("" + i++ + " " + object);
+            for (int i = 0; i < 500; i++) {
+                StringBuilder data = new StringBuilder("[");
+                for (String columnName : generatedData.get(tableName).keySet()) {
+                    data.append(generatedData.get(tableName).get(columnName).get(i) + ", ");
                 }
+                data.append("]");
+                System.out.println("Table: " + tableName + " Row " + i + ": " + data.toString());
             }
         }
     }

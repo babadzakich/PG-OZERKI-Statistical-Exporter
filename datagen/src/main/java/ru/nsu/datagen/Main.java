@@ -20,6 +20,6 @@ public class Main {
          */
         Pipeline.startPipeline(
                 "localhost", 5432, "postgres", "kubicl",
-                "postgres", "./scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/data.csv");
+                "postgres", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/data.csv");
     }
 }

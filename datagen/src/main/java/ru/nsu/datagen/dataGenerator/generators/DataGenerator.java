@@ -124,7 +124,7 @@ public class DataGenerator {
             Map<String, List<Object>> columnData) {
 
         for (ColumnMetadata column : table.getColumns().values()) {
-            if (!column.isPrimaryKey() && !column.isForeignKey()) {
+            if (!column.isPrimaryKey() && !column.isForeignKey() && !column.isUnique()) {
                 List<Object> values = normalValueGenerator.generateValues(column);
                 columnData.put(column.getName(), values);
             }
@@ -158,7 +158,7 @@ public class DataGenerator {
                     uniqueList.add(column);
                 }
             }
-            UniqueKeyGeneratorChooser.generate(uniqueList, columnData, GeneratorsTypes.MARKOV);
+            UniqueKeyGeneratorChooser.generate(uniqueList, columnData, GeneratorsTypes.MARKOV, table.getRecordCount());
     }
 
     public PrimaryKeyGeneratorFactory getPkGeneratorFactory() {

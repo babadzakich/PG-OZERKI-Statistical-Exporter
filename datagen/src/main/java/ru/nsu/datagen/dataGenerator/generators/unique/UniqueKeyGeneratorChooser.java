@@ -8,11 +8,11 @@ import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.Generator
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator;
 
 public class UniqueKeyGeneratorChooser {
-    public static void generate(List<ColumnMetadata> uniqColumns, Map<String, List<Object>> columnData, GeneratorsTypes type) {
+    public static void generate(List<ColumnMetadata> uniqColumns, Map<String, List<Object>> columnData, GeneratorsTypes type, int recordCount) {
         UniqueKeyGenerator generator;
         switch (type) {
             case MARKOV:
-                generator = new MarkovGenerator(uniqColumns);
+                generator = new MarkovGenerator(uniqColumns, recordCount);
                 break;
             default:
                 throw new IllegalArgumentException("algorithm " + type + " not presented");

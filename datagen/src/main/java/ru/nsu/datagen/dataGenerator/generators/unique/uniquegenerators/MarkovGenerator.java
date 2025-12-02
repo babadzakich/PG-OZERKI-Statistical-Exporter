@@ -16,26 +16,43 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 public class MarkovGenerator implements UniqueKeyGenerator {
     private List<Map<String, Double>> columns;
     private List<Map<String, Map<String, Double>>> transitions;
+    private List<String> names;
     private int ncols;
-    private Random random;
+    private int recordCount;
+    private List<Integer> recordSize;
+    private Random random = new Random(System.currentTimeMillis());
 
-    public MarkovGenerator(List<ColumnMetadata> columns) {
-            // Выравниваем столбцы
-            this.columns = padColumnsToEqualLength(
-                columns, 
-                "__NULL__"
-            );
+    public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
+            // Используем только реальные данные из метаданных
+            this.columns = new ArrayList<>();
+            this.recordSize = new ArrayList<>();
+            this.names = new ArrayList<>();
+            
+            for (ColumnMetadata col : columnsMetadata) {
+                this.columns.add(new HashMap<>(col.getMvc()));
+                this.names.add(col.getName());
+                this.recordSize.add(col.getAvgTupleSize());
+            }
             
             this.ncols = this.columns.size();
+            this.recordCount = recordCount;
             
+            // Строим переходы
             this.transitions = buildDefaultTransitionsFromColumns();
-            
-            this.random = new Random();
         }
 
     @Override
     public void generate(Map<String, List<Object>> columnData) {
-        // Implementation here
+        List<List<String>> uniqueValues = generateUnique(recordCount);
+        
+        // Транспонируем данные: из списка строк в списки по столбцам
+        for (int colIdx = 0; colIdx < names.size(); colIdx++) {
+            List<Object> columnValues = new ArrayList<>();
+            for (int rowIdx = 0; rowIdx < uniqueValues.size(); rowIdx++) {
+                columnValues.add(uniqueValues.get(rowIdx).get(colIdx));
+            }
+            columnData.put(names.get(colIdx), columnValues);
+        }
     }
 
     @Override
@@ -43,39 +60,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         // Implementation here
     }
 
-    private static List<Map<String, Double>> padColumnsToEqualLength(
-                List<ColumnMetadata> columns,
-                String nullPrefix
-        ) {
-            if (columns.isEmpty()) throw new IllegalArgumentException("Columns list cannot be empty");
-            
-            int targetLen = columns.stream().mapToInt(col -> col.getMvc().size()).max().orElse(0);
-            
-            List<Map<String, Double>> padded = new ArrayList<>();
-            
-            for (int colIdx = 0; colIdx < columns.size(); colIdx++) {
-                Map<String, Double> col = new HashMap<>(columns.get(colIdx).getMvc());
-                int deficit = targetLen - col.size();
-                int k = 1;
-                
-                while (deficit > 0) {
-                    String candidate = nullPrefix + colIdx + "_" + k;
-                    if (!col.containsKey(candidate)) {
-                        double assigned = col.values().stream()
-                                .filter(v -> v > 0)
-                                .min(Double::compare)
-                                .orElse(1.0);
-                        col.put(candidate, assigned);
-                        deficit--;
-                    }
-                    k++;
-                }
-                padded.add(col);
-            }
-            
-            return padded;
-        }
-    
     // ========== BUILD DEFAULT TRANSITIONS ==========
     
     private List<Map<String, Map<String, Double>>> buildDefaultTransitionsFromColumns() {
@@ -138,48 +122,183 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         return seq;
     }
     
-    // ========== POSSIBLE SPACE SIZE ==========
-    
-    public long possibleSpaceSize() {
-        long size = 1;
-        for (Map<String, Double> col : columns) {
-            size *= col.size();
-        }
-        return size;
-    }
-    
     // ========== GENERATE UNIQUE ==========
     
     public List<List<String>> generateUnique(int count, int maxAttemptsPerItem) {
-        long maxSpace = possibleSpaceSize();
-        if (count > maxSpace) {
-            throw new IllegalArgumentException(
-                String.format("Запрошено %d уникальных элементов, а всего возможно только %d", 
-                    count, maxSpace)
-            );
+        // Копируем распределения для модификации
+        List<Map<String, Double>> workingColumns = new ArrayList<>();
+        for (Map<String, Double> col : columns) {
+            workingColumns.add(new HashMap<>(col));
         }
         
         Set<List<String>> uniques = new HashSet<>();
         List<List<String>> results = new ArrayList<>();
         int attempts = 0;
+        int maxAttempts = count * maxAttemptsPerItem;
         
-        while (results.size() < count) {
+        // Фаза 1: Генерация из реальных данных
+        while (results.size() < count && attempts < maxAttempts) {
             attempts++;
-            if (attempts > count * maxAttemptsPerItem) {
-                throw new RuntimeException(
-                    "Не удалось получить требуемое количество уникальных элементов методом случайной генерации. " +
-                    "Попробуйте увеличить maxAttemptsPerItem или используйте детерминированную выборку."
-                );
-            }
             
-            List<String> seq = sampleOne();
+            List<String> seq = sampleOneWithUpdate(workingColumns);
             if (!uniques.contains(seq)) {
                 uniques.add(seq);
                 results.add(seq);
+                decreaseProbabilities(workingColumns, seq);
             }
         }
         
+        // Фаза 2: Если не хватило - расширяем пространство синтетическими данными
+        if (results.size() < count) {
+            System.err.println("Недостаточно уникальных комбинаций из реальных данных. "
+                    + "Сгенерировано: " + results.size() + "/" + count
+                    + ". Расширяем пространство синтетическими значениями...");
+            
+            int needed = count - results.size();
+            expandColumnsForRequiredSpace(workingColumns, needed);
+            
+            // Продолжаем генерацию с расширенным пространством
+            attempts = 0;
+            while (results.size() < count && attempts < maxAttempts) {
+                attempts++;
+                
+                List<String> seq = sampleOneWithUpdate(workingColumns);
+                if (!uniques.contains(seq)) {
+                    uniques.add(seq);
+                    results.add(seq);
+                    decreaseProbabilities(workingColumns, seq);
+                }
+            }
+            
+            if (results.size() < count) {
+                throw new RuntimeException(
+                    "Не удалось получить требуемое количество уникальных элементов (" 
+                    + count + "). Получено только: " + results.size()
+                );
+            }
+        }
+        
+        System.err.println("Успешно сгенерировано " + results.size() + " уникальных записей");
         return results;
+    }
+    
+    /**
+     * Генерирует одну последовательность из модифицируемых распределений
+     */
+    private List<String> sampleOneWithUpdate(List<Map<String, Double>> workingCols) {
+        List<String> seq = new ArrayList<>();
+        
+        // Первый столбец
+        String token = weightedChoice(workingCols.get(0));
+        seq.add(token);
+        
+        // Остальные столбцы
+        for (int i = 1; i < ncols; i++) {
+            // Используем маргинальное распределение
+            token = weightedChoice(workingCols.get(i));
+            seq.add(token);
+        }
+        
+        return seq;
+    }
+    
+    /**
+     * Уменьшает вероятности использованных значений
+     */
+    private void decreaseProbabilities(List<Map<String, Double>> workingCols, List<String> usedSeq) {
+        for (int i = 0; i < usedSeq.size(); i++) {
+            String usedValue = usedSeq.get(i);
+            Map<String, Double> col = workingCols.get(i);
+            
+            // Уменьшаем вероятность использованного значения
+            Double currentProb = col.get(usedValue);
+            if (currentProb != null && currentProb > 0) {
+                // Уменьшаем на 50% от текущего значения
+                double newProb = currentProb * 0.5;
+                col.put(usedValue, newProb);
+                
+                // Перенормализуем распределение
+                double sum = col.values().stream().mapToDouble(Double::doubleValue).sum();
+                if (sum > 0) {
+                    for (String key : col.keySet()) {
+                        col.put(key, col.get(key) / sum);
+                    }
+                }
+            }
+        }
+    }
+    
+    // ========== EXPAND COLUMNS ==========
+    
+    /**
+     * Расширяет рабочие колонки синтетическими значениями, сохраняя распределение.
+     * Добавляет минимально необходимое количество значений для генерации нужного числа уникальных комбинаций.
+     */
+    private void expandColumnsForRequiredSpace(List<Map<String, Double>> workingColumns, int neededCombinations) {
+        // Определяем, в какую колонку добавить значения (выбираем самую маленькую)
+        int minColIdx = 0;
+        int minSize = Integer.MAX_VALUE;
+        
+        for (int i = 0; i < workingColumns.size(); i++) {
+            int size = workingColumns.get(i).size();
+            if (size < minSize) {
+                minSize = size;
+                minColIdx = i;
+            }
+        }
+        
+        // Рассчитываем сколько значений нужно добавить
+        // Добавляем с запасом чтобы наверняка хватило уникальных комбинаций
+        long currentSpace = possibleSpaceSize();
+        int toAdd = (int)Math.ceil((double)neededCombinations * 1.5 / currentSpace * minSize);
+        if (toAdd < 1) toAdd = Math.min(10, neededCombinations);
+        
+        Map<String, Double> targetCol = workingColumns.get(minColIdx);
+        int avgTupleSize = recordSize.get(minColIdx);
+        
+        // Вычисляем среднюю вероятность для новых значений
+        double avgProb = targetCol.values().stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(1.0 / (targetCol.size() + toAdd));
+        
+        // Добавляем синтетические значения
+        int added = 0;
+        int attempts = 0;
+        while (added < toAdd && attempts < toAdd * 100) {
+            attempts++;
+            String candidate = generateRandomString(avgTupleSize);
+            if (!targetCol.containsKey(candidate)) {
+                targetCol.put(candidate, avgProb);
+                added++;
+            }
+        }
+        
+        // Нормализуем вероятности чтобы сумма = 1
+        double sum = targetCol.values().stream().mapToDouble(Double::doubleValue).sum();
+        if (sum > 0) {
+            for (String key : targetCol.keySet()) {
+                targetCol.put(key, targetCol.get(key) / sum);
+            }
+        }
+        
+        System.err.println("Добавлено " + added + " синтетических значений в колонку " + names.get(minColIdx));
+    }
+    
+    /**
+     * Генерирует случайную строку заданной длины из цифр и букв
+     */
+    private String generateRandomString(int length) {
+        if (length <= 0) return "";
+        
+        String chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        StringBuilder sb = new StringBuilder(length);
+        
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        
+        return sb.toString();
     }
     
     public List<List<String>> generateUnique(int count) {
@@ -324,6 +443,26 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     
     public int possibleSpaceSizeReachable() {
         return enumerateAllMarkovWeighted().size();
+    }
+    
+    // ========== POSSIBLE SPACE SIZE (ALL COMBINATIONS) ==========
+    
+    /**
+     * Возвращает общее количество возможных комбинаций при независимых столбцах
+     * (произведение размеров всех столбцов). Если произведение превышает Long.MAX_VALUE,
+     * возвращается Long.MAX_VALUE.
+     */
+    public long possibleSpaceSize() {
+        long product = 1L;
+        for (Map<String, Double> col : columns) {
+            int sz = col.size();
+            if (sz <= 0) return 0L;
+            if (product > Long.MAX_VALUE / sz) {
+                return Long.MAX_VALUE;
+            }
+            product *= sz;
+        }
+        return product;
     }
     
     // ========== WEIGHTED SAMPLE WITHOUT REPLACEMENT MARKOV ==========

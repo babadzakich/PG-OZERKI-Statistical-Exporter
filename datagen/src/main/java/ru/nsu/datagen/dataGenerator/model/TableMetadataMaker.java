@@ -50,7 +50,7 @@ public class TableMetadataMaker {
                 
                 .nullPercentage(nullPercentageValue)
                 .recordCount(recordCountValue)
-                .maxLength(line[7].equals("-1") ? null : Integer.parseInt(line[7])) // Обработка -1 для длины
+                .maxLength(line[7].equals("-1") ? -1 : Integer.parseInt(line[7])) // Обработка -1 для длины
                 .avgTupleSize((line[13].length() == 0 || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
                 
                 .foreignKeyMetadata(fkMetadata)
