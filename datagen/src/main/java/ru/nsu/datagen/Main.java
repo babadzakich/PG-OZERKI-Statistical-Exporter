@@ -20,6 +20,6 @@ public class Main {
          */
         Pipeline.startPipeline(
                 "localhost", 5433, "pg_ozerki_example", "postgres",
-                "postgres", "./scripts/schema.sql", "./scripts/data-3m.csv");
+                "postgres", "./bin/3m.sql", "./bin/data-3m.csv");
     }
 }
