@@ -5,10 +5,9 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.io.File;
 import java.io.FileWriter;
-import java.sql.Array;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.math.BigDecimal;
+import java.sql.*;
+
 import org.postgresql.util.PGobject;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +21,7 @@ public class TableStore {
 
     public void storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData) throws SQLException {
         String queryString = getQueryString(tableMetadata);
+        conn.createStatement().execute("SET search_path TO public");
         PreparedStatement pstmnt = conn.prepareStatement(queryString);
         // debug PK airplane code
         File log = new File("./log_govna.txt");
@@ -99,7 +99,39 @@ public class TableStore {
                     PGobject pgObject = new PGobject();
                     pgObject.setType(type);
                     pgObject.setValue((String) value);
-                    pstmnt.setObject(++j, pgObject);
+                    //pstmnt.setObject(++j, value);
+                    switch(type.toLowerCase()) {
+                        case "integer":
+                        case "int4":
+                            pstmnt.setInt(++j, Integer.parseInt((String) value));
+                            break;
+                        case "bigint":
+                        case "int8":
+                            pstmnt.setLong(++j, Long.parseLong((String) value));
+                            break;
+                        case "varchar":
+                        case "text":
+                            pstmnt.setString(++j, (String)value);
+                            break;
+                        case "boolean":
+                        case "bool":
+                            pstmnt.setBoolean(++j, Boolean.parseBoolean((String)value));
+                            break;
+                        case "decimal":
+                        case "numeric":
+                            pstmnt.setBigDecimal(++j, new BigDecimal((String) value));
+                            break;
+                        case "float8":
+                        case "double":
+                            pstmnt.setDouble(++j, Double.parseDouble((String)value));
+                            break;
+                        case "float4":
+                        case "real":
+                            pstmnt.setFloat(++j, Float.parseFloat((String)value));
+                            break;
+                        default:
+                            throw new IllegalArgumentException("Unsupported type: " + type);
+                    }
                 } else {
                     pstmnt.setObject(++j, value);
                 }

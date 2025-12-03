@@ -22,10 +22,10 @@ public class ColumnMetadata {
     @Getter private final int avgTupleSize;
     private final boolean isArray;
 
-    public ColumnMetadata(String name, String dataType, boolean isPrimaryKey,
+    public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<String, Double> mvc, int avgTupleSize) {
+                          Map<String, Double> mvc, int avgTupleSize, boolean isArray) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;

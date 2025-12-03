@@ -36,6 +36,7 @@ public class TypeBasedGenerator implements NormalValueGenerator {
 
         switch (dataType) {
             case "integer":
+            case "smallint":
             case "int":
                 return random.nextInt(1000);
             case "bigint":
