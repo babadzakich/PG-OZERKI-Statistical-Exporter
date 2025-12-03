@@ -12,18 +12,18 @@ public class Main {
     public static void main(String ... argv) throws SQLException {
         Arguments args = new Arguments();
 
-        JCommander.newBuilder().addObject(args).build().parse(argv);
+        // JCommander.newBuilder().addObject(args).build().parse(argv);
+        // Pipeline.startPipeline(
+        //         args.host, args.port, args.dbname, args.user, args.password,
+        //         args.schemaScriptPath, args.statisticDataPath
+        // );
+
+        
         Pipeline.startPipeline(
-                args.host, args.port, args.dbname, args.user, args.password,
-                args.schemaScriptPath, args.statisticDataPath
-        );
+                "localhost", 5432, "new", "kubicl",
 
-        /*
-        Pipeline.startPipeline(
-                "localhost", 5432, "new", "shadowplay",
+                "postgres", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/data.csv");
 
-                "postgres", "./scripts/srcdb_schema.sql", "./scripts/srcdb_stat.csv");
-
-         */
+        
     }
 }

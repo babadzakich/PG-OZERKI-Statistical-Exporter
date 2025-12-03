@@ -55,7 +55,7 @@ public class TableMetadataMaker {
                 
                 .foreignKeyMetadata(fkMetadata)
                 .mvc(processMCV(line[11], line[12], recordCountValue, line[3]))
-                
+                .ndistinct(Double.parseDouble(line[14]))
                 .build();
             if (!columnDataGroupedByTablename.containsKey(line[1])) {
                 columnDataGroupedByTablename.put(line[1], new ArrayList<>());

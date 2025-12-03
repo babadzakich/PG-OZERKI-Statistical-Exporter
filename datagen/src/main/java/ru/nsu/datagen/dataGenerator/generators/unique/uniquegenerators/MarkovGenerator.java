@@ -20,6 +20,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private int ncols;
     private int recordCount;
     private List<Integer> recordSize;
+    private List<Double> ndistincts;
     private Random random = new Random(System.currentTimeMillis());
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
@@ -27,11 +28,13 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             this.columns = new ArrayList<>();
             this.recordSize = new ArrayList<>();
             this.names = new ArrayList<>();
+            this.ndistincts = new ArrayList<>();
             
             for (ColumnMetadata col : columnsMetadata) {
                 this.columns.add(new HashMap<>(col.getMvc()));
                 this.names.add(col.getName());
                 this.recordSize.add(col.getAvgTupleSize());
+                this.ndistincts.add(col.getNdistinct());
             }
             
             this.ncols = this.columns.size();
@@ -154,8 +157,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                     + "Сгенерировано: " + results.size() + "/" + count
                     + ". Расширяем пространство синтетическими значениями...");
             
-            int needed = count - results.size();
-            expandColumnsForRequiredSpace(workingColumns, needed);
+            expandColumnsForRequiredSpace(workingColumns, count);
             
             // Продолжаем генерацию с расширенным пространством
             attempts = 0;
@@ -231,58 +233,57 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     // ========== EXPAND COLUMNS ==========
     
     /**
-     * Расширяет рабочие колонки синтетическими значениями, сохраняя распределение.
-     * Добавляет минимально необходимое количество значений для генерации нужного числа уникальных комбинаций.
+     * Расширяет рабочие колонки синтетическими значениями, используя ndistinct как ориентир.
      */
-    private void expandColumnsForRequiredSpace(List<Map<String, Double>> workingColumns, int neededCombinations) {
-        // Определяем, в какую колонку добавить значения (выбираем самую маленькую)
-        int minColIdx = 0;
-        int minSize = Integer.MAX_VALUE;
-        
+    private void expandColumnsForRequiredSpace(List<Map<String, Double>> workingColumns, int totalRequired) {
         for (int i = 0; i < workingColumns.size(); i++) {
-            int size = workingColumns.get(i).size();
-            if (size < minSize) {
-                minSize = size;
-                minColIdx = i;
+            Map<String, Double> col = workingColumns.get(i);
+            double ndistinctVal = ndistincts.get(i);
+            
+            // Если ndistinct не задан или некорректен, берем totalRequired
+            if (ndistinctVal < 0) {
+                ndistinctVal = -ndistinctVal * recordCount;
+            } else if (ndistinctVal == 0) {
+                ndistinctVal = totalRequired * 2.0;
+            }
+            
+            ndistinctVal *= 1.5;
+
+            int targetSize = (int) Math.min(ndistinctVal, totalRequired * 2.0);
+            
+            int currentSize = col.size();
+            int toAdd = targetSize - currentSize;
+            
+            if (toAdd > 0) {
+                int avgTupleSize = recordSize.get(i);
+                double avgProb = col.values().stream()
+                        .mapToDouble(Double::doubleValue)
+                        .average()
+                        .orElse(1.0 / (currentSize + toAdd));
+                
+                int added = 0;
+                int attempts = 0;
+                
+                while (added < toAdd && attempts < toAdd * 100) {
+                    attempts++;
+                    String candidate = generateRandomString(avgTupleSize);
+                    if (!col.containsKey(candidate)) {
+                        col.put(candidate, avgProb);
+                        added++;
+                    }
+                }
+                
+                // Нормализуем вероятности
+                double sum = col.values().stream().mapToDouble(Double::doubleValue).sum();
+                if (sum > 0) {
+                    for (String key : col.keySet()) {
+                        col.put(key, col.get(key) / sum);
+                    }
+                }
+                
+                System.err.println("Добавлено " + added + " синтетических значений в колонку " + names.get(i));
             }
         }
-        
-        // Рассчитываем сколько значений нужно добавить
-        // Добавляем с запасом чтобы наверняка хватило уникальных комбинаций
-        long currentSpace = possibleSpaceSize();
-        int toAdd = (int)Math.ceil((double)neededCombinations * 1.5 / currentSpace * minSize);
-        if (toAdd < 1) toAdd = Math.min(10, neededCombinations);
-        
-        Map<String, Double> targetCol = workingColumns.get(minColIdx);
-        int avgTupleSize = recordSize.get(minColIdx);
-        
-        // Вычисляем среднюю вероятность для новых значений
-        double avgProb = targetCol.values().stream()
-                .mapToDouble(Double::doubleValue)
-                .average()
-                .orElse(1.0 / (targetCol.size() + toAdd));
-        
-        // Добавляем синтетические значения
-        int added = 0;
-        int attempts = 0;
-        while (added < toAdd && attempts < toAdd * 100) {
-            attempts++;
-            String candidate = generateRandomString(avgTupleSize);
-            if (!targetCol.containsKey(candidate)) {
-                targetCol.put(candidate, avgProb);
-                added++;
-            }
-        }
-        
-        // Нормализуем вероятности чтобы сумма = 1
-        double sum = targetCol.values().stream().mapToDouble(Double::doubleValue).sum();
-        if (sum > 0) {
-            for (String key : targetCol.keySet()) {
-                targetCol.put(key, targetCol.get(key) / sum);
-            }
-        }
-        
-        System.err.println("Добавлено " + added + " синтетических значений в колонку " + names.get(minColIdx));
     }
     
     /**

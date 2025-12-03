@@ -20,12 +20,13 @@ public class ColumnMetadata {
     private final ForeignKeyMetadata foreignKeyMetadata;
     @Getter private final Map<String, Double> mvc;
     @Getter private final int avgTupleSize;
+    @Getter private final double ndistinct;
     private final boolean isArray;
 
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<String, Double> mvc, int avgTupleSize, boolean isArray) {
+                          Map<String, Double> mvc, int avgTupleSize, double ndistinct, boolean isArray) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;
@@ -38,6 +39,7 @@ public class ColumnMetadata {
         this.isArray = dataType.contains("[") && !dataType.contains("char");
         this.mvc = mvc;
         this.avgTupleSize = avgTupleSize;
+        this.ndistinct = ndistinct;
 
         if (isArray) {
             char dataTypeCharArray[] = dataType.toCharArray();
