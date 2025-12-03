@@ -98,33 +98,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         return dist.keySet().iterator().next();
     }
     
-    // ========== SAMPLE ONE ==========
-    
-    public List<String> sampleOne() {
-        List<String> seq = new ArrayList<>();
-        
-        // Первый столбец
-        String token = weightedChoice(columns.get(0));
-        seq.add(token);
-        
-        // Остальные столбцы
-        for (int i = 1; i < ncols; i++) {
-            Map<String, Map<String, Double>> trans = null;
-            if (i - 1 < transitions.size()) {
-                trans = transitions.get(i - 1);
-            }
-            
-            if (trans != null && trans.containsKey(token)) {
-                token = weightedChoice(trans.get(token));
-            } else {
-                token = weightedChoice(columns.get(i));
-            }
-            seq.add(token);
-        }
-        
-        return seq;
-    }
-    
     // ========== GENERATE UNIQUE ==========
     
     public List<List<String>> generateUnique(int count, int maxAttemptsPerItem) {
@@ -159,6 +132,15 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             
             expandColumnsForRequiredSpace(workingColumns, count);
             
+            // Сбрасываем вероятности до равномерных после расширения
+            // чтобы синтетические значения имели шанс быть выбранными
+            for (Map<String, Double> col : workingColumns) {
+                double uniformProb = 1.0 / col.size();
+                for (String key : col.keySet()) {
+                    col.put(key, uniformProb);
+                }
+            }
+            
             // Продолжаем генерацию с расширенным пространством
             attempts = 0;
             while (results.size() < count && attempts < maxAttempts) {
@@ -168,7 +150,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 if (!uniques.contains(seq)) {
                     uniques.add(seq);
                     results.add(seq);
-                    decreaseProbabilities(workingColumns, seq);
+                    // Не уменьшаем вероятности в фазе 2 для равномерного использования пространства
+                    // decreaseProbabilities(workingColumns, seq);
                 }
             }
             
@@ -240,14 +223,10 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             Map<String, Double> col = workingColumns.get(i);
             double ndistinctVal = ndistincts.get(i);
             
-            // Если ndistinct не задан или некорректен, берем totalRequired
             if (ndistinctVal < 0) {
                 ndistinctVal = -ndistinctVal * recordCount;
-            } else if (ndistinctVal == 0) {
-                ndistinctVal = totalRequired * 2.0;
             }
             
-            ndistinctVal *= 1.5;
 
             int targetSize = (int) Math.min(ndistinctVal, totalRequired * 2.0);
             
@@ -306,221 +285,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     public List<List<String>> generateUnique(int count) {
         return generateUnique(count, 200);
     }
-    
-    // ========== BUILD TRANSITIONS FROM ROWS ==========
-    
-    public static List<Map<String, Map<String, Integer>>> buildTransitionsFromRows(
-            List<List<String>> rows
-    ) {
-        if (rows.isEmpty()) return new ArrayList<>();
         
-        int ncols = rows.get(0).size();
-        List<Map<String, Map<String, Integer>>> transitions = new ArrayList<>();
-        
-        for (int i = 0; i < ncols - 1; i++) {
-            transitions.add(new HashMap<>());
-        }
-        
-        for (List<String> row : rows) {
-            if (row.size() != ncols) {
-                throw new IllegalArgumentException("Все строки должны иметь одинаковую длину");
-            }
-            
-            for (int i = 0; i < ncols - 1; i++) {
-                String from = row.get(i);
-                String to = row.get(i + 1);
-                
-                transitions.get(i)
-                    .computeIfAbsent(from, k -> new HashMap<>())
-                    .merge(to, 1, Integer::sum);
-            }
-        }
-        
-        // Конвертируем Integer в Double для normalize
-        List<Map<String, Map<String, Double>>> result = new ArrayList<>();
-        for (Map<String, Map<String, Integer>> layer : transitions) {
-            Map<String, Map<String, Double>> doubleLayer = new HashMap<>();
-            for (Map.Entry<String, Map<String, Integer>> entry : layer.entrySet()) {
-                Map<String, Double> doubleMap = entry.getValue().entrySet().stream()
-                    .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        e -> e.getValue().doubleValue()
-                    ));
-                doubleLayer.put(entry.getKey(), doubleMap);
-            }
-            result.add(doubleLayer);
-        }
-        
-        return transitions;
-    }
-    
-    // ========== ENUMERATE ALL WEIGHTED ==========
-    
-    public List<Pair<List<String>, Double>> enumerateAllWeighted() {
-        List<List<String>> allTokens = columns.stream()
-            .map(col -> new ArrayList<>(col.keySet()))
-            .collect(Collectors.toList());
-        
-        List<Pair<List<String>, Double>> combos = new ArrayList<>();
-        
-        // Генерируем декартово произведение
-        generateCartesianProduct(allTokens, 0, new ArrayList<>(), combos);
-        
-        return combos;
-    }
-    
-    private void generateCartesianProduct(
-            List<List<String>> allTokens,
-            int depth,
-            List<String> current,
-            List<Pair<List<String>, Double>> result
-    ) {
-        if (depth == allTokens.size()) {
-            // Вычисляем вес
-            double weight = 1.0;
-            for (int i = 0; i < current.size(); i++) {
-                weight *= columns.get(i).get(current.get(i));
-            }
-            result.add(new Pair<>(new ArrayList<>(current), weight));
-            return;
-        }
-        
-        for (String token : allTokens.get(depth)) {
-            current.add(token);
-            generateCartesianProduct(allTokens, depth + 1, current, result);
-            current.remove(current.size() - 1);
-        }
-    }
-    
-    // ========== ENUMERATE ALL MARKOV WEIGHTED ==========
-    
-    public List<Pair<List<String>, Double>> enumerateAllMarkovWeighted() {
-        List<Pair<List<String>, Double>> frontier = new ArrayList<>();
-        
-        // Инициализация первого столбца
-        for (Map.Entry<String, Double> entry : columns.get(0).entrySet()) {
-            List<String> seq = new ArrayList<>();
-            seq.add(entry.getKey());
-            frontier.add(new Pair<>(seq, entry.getValue()));
-        }
-        
-        // Расширяем на остальные столбцы
-        for (int i = 1; i < ncols; i++) {
-            List<Pair<List<String>, Double>> nextFrontier = new ArrayList<>();
-            
-            Map<String, Map<String, Double>> trans = null;
-            if (i - 1 < transitions.size()) {
-                trans = transitions.get(i - 1);
-            }
-            
-            for (Pair<List<String>, Double> pair : frontier) {
-                List<String> seq = pair.first;
-                double weight = pair.second;
-                String prev = seq.get(seq.size() - 1);
-                
-                Map<String, Double> dist;
-                if (trans != null && trans.containsKey(prev)) {
-                    dist = trans.get(prev);
-                } else {
-                    dist = columns.get(i);
-                }
-                
-                for (Map.Entry<String, Double> entry : dist.entrySet()) {
-                    if (entry.getValue() > 0) {
-                        List<String> newSeq = new ArrayList<>(seq);
-                        newSeq.add(entry.getKey());
-                        double newWeight = weight * entry.getValue();
-                        nextFrontier.add(new Pair<>(newSeq, newWeight));
-                    }
-                }
-            }
-            
-            frontier = nextFrontier;
-        }
-        
-        return frontier;
-    }
-    
-    // ========== POSSIBLE SPACE SIZE REACHABLE ==========
-    
-    public int possibleSpaceSizeReachable() {
-        return enumerateAllMarkovWeighted().size();
-    }
-    
-    // ========== POSSIBLE SPACE SIZE (ALL COMBINATIONS) ==========
-    
-    /**
-     * Возвращает общее количество возможных комбинаций при независимых столбцах
-     * (произведение размеров всех столбцов). Если произведение превышает Long.MAX_VALUE,
-     * возвращается Long.MAX_VALUE.
-     */
-    public long possibleSpaceSize() {
-        long product = 1L;
-        for (Map<String, Double> col : columns) {
-            int sz = col.size();
-            if (sz <= 0) return 0L;
-            if (product > Long.MAX_VALUE / sz) {
-                return Long.MAX_VALUE;
-            }
-            product *= sz;
-        }
-        return product;
-    }
-    
-    // ========== WEIGHTED SAMPLE WITHOUT REPLACEMENT MARKOV ==========
-    
-    public List<List<String>> weightedSampleWithoutReplacementMarkov(int k) {
-        List<Pair<List<String>, Double>> combos = enumerateAllMarkovWeighted();
-        if (combos.isEmpty()) return new ArrayList<>();
-        
-        double totalWeight = combos.stream()
-            .mapToDouble(p -> p.second)
-            .sum();
-        
-        if (totalWeight <= 0) {
-            throw new IllegalArgumentException("Сумма весов достижимых комбинаций равна нулю");
-        }
-        
-        // Нормализуем вероятности
-        List<Pair<List<String>, Double>> available = new ArrayList<>();
-        for (Pair<List<String>, Double> combo : combos) {
-            available.add(new Pair<>(combo.first, combo.second / totalWeight));
-        }
-        
-        List<List<String>> chosen = new ArrayList<>();
-        
-        for (int i = 0; i < Math.min(k, available.size()); i++) {
-            double sum = available.stream().mapToDouble(p -> p.second).sum();
-            double r = random.nextDouble() * sum;
-            double cum = 0.0;
-            
-            for (int idx = 0; idx < available.size(); idx++) {
-                cum += available.get(idx).second;
-                if (r <= cum) {
-                    chosen.add(available.get(idx).first);
-                    available.remove(idx);
-                    break;
-                }
-            }
-        }
-        
-        return chosen;
-    }
-        
-        // ========== GENERATE UNIQUE SAFELY ==========
-        
-    public List<List<String>> generateUniqueSafely(int count) {
-        int reachable = possibleSpaceSizeReachable();
-        if (count > reachable) {
-            throw new RuntimeException(
-                String.format("Запрошено %d уникальных элементов, но достижимо только %d при данных переходах",
-                    count, reachable)
-            );
-        }
-        return weightedSampleWithoutReplacementMarkov(count);
-    }
-        
-        // ========== HELPER CLASS: PAIR ==========
+    // ========== HELPER CLASS: PAIR ==========
         
     public static class Pair<F, S> {
         public final F first;
