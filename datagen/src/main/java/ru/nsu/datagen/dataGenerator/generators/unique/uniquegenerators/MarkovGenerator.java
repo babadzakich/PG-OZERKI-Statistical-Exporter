@@ -291,7 +291,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private String generateRandomString(int length) {
         if (length <= 0) return "";
         
-        String chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        // String chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        String chars = "0123456789";
         StringBuilder sb = new StringBuilder(length);
         
         for (int i = 0; i < length; i++) {
