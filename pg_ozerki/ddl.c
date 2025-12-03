@@ -400,15 +400,18 @@ int ret;
     query = "SELECT n.nspname, c.relname as tablename, "
             "i.relname as indexname, "
             "pg_catalog.pg_get_indexdef(i.oid) as indexdef, "
-            "i.oid as index_oid "
+            "i.oid as index_oid, "
+            "x.indisunique, "
+            "con.oid as constraint_oid "
             "FROM pg_index x "
             "JOIN pg_class i ON i.oid = x.indexrelid "
             "JOIN pg_class c ON c.oid = x.indrelid "
             "JOIN pg_namespace n ON n.oid = i.relnamespace "
+            "LEFT JOIN pg_constraint con ON con.conindid = i.oid "  // Проверяем, связан ли с constraint
             "WHERE i.relkind = 'i' "
             "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-            "AND NOT x.indisprimary "
-            "AND NOT x.indisunique "  
+            "AND NOT x.indisprimary "  // Исключаем PRIMARY KEY
+            "AND (con.oid IS NULL OR NOT x.indisunique) "  // Включаем уникальные индексы без constraints
             "ORDER BY n.nspname, c.relname, i.relname";
     
     ret = SPI_execute(query, true, 0);
@@ -429,6 +432,12 @@ int ret;
             char* indexname = SPI_getvalue(tuple, tupdesc, 3);
             char* indexdef = SPI_getvalue(tuple, tupdesc, 4);
      
+            char* indisunique = SPI_getvalue(tuple, tupdesc, 6);
+            char* constraint_oid = SPI_getvalue(tuple, tupdesc, 7);
+
+            if (indisunique && constraint_oid)
+                continue;
+
             if (nspname && tablename && indexname)
             {
                 
@@ -642,7 +651,6 @@ void generate_functions_ddl(StringInfo buf)
     int ret;
     char *query;
 
-    SPI_execute("SET search_path = ''", false, 0);
 
     query =
         "SELECT p.oid, n.nspname, p.proname, "
@@ -699,6 +707,4 @@ void generate_functions_ddl(StringInfo buf)
             }
         }
     }
-
-    SPI_execute("RESET search_path", false, 0);
 }

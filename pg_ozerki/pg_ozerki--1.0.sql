@@ -581,7 +581,8 @@ RETURNS TABLE (
     referenced_column text,
     mcv text,
     mcv_frequencies text,
-    avg_column_width_bytes integer
+    avg_column_width_bytes integer,
+	ndistinct integer
 )
 LANGUAGE sql
 AS $$
@@ -608,11 +609,11 @@ fk_constraints AS (
         con_tbl_ns.nspname AS table_schema,
         conf_tbl.relname AS referenced_table,
         conf_tbl_ns.nspname AS referenced_schema,
+        -- Получаем имя referenced колонки
         (SELECT attname FROM pg_attribute 
-         WHERE attrelid = con.confrelid AND attnum = con.confkey[gs.pos]) AS referenced_column
+         WHERE attrelid = con.confrelid AND attnum = con.confkey[1]) AS referenced_column
     FROM pg_constraint con
-    JOIN LATERAL generate_subscripts(con.conkey, 1) AS gs(pos) ON true
-    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[gs.pos]
+    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
     JOIN pg_class con_tbl ON con_tbl.oid = con.conrelid
     JOIN pg_namespace con_tbl_ns ON con_tbl_ns.oid = con_tbl.relnamespace
     JOIN pg_class conf_tbl ON conf_tbl.oid = con.confrelid
@@ -625,7 +626,15 @@ column_constraints AS (
         a.attname,
         a.attnum,
         BOOL_OR(c.contype = 'p') AS is_pk,
-        BOOL_OR(c.contype = 'u') AS is_unique_constraint
+        BOOL_OR(c.contype = 'u') AS is_unique_constraint,
+        -- Проверяем уникальные индексы
+        BOOL_OR(EXISTS (
+            SELECT 1 FROM pg_index i
+            WHERE i.indrelid = a.attrelid
+            AND a.attnum = ANY(i.indkey)
+            AND i.indisunique = true
+            AND i.indisprimary = false
+        )) AS is_unique_index
     FROM pg_attribute a
     LEFT JOIN pg_constraint c ON c.conrelid = a.attrelid AND a.attnum = ANY(c.conkey)
     WHERE a.attnum > 0 AND NOT a.attisdropped
@@ -640,7 +649,19 @@ relation_types AS (
         fk.referenced_table,
         fk.referenced_column,
         CASE
-            WHEN cc.is_pk OR cc.is_unique_constraint THEN 'ONE_TO_ONE'
+            -- Если FK колонка является частью PK или уникального ограничения или индекса
+            WHEN cc.is_pk OR cc.is_unique_constraint OR cc.is_unique_index THEN
+                -- И целевая колонка тоже является частью PK или уникального ограничения
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM column_constraints ref_cc
+                    JOIN pg_class ref_tbl ON ref_tbl.oid = ref_cc.attrelid
+                    JOIN pg_namespace ref_ns ON ref_ns.oid = ref_tbl.relnamespace
+                    WHERE ref_ns.nspname = fk.referenced_schema
+                    AND ref_tbl.relname = fk.referenced_table
+                    AND ref_cc.attname = fk.referenced_column
+                    AND (ref_cc.is_pk OR ref_cc.is_unique_constraint)
+                ) THEN 'ONE_TO_ONE' ELSE 'ONE_TO_ONE' END
+            -- Если FK колонка не уникальна, это OTM
             ELSE 'ONE_TO_MANY'
         END AS relation_type
     FROM fk_constraints fk
@@ -666,7 +687,10 @@ column_stats AS (
         (SELECT COUNT(*) FROM pg_constraint 
          WHERE conrelid = c.oid AND contype = 'f' AND a.attnum = ANY(conkey)) AS is_foreign_key,
         (SELECT COUNT(*) FROM pg_constraint 
-         WHERE conrelid = c.oid AND contype = 'u' AND a.attnum = ANY(conkey)) AS is_unique
+         WHERE conrelid = c.oid AND contype = 'u' AND a.attnum = ANY(conkey)) AS is_unique,
+        (SELECT COUNT(*) FROM pg_index 
+         WHERE indrelid = c.oid AND indisunique = true AND indisprimary = false 
+         AND a.attnum = ANY(indkey)) AS is_unique_index
     FROM pg_attribute a
     JOIN pg_class c ON a.attrelid = c.oid
     JOIN pg_namespace n ON c.relnamespace = n.oid
@@ -683,12 +707,15 @@ SELECT
     tc.row_count,
     CASE 
         WHEN tc.row_count = 0 THEN 0
-        ELSE ROUND((s.null_frac * 100)::numeric, 2)
+        ELSE ROUND(
+            (s.null_frac * 100)::numeric, 
+            2
+        )
     END AS null_percent,
     TRIM(
         CASE WHEN cs.is_primary_key > 0 THEN 'PK ' ELSE '' END ||
         CASE WHEN cs.is_foreign_key > 0 THEN 'FK ' ELSE '' END ||
-        CASE WHEN cs.is_unique > 0 THEN 'UNIQUE' ELSE '' END
+        CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE' ELSE '' END
     ) AS modifiers,
     cs.max_length,
     rt.relation_type,
@@ -696,7 +723,8 @@ SELECT
     rt.referenced_column,
     s.most_common_vals AS mcv,
     s.most_common_freqs AS mcv_frequencies,
-    s.avg_width AS avg_column_width_bytes
+    s.avg_width AS avg_column_width_bytes,
+    s.n_distinct AS ndistinct
 FROM column_stats cs
 JOIN table_counts tc ON cs.table_schema = tc.schemaname AND cs.table_name = tc.table_name
 LEFT JOIN pg_stats s ON s.schemaname = cs.table_schema 
@@ -710,6 +738,7 @@ ORDER BY
     cs.table_name,
     cs.column_number
 $$;
+
 
 
 
