@@ -10,19 +10,19 @@ import java.sql.SQLException;
 
 public class Main {
     public static void main(String ... argv) throws SQLException {
-        Arguments args = new Arguments();
+         Arguments args = new Arguments();
 
-        // JCommander.newBuilder().addObject(args).build().parse(argv);
-        // Pipeline.startPipeline(
-        //         args.host, args.port, args.dbname, args.user, args.password,
-        //         args.schemaScriptPath, args.statisticDataPath
-        // );
+         JCommander.newBuilder().addObject(args).build().parse(argv);
+         Pipeline.startPipeline(
+                 args.host, args.port, args.dbname, args.user, args.password,
+                 args.schemaScriptPath, args.statisticDataPath
+         );
 
         
-        Pipeline.startPipeline(
-                "localhost", 5432, "new", "kubicl",
-
-                "postgres", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/src/main/java/ru/nsu/datagen/scripts/data.csv");
+//        Pipeline.startPipeline(
+//                "localhost", 5432, "testt", "kubicl",
+//
+//                "postgres", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/scripts/data.csv");
 
         
     }

@@ -1,0 +1,7 @@
+table_schema,table_name,column_name,data_type,row_count,null_percent,modifiers,max_length,relation_type,referenced_table,referenced_column,mcv,mcv_frequencies,avg_column_width_bytes,ndistinct
+public,meta,id,integer,500000,0.00,PK,-1,NULL,NULL,NULL,NULL,NULL,4,-1
+public,meta,product_review_id,integer,500000,0.00,FK,-1,ONE_TO_MANY,product_review,id,NULL,NULL,4,-1
+public,meta,comment,text,500000,0.00,,-1,NULL,NULL,NULL,NULL,NULL,33,-1
+public,product_review,id,integer,500000,0.00,PK,-1,NULL,NULL,NULL,NULL,NULL,4,-1
+public,product_review,user_id,integer,500000,0.00,UNIQUE,-1,NULL,NULL,NULL,"{182,589,624,867,256,110,271,676,839,155,214,232,389,450,510,625}","{0.0016,0.0016,0.0015333333,0.0015333333,0.0015,0.0014666667,0.0014666667,0.0014666667,0.0014666667,0.0014333334,0.0014333334,0.0014333334,0.0014333334,0.0014333334,0.0014333334,0.0014333334}",4,1000
+public,product_review,product_id,integer,500000,0.00,UNIQUE,-1,NULL,NULL,NULL,"{366,255,469,22,396,406,53,188}","{0.0029333334,0.0028,0.0027666667,0.0027,0.0026666666,0.0026333334,0.0026,0.0026}",4,500

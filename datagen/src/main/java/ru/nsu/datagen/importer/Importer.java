@@ -80,7 +80,7 @@ public class Importer {
                 query.append(line).append(" ");
 
                 if (line.trim().endsWith(";")) {
-                    System.out.println(query);
+                    // System.out.println(query);
                     // Execute the Query
                     statement.execute(query.toString().trim());
                     // Empty the Query string to add new query from the file

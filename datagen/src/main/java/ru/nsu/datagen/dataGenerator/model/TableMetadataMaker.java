@@ -46,12 +46,12 @@ public class TableMetadataMaker {
                 
                 .isPrimaryKey(line[6].contains("PK"))
                 .isForeignKey(line[6].contains("FK"))
-                .isUnique(line[6].contains("UNIQUE") || line[6].contains("PK")) // Лучше проверять на "UNIQUE" ИЛИ "PK"
+                .isUnique(line[6].contains("UNIQUE"))
                 
                 .nullPercentage(nullPercentageValue)
                 .recordCount(recordCountValue)
                 .maxLength(line[7].equals("-1") ? -1 : Integer.parseInt(line[7])) // Обработка -1 для длины
-                .avgTupleSize((line[13].length() == 0 || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
+                .avgTupleSize((line[13].isEmpty() || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
                 
                 .foreignKeyMetadata(fkMetadata)
                 .mvc(processMCV(line[11], line[12], recordCountValue, line[3]))
@@ -85,9 +85,6 @@ public class TableMetadataMaker {
         List<String> processedMCV = parsePgArrayString(rawMCVArray, dataType);
         List<Double> processedMCF = parseMCFArray(rawMCFArray);
 
-        for (String line : processedMCV) {
-            System.err.println("Data: " + line + " End of data");
-        }
         Map<String, Double> resultDistribution = new HashMap<>();
 
         for (int i = 0; i < processedMCV.size(); i++) {

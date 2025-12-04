@@ -158,7 +158,8 @@ public class DataGenerator {
                     uniqueList.add(column);
                 }
             }
-            UniqueKeyGeneratorChooser.generate(uniqueList, columnData, GeneratorsTypes.MARKOV, table.getRecordCount());
+            if (!uniqueList.isEmpty())
+                UniqueKeyGeneratorChooser.generate(uniqueList, columnData, GeneratorsTypes.MARKOV, table.getRecordCount());
     }
 
     public PrimaryKeyGeneratorFactory getPkGeneratorFactory() {
