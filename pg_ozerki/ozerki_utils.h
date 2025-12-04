@@ -1,0 +1,32 @@
+#include "postgres.h"
+#include "funcapi.h"
+#include "miscadmin.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_class_d.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_constraint.h"
+#include "catalog/pg_attrdef.h"
+#include "commands/defrem.h"
+#include "nodes/pg_list.h"
+#include "utils/acl.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/syscache.h"
+#include "utils/fmgroids.h"
+#include "access/htup_details.h"
+#include "access/sysattr.h"
+#include "lib/stringinfo.h"
+#include "storage/fd.h"
+#include "catalog/pg_proc.h"
+#include "utils/ruleutils.h"
+#include "commands/comment.h"
+#include "access/genam.h"
+#include "catalog/pg_attrdef_d.h"
+#include "executor/spi.h"
+#include "access/table.h"
+
+char* get_sequence_owned_by(const char* nspname, const char* seqname);
+char* get_primary_key_constraint(Oid tableOid);
+char* get_table_check_constraints(Oid tableOid);
+char* add_schema_to_constraint(char* condef, char* schemaname);
