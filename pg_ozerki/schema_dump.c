@@ -61,9 +61,9 @@ dump_schema(PG_FUNCTION_ARGS)
 
         generate_extensions_ddl(&buf);
     
-        generate_sequences_ddl(&buf);
-        
         generate_tables_ddl(&buf);
+
+        generate_sequences_ddl(&buf);
         
         generate_views_ddl(&buf);
         
