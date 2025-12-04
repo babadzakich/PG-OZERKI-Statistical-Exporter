@@ -43,18 +43,23 @@ dump_schema(PG_FUNCTION_ARGS)
     
     initStringInfo(&buf);
     
-    appendStringInfo(&buf, "--PostgreSQL database schema dump (tables only)\n");
+    appendStringInfo(&buf, "--PostgreSQL database schema dump by PG_OZERKI\n");
     appendStringInfo(&buf, "SET statement_timeout = 0;\n");
     appendStringInfo(&buf, "SET lock_timeout = 0;\n");
     appendStringInfo(&buf, "SET idle_in_transaction_session_timeout = 0;\n");
     appendStringInfo(&buf, "SET client_encoding = 'UTF8';\n");
     appendStringInfo(&buf, "SET standard_conforming_strings = on;\n");
-    appendStringInfo(&buf, "SELECT pg_catalog.set_config('search_path', '', false);\n\n");
+    //appendStringInfo(&buf, "SELECT pg_catalog.set_config('search_path', '', false);\n\n");
     
     if ((spi = SPI_connect()) == SPI_OK_CONNECT){
-        generate_extensions_ddl(&buf);
+        
+
 
         generate_schemas_ddl(&buf);
+
+        generate_functions_ddl(&buf);
+
+        generate_extensions_ddl(&buf);
     
         generate_sequences_ddl(&buf);
         
@@ -65,6 +70,9 @@ dump_schema(PG_FUNCTION_ARGS)
         generate_indexes_ddl(&buf);
 
         generate_constraints_ddl(&buf);
+
+        SPI_execute("RESET search_path", false, 0);
+
     }
         
     

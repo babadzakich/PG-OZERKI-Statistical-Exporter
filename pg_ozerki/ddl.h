@@ -33,3 +33,5 @@ void generate_indexes_ddl(StringInfo buf);
 void generate_extensions_ddl(StringInfo buf);
 void generate_sequences_ddl(StringInfo buf);
 void generate_constraints_ddl(StringInfo buf);
+void generate_schemas_ddl(StringInfo buf);
+void generate_functions_ddl(StringInfo buf);
