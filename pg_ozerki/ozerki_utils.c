@@ -90,7 +90,7 @@ get_sequence_owned_by(const char *nspname, const char *seqname)
     ret = SPI_execute_with_args(query, 2, 
                                (Oid[]) {TEXTOID, TEXTOID},
                                (Datum[]) {CStringGetTextDatum(seqname), CStringGetTextDatum(nspname)},
-                               (bool[]) {false, false},
+                               (char[]) {' ', ' '},
                                true, 0);
     
     if (ret == SPI_OK_SELECT && SPI_processed > 0)
@@ -133,7 +133,7 @@ char* get_table_check_constraints(Oid tableOid) {
     ret = SPI_execute_with_args(query, 1, 
                                (Oid[]) {OIDOID},
                                (Datum[]) {tableOid},
-                               (bool[]) {false},
+                               (char[]) {' '},
                                true, 0);
     
     if (ret == SPI_OK_SELECT && SPI_processed > 0)
@@ -150,6 +150,7 @@ char* get_table_check_constraints(Oid tableOid) {
             
             if (conname && condef)
             {
+                
                 
                 appendStringInfo(&buf, ",\n    CONSTRAINT %s %s", conname, condef);
                 
@@ -182,7 +183,7 @@ char* get_primary_key_constraint(Oid tableOid) {
     ret = SPI_execute_with_args(query, 1, 
                                (Oid[]) {OIDOID},
                                (Datum[]) {tableOid},
-                               (bool[]) {false},
+                               (char[]) {' '},
                                true, 0);
     
     if (ret == SPI_OK_SELECT && SPI_processed > 0)
@@ -207,3 +208,5 @@ char* get_primary_key_constraint(Oid tableOid) {
     
     return pk_constraint;
 }
+
+
