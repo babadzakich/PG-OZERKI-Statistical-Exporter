@@ -161,7 +161,7 @@ public class TableStore {
             }
         }
         stringBuilder.append(")");
-
+        System.err.println(stringBuilder);
         return stringBuilder.toString();
     }
 }

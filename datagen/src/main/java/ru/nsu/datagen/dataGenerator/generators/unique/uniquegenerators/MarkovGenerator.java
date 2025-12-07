@@ -17,32 +17,31 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 public class MarkovGenerator implements UniqueKeyGenerator {
     private final List<Map<String, Double>> columns;
-    private List<Map<String, Map<String, Double>>> transitions;
-    private List<String> names;
+    private final List<String> names;
     private final int ncols;
     private final int recordCount;
-    private List<Integer> recordSize;
-    private List<Double> ndistincts;
-    private Random random = new Random(System.currentTimeMillis());
+    private final List<Integer> recordSize;
+    private final List<Double> ndistincts;
+    private final List<String> types;
+    private final Random random = new Random(System.currentTimeMillis());
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
             this.columns = new ArrayList<>();
             this.recordSize = new ArrayList<>();
             this.names = new ArrayList<>();
             this.ndistincts = new ArrayList<>();
+            this.types = new ArrayList<>();
             
             for (ColumnMetadata col : columnsMetadata) {
                 this.columns.add(new HashMap<>(col.getMvc()));
                 this.names.add(col.getName());
                 this.recordSize.add(col.getAvgTupleSize());
                 this.ndistincts.add(col.getNdistinct());
+                this.types.add(col.getDataType());
             }
             
             this.ncols = this.columns.size();
             this.recordCount = recordCount;
-
-            // Строим переходы
-            this.transitions = buildDefaultTransitionsFromColumns();
         }
 
     @Override
@@ -62,26 +61,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     public void generate() {
         // Implementation here
     }
-
-    // ========== BUILD DEFAULT TRANSITIONS ==========
-    
-    private List<Map<String, Map<String, Double>>> buildDefaultTransitionsFromColumns() {
-        List<Map<String, Map<String, Double>>> trans = new ArrayList<>();
-        
-        for (int i = 0; i < ncols - 1; i++) {
-            Map<String, Double> nextMarginal = columns.get(i + 1);
-            Map<String, Map<String, Double>> layer = new HashMap<>();
-            
-            for (String prevToken : columns.get(i).keySet()) {
-                layer.put(prevToken, new HashMap<>(nextMarginal));
-            }
-            trans.add(layer);
-        }
-        
-        return trans;
-    }
-    
-    // ========== WEIGHTED CHOICE ==========
     
     private String weightedChoice(Map<String, Double> dist) {
         double r = random.nextDouble();
@@ -93,12 +72,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 return entry.getKey();
             }
         }
-        
-        // Fallback для округления float
         return dist.keySet().iterator().next();
     }
-    
-    // ========== GENERATE UNIQUE ==========
     
     public List<List<String>> generateUnique(int count, int maxAttemptsPerItem) {
         Set<List<String>> uniques = new HashSet<>();
@@ -173,13 +148,10 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private List<String> sampleOneWithUpdate(List<Map<String, Double>> workingCols) {
         List<String> seq = new ArrayList<>();
         
-        // Первый столбец
         String token = weightedChoice(workingCols.getFirst());
         seq.add(token);
         
-        // Остальные столбцы
         for (int i = 1; i < ncols; i++) {
-            // Используем маргинальное распределение
             token = weightedChoice(workingCols.get(i));
             seq.add(token);
         }
@@ -195,14 +167,11 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             String usedValue = usedSeq.get(i);
             Map<String, Double> col = workingCols.get(i);
             
-            // Уменьшаем вероятность использованного значения
             Double currentProb = col.get(usedValue);
             if (currentProb != null && currentProb > 0) {
-                // Уменьшаем на 50% от текущего значения
                 double newProb = currentProb * 0.5;
                 col.put(usedValue, newProb);
                 
-                // Перенормализуем распределение
                 double sum = col.values().stream().mapToDouble(Double::doubleValue).sum();
                 if (sum > 0) {
                     col.replaceAll((k, v) -> col.get(k) / sum);
@@ -219,6 +188,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private void expandColumnsForRequiredSpace(List<Map<String, Double>> columns, int totalRequired) {
         for (int i = 0; i < columns.size(); i++) {
             Map<String, Double> col = columns.get(i);
+            String type = types.get(i);
             double ndistinctVal = ndistincts.get(i);
             
             if (ndistinctVal < 0) {
@@ -243,7 +213,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 
                 while (added < toAdd && attempts < toAdd * 100) {
                     attempts++;
-                    String candidate = generateRandomString(avgTupleSize);
+                    String candidate = generateRandomString(avgTupleSize, type);
                     if (!col.containsKey(candidate)) {
                         col.put(candidate, avgProb);
                         added++;
@@ -264,14 +234,20 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     /**
      * Генерирует случайную строку заданной длины из цифр и букв
      */
-    private String generateRandomString(int length) {
+    private String generateRandomString(int length, String type) {
         if (length <= 0) return "";
-        
-        // String chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        String chars = "0123456789";
+        String chars;
+        int i = 0;
         StringBuilder sb = new StringBuilder(length);
-        
-        for (int i = 0; i < length; i++) {
+        System.err.println(type);
+        if (type.equals("integer")) {
+            chars = "0123456789";
+            sb.append(chars.charAt(random.nextInt(1, chars.length())));
+            i++;
+        } else {
+            chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        }
+        while (i++ < length) {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }
         
