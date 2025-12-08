@@ -2,6 +2,8 @@ package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -9,8 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import com.github.javafaker.Faker;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
@@ -24,6 +28,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private final List<Double> ndistincts;
     private final List<String> types;
     private final Random random = new Random(System.currentTimeMillis());
+    private final Faker faker = new Faker(random);
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
             this.columns = new ArrayList<>();
@@ -77,7 +82,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     
     public List<List<String>> generateUnique(int count, int maxAttemptsPerItem) {
         Set<List<String>> uniques = new HashSet<>();
-//        Set<String> uniques = new HashSet<>();
         List<List<String>> results = new ArrayList<>();
         int attempts = 0;
         int maxAttempts = count * maxAttemptsPerItem;
@@ -87,7 +91,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             attempts++;
             
             List<String> seq = sampleOneWithUpdate(columns);
-            String checkSeq = String.join(",", seq);
             if (uniques.add(seq)) {
                 results.add(seq);
                 decreaseProbabilities(columns, seq);
@@ -115,7 +118,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 attempts++;
                 
                 List<String> seq = sampleOneWithUpdate(columns);
-                String checkSeq = String.join(",", seq);
                 if (uniques.add(seq)) {
                     results.add(seq);
                     // Не уменьшаем вероятности в фазе 2 для равномерного использования пространства
@@ -235,22 +237,67 @@ public class MarkovGenerator implements UniqueKeyGenerator {
      * Генерирует случайную строку заданной длины из цифр и букв
      */
     private String generateRandomString(int length, String type) {
+
         if (length <= 0) return "";
-        String chars;
-        int i = 0;
-        StringBuilder sb = new StringBuilder(length);
         System.err.println(type);
-        if (type.equals("integer")) {
-            chars = "0123456789";
-            sb.append(chars.charAt(random.nextInt(1, chars.length())));
-            i++;
-        } else {
-            chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        switch (type) {
+            case "smallint", "smallserial":
+                return String.valueOf(random.nextInt(65536) - 32768);
+            case "integer", "serial":
+                return String.valueOf(random.nextInt());
+            case "bigint", "bigserial":
+                return String.valueOf(random.nextLong());
+            case "real":
+                return String.valueOf(random.nextFloat());
+            case "double precision":
+                return String.valueOf(random.nextDouble());
         }
-        while (i++ < length) {
+
+
+        StringBuilder sb = new StringBuilder(length);
+        if (type.toLowerCase().startsWith("numeric") || type.toLowerCase().startsWith("decimal")) {
+            Matcher matcher = Pattern.compile("(\\d+),\\s*(\\d+)")
+                    .matcher(type);
+            int precision = -1;
+            int scale = -1;
+
+            if (matcher.find()) {
+                precision = Integer.parseInt(matcher.group(1));
+                scale = Integer.parseInt(matcher.group(2));
+            } else {
+                matcher = Pattern.compile("(\\d+)")
+                        .matcher(type);
+                if (matcher.find()) {
+                    precision = Integer.parseInt(matcher.group(1));
+                    scale = 0;
+                }
+            }
+
+            if (precision > 0 && scale >= 0) {
+                int integerDigits = precision - scale;
+                if (integerDigits < 0) integerDigits = 0;
+
+                long maxBound = (long) Math.pow(10, integerDigits);
+                long minBound = -maxBound;
+
+                double randomDouble = faker.number().randomDouble(scale, minBound, maxBound);
+
+                BigDecimal randomNumeric = BigDecimal.valueOf(randomDouble)
+                        .setScale(scale, RoundingMode.HALF_UP);
+
+                return randomNumeric.toString();
+            }
+        }
+
+        if (type.toLowerCase().contains("char") || type.toLowerCase().contains("text")) {
+            String fakeText = faker.lorem().paragraph(1);
+            return fakeText.substring(0, Math.min(length, fakeText.length()));
+        }
+
+        String chars = "01234563456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        for (int i = 0; i < length; i++) {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }
-        
         return sb.toString();
     }
 }
