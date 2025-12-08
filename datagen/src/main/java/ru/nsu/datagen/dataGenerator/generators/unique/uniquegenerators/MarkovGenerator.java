@@ -276,6 +276,9 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                         random.nextInt(60),   // Минуты: 0-59
                         random.nextInt(60)   // Секунды: 0-59
                 ).toString();
+
+            case "boolean":
+                return random.nextBoolean() ? "t" : "f";
         }
 
         StringBuilder sb = new StringBuilder(length);
