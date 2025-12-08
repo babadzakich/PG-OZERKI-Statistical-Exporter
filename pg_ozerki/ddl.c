@@ -577,12 +577,19 @@ generate_table_ddl(StringInfo buf, Oid tableOid)
             }
             else if (attr->atttypid == NUMERICOID)
             {
+                
                 int32 precision = (attr->atttypmod >> 16) & 0xFFFF;
                 int32 scale = attr->atttypmod & 0xFFFF;
-                if (scale > 0)
-                    appendStringInfo(buf, "(%d,%d)", precision - 4, scale);
+                elog(LOG, "\n\nATTYPMOD = %x, PRECISION = %d, SCALE = %d\n\n", attr->atttypmod, precision, scale );
+                
+                if (scale - 4 > 0) {
+                    if (scale - 4 > 1000) {
+                        scale -= 2048;
+                    }
+                    appendStringInfo(buf, "(%d,%d)", precision, scale - 4);
+                }
                 else
-                    appendStringInfo(buf, "(%d)", precision - 4);
+                    appendStringInfo(buf, "(%d)", precision);
             }
         }
         
