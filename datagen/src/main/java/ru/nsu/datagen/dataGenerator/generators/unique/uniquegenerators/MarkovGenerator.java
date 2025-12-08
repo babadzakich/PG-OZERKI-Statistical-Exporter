@@ -3,6 +3,7 @@ package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -251,6 +252,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 return String.valueOf(random.nextFloat());
             case "double precision":
                 return String.valueOf(random.nextDouble());
+            case "money":
+                return faker.commerce().price(0, 1000000).replace(",", ".");
         }
 
 
