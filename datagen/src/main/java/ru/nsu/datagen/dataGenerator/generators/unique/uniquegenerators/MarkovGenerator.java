@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -12,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -254,8 +257,26 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 return String.valueOf(random.nextDouble());
             case "money":
                 return faker.commerce().price(0, 1000000).replace(",", ".");
+            case "bytea":
+                byte[] bytes = new byte[length];
+                random.nextBytes(bytes);
+                return "\\x" + java.util.HexFormat.of().formatHex(bytes);
+            case "timestamp", "timestamp without time zone":
+                return faker.date().past(3650, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
+            case "timestamp with time zone":
+                return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault())
+                        .withZoneSameInstant(ZoneId.of(ZoneId.getAvailableZoneIds().stream()
+                        .skip(random.nextInt(ZoneId.getAvailableZoneIds().size()))
+                        .findFirst().orElse("UTC"))).toString();
+            case "date":
+                return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
+            case "time", "time without time zone", "interval":
+                return LocalTime.of(
+                        random.nextInt(24),   // Часы: 0-23
+                        random.nextInt(60),   // Минуты: 0-59
+                        random.nextInt(60)   // Секунды: 0-59
+                ).toString();
         }
-
 
         StringBuilder sb = new StringBuilder(length);
         if (type.toLowerCase().startsWith("numeric") || type.toLowerCase().startsWith("decimal")) {
