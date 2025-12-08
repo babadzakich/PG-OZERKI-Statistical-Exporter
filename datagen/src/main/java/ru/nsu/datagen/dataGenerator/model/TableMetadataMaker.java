@@ -118,7 +118,7 @@ public class TableMetadataMaker {
      */
     public static List<String> parsePgArrayString(String arrayString, String datatype) {
         if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
-            return List.of(); // Возвращаем пустой список для пустых массивов
+            return List.of();
         }
 
         String cleanedString = arrayString.substring(1, arrayString.length() - 1);
@@ -128,29 +128,42 @@ public class TableMetadataMaker {
         if (datatype.equals("integer[]")) {
 
         }
-        // Разделение по ","
+        List<String> result = new ArrayList<>();
+        if (cleanedString.startsWith("\"")) {
+            Pattern pattern = Pattern.compile("\"(.*?)\"");
+            Matcher matcher = pattern.matcher(cleanedString);
+
+            while (matcher.find()) {
+                result.add(matcher.group(1));
+            }
+        } else {
+            result = getStrings(cleanedString);
+        }
+        return result;
+    }
+
+    private static List<String> getStrings(String cleanedString) {
         List<String> result = new ArrayList<>();
         String[] parts = cleanedString.split(",");
-        
+
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i];
-            
+
             // Удаляем ведущую кавычку у первого элемента
             if (i == 0 && part.startsWith("\"")) {
                 part = part.substring(1);
             }
-            
+
             // Удаляем завершающую кавычку у последнего элемента
             if (i == parts.length - 1 && part.endsWith("\"")) {
                 part = part.substring(0, part.length() - 1);
             }
-            
+
             // Обрабатываем экранирование двойных кавычек
             part = part.replace("\"\"", "\"");
-            
+
             result.add(part);
         }
-        
         return result;
     }
 }
