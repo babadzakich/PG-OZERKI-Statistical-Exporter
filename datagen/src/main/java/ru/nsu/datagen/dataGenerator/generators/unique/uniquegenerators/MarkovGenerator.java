@@ -42,7 +42,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             this.types = new ArrayList<>();
             
             for (ColumnMetadata col : columnsMetadata) {
-                this.columns.add(new HashMap<>(col.getMvc()));
+                this.columns.add(col.getMvc());
                 this.names.add(col.getName());
                 this.recordSize.add(col.getAvgTupleSize());
                 this.ndistincts.add(col.getNdistinct());
@@ -91,13 +91,15 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         int maxAttempts = count * maxAttemptsPerItem;
         
         // Фаза 1: Генерация из реальных данных
-        while (results.size() < count && attempts < maxAttempts) {
-            attempts++;
-            
-            List<String> seq = sampleOneWithUpdate(columns);
-            if (uniques.add(seq)) {
-                results.add(seq);
-                decreaseProbabilities(columns, seq);
+        if (columns.stream().noneMatch(Map::isEmpty)) {
+            while (results.size() < count && attempts < maxAttempts) {
+                attempts++;
+
+                List<String> seq = sampleOneWithUpdate(columns);
+                if (uniques.add(seq)) {
+                    results.add(seq);
+                    decreaseProbabilities(columns, seq);
+                }
             }
         }
         
@@ -243,7 +245,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private String generateRandomString(int length, String type) {
 
         if (length <= 0) return "";
-        System.err.println(type);
+//        System.err.println(type);
         switch (type) {
             case "smallint", "smallserial":
                 return String.valueOf(random.nextInt(65536) - 32768);
@@ -272,9 +274,9 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
             case "time", "time without time zone", "interval":
                 return LocalTime.of(
-                        random.nextInt(24),   // Часы: 0-23
-                        random.nextInt(60),   // Минуты: 0-59
-                        random.nextInt(60)   // Секунды: 0-59
+                        random.nextInt(24),
+                        random.nextInt(60),
+                        random.nextInt(60)
                 ).toString();
 
             case "boolean":
