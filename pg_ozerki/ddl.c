@@ -1,6 +1,8 @@
 #include "ddl.h"
 #include "ozerki_utils.h"
 
+
+
 void generate_constraints_ddl(StringInfo buf) {
     int ret;
     char *query;
@@ -123,13 +125,15 @@ void generate_sequences_ddl(StringInfo buf) {
     ret = SPI_execute(query, true, 0);
     if (ret == SPI_OK_SELECT && SPI_processed > 0)
     {
-        TupleDesc tupdesc = SPI_tuptable->tupdesc;
         
+        int sequences_processed = SPI_processed;
+        SPITupleTable saved = *SPI_tuptable;
+        TupleDesc tupdesc = saved.tupdesc;
         appendStringInfoString(buf, "--\n-- Sequences\n--\n\n");
         
-        for (int i = 0; i < SPI_processed; i++)
+        for (int i = 0; i < sequences_processed; i++)
         {
-            HeapTuple tuple = SPI_tuptable->vals[i];
+            HeapTuple tuple = saved.vals[i];
             bool isNull[11];
             
             char* nspname = SPI_getvalue(tuple, tupdesc, 1);
@@ -145,7 +149,7 @@ void generate_sequences_ddl(StringInfo buf) {
             char* description = SPI_getvalue(tuple, tupdesc, 11);
             
             
-            
+            elog(LOG, "\n\n SEQUENCE %d NSPNAME = %s SEQUENCE NAME = %s\n\n", i, nspname, seqname);
             
             if (nspname && seqname)
             {
