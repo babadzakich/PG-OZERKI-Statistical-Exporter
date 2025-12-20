@@ -18,12 +18,12 @@ public class Main {
                  args.schemaScriptPath, args.statisticDataPath
          );
 
-        
-//        Pipeline.startPipeline(
-//                "localhost", 5432, "testt", "kubicl",
-//
-//                "postgres", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/scripts/schema.sql", "/home/kubicl/Рабочий стол/PG-OZERKI-Statistical-Exporter/datagen/scripts/data.csv");
 
-        
+//        Pipeline.startPipeline(
+//                "localhost", 5432, "new", "shadowplay",
+//
+//                "postgres", "./scripts/ozerki_schema.sql", "./scripts/ozerki_stats.csv");
+//
+//
     }
 }

@@ -35,6 +35,7 @@ public class TypeBasedGenerator implements NormalValueGenerator {
         String dataType = column.getDataType().toLowerCase();
 
         switch (dataType) {
+            case "integer[]":
             case "integer":
             case "smallint":
             case "int":

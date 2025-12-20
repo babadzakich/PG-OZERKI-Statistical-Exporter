@@ -5,6 +5,7 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.io.File;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.*;
 
@@ -19,9 +20,9 @@ public class TableStore {
         this.conn = conn;
     }
 
-    public void storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData) throws SQLException {
+    public void storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData) throws SQLException{
         String queryString = getQueryString(tableMetadata);
-        conn.createStatement().execute("SET search_path TO public");
+        conn.createStatement().execute("SET search_path TO public, bookings");
         PreparedStatement pstmnt = conn.prepareStatement(queryString);
         // debug PK airplane code
         File log = new File("./log_govna.txt");
@@ -56,6 +57,10 @@ public class TableStore {
 
                 // Обработка массивов
                 if (columnMetadata.getIsArray()) {
+                    //System.out.println(type);
+                    if (type.contains("[]")) {
+                        type = type.substring(0, type.indexOf("[]"));
+                    }
                     Array sqlArray = conn.createArrayOf(type, new Object[]{value});
                     pstmnt.setArray(++j, sqlArray);
                     // fuck
@@ -91,6 +96,11 @@ public class TableStore {
                 } else if (type.contains("time zone")) {
                     PGobject pgObject = new PGobject();
                     pgObject.setType("timestamp");
+                    pgObject.setValue((String) value);
+                    pstmnt.setObject(++j, pgObject);
+                } else if(type.contains("tstzrange")) {
+                    PGobject pgObject = new PGobject();
+                    pgObject.setType("tstzrange");
                     pgObject.setValue((String) value);
                     pstmnt.setObject(++j, pgObject);
                 } else if (type.contains("num")) {

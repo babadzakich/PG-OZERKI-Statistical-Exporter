@@ -156,7 +156,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private List<String> sampleOneWithUpdate(List<Map<String, Double>> workingCols) {
         List<String> seq = new ArrayList<>();
         
-        String token = weightedChoice(workingCols.getFirst());
+        String token = weightedChoice(workingCols.get(0));
         seq.add(token);
         
         for (int i = 1; i < ncols; i++) {

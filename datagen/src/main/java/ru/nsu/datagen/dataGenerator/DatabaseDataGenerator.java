@@ -49,8 +49,15 @@ public class DatabaseDataGenerator {
     }
 
     private static void debugPrintData(Map<String, Map<String, List<Object>>> generatedData) {
+        int size = 0;
         for (String tableName : generatedData.keySet()) {
-            for (int i = 0; i < 500; i++) {
+
+            for (String columnName : generatedData.get(tableName).keySet()) {
+                size = generatedData.get(tableName).get(columnName).size();
+                break;
+
+            }
+            for (int i = 0; i < size; i++) {
                 StringBuilder data = new StringBuilder("[");
                 for (String columnName : generatedData.get(tableName).keySet()) {
                     data.append(generatedData.get(tableName).get(columnName).get(i) + ", ");
