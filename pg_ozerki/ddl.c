@@ -19,9 +19,9 @@ void generate_constraints_ddl(StringInfo buf) {
             "AND c.contype IN ('f', 'c', 'u') "  
             "ORDER BY "
             "CASE c.contype "
-            "  WHEN 'u' THEN 1 "  // UNIQUE сначала (1)
-            "  WHEN 'f' THEN 2 "  // FOREIGN KEY потом (2)
-            "  WHEN 'c' THEN 3 "  // CHECK в конце (3)
+            "  WHEN 'u' THEN 1 " 
+            "  WHEN 'f' THEN 2 "  
+            "  WHEN 'c' THEN 3 "  
             "END, "
             "n.nspname, t.relname, c.conname";
     
@@ -416,11 +416,11 @@ int ret;
             "JOIN pg_class i ON i.oid = x.indexrelid "
             "JOIN pg_class c ON c.oid = x.indrelid "
             "JOIN pg_namespace n ON n.oid = i.relnamespace "
-            "LEFT JOIN pg_constraint con ON con.conindid = i.oid "  // Проверяем, связан ли с constraint
+            "LEFT JOIN pg_constraint con ON con.conindid = i.oid "  
             "WHERE i.relkind = 'i' "
             "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-            "AND NOT x.indisprimary "  // Исключаем PRIMARY KEY
-            "AND (con.oid IS NULL OR NOT x.indisunique) "  // Включаем уникальные индексы без constraints
+            "AND NOT x.indisprimary "  
+            "AND (con.oid IS NULL OR NOT x.indisunique) "  
             "ORDER BY n.nspname, c.relname, i.relname";
     
     ret = SPI_execute(query, true, 0);
