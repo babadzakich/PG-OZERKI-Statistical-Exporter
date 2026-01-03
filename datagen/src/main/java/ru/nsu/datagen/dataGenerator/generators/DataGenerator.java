@@ -159,7 +159,7 @@ public class DataGenerator {
                 }
             }
             if (!uniqueList.isEmpty())
-                UniqueKeyGeneratorChooser.generate(uniqueList, columnData, GeneratorsTypes.MARKOV, table.getRecordCount());
+                UniqueKeyGeneratorChooser.generate(uniqueList, columnData, uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE, table.getRecordCount());
     }
 
     public PrimaryKeyGeneratorFactory getPkGeneratorFactory() {
