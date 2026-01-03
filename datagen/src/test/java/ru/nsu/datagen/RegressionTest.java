@@ -12,10 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.importer.Importer;
@@ -23,17 +19,9 @@ import ru.nsu.datagen.importer.Importer;
 /**
  * Регрессионный интеграционный тест для проверки всего pipeline генерации
  * данных.
- * Использует Testcontainers для запуска реальной PostgreSQL БД в Docker.
+ * Использует локальную PostgreSQL БД.
  */
-@Testcontainers
 public class RegressionTest {
-
-    @Container
-    private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
-            DockerImageName.parse("postgres:17-alpine"))
-            .withDatabaseName("testdb")
-            .withUsername("test")
-            .withPassword("test");
 
     /**
      * Основной регрессионный тест, проверяющий работу всего pipeline:
@@ -45,14 +33,18 @@ public class RegressionTest {
     @Test
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
-        String schemaPath = new File(classLoader.getResource("test_schema.sql").getFile()).getAbsolutePath();
-        String statsPath = new File(classLoader.getResource("test_stats.csv").getFile()).getAbsolutePath();
+        String schemaPath = new File(classLoader.getResource("schema.sql").getFile()).getAbsolutePath();
+        String statsPath = new File(classLoader.getResource("stats.csv").getFile()).getAbsolutePath();
 
-        String jdbcUrl = postgres.getJdbcUrl();
-        String username = postgres.getUsername();
-        String password = postgres.getPassword();
+        String jdbcUrl = System.getenv().getOrDefault("DB_URL", "jdbc:postgresql://localhost:5432/testdb");
+        String username = System.getenv().getOrDefault("DB_USER", "kubicl");
+        String password = System.getenv().getOrDefault("DB_PASSWORD", "postgres");
 
         try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password)) {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("DROP SCHEMA IF EXISTS public CASCADE");
+                stmt.execute("CREATE SCHEMA public");
+            }
             List<String[]> rawImportedData = Importer.startImport(schemaPath, statsPath, conn);
 
             assertNotNull(rawImportedData, "Импортированные данные не должны быть null");

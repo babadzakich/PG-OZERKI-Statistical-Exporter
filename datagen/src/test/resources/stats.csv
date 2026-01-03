@@ -1,0 +1,4 @@
+table_schema,table_name,column_name,data_type,row_count,null_percent,modifiers,max_length,relation_type,referenced_table,referenced_column,mcv,mcv_frequencies,avg_column_width_bytes,ndistinct
+public,product_review,id,integer,500000,0.00,PK,-1,NULL,NULL,NULL,NULL,NULL,4,-1
+public,product_review,user_id,integer,500000,0.00,UNIQUE,-1,NULL,NULL,NULL,"{24,811,7,363,620,737,449,757}","{0.0016666667,0.0016,0.0015333333,0.0015333333,0.0015333333,0.0015,0.0014666667,0.0014666667}",4,1000
+public,product_review,product_id,integer,500000,0.00,UNIQUE,-1,NULL,NULL,NULL,"{475,156,108,310,143,350,356}","{0.0027333333,0.0027,0.0026666666,0.0026666666,0.0026,0.0026,0.0026}",4,500
