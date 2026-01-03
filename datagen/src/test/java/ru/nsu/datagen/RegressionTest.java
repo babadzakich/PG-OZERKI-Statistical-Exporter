@@ -45,6 +45,11 @@ public class RegressionTest {
                 stmt.execute("DROP SCHEMA IF EXISTS public CASCADE");
                 stmt.execute("CREATE SCHEMA public");
             }
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("DROP TABLE IF EXISTS product_review");
+            }
+
             List<String[]> rawImportedData = Importer.startImport(schemaPath, statsPath, conn);
 
             assertNotNull(rawImportedData, "Импортированные данные не должны быть null");
