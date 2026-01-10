@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,88 +45,113 @@ public class IntegrationTest {
         String schemaPath = new File(classLoader.getResource(config.getSCHEMA_PATH()).getFile()).getAbsolutePath();
         String statsPath = new File(classLoader.getResource(config.getSTATS_PATH()).getFile()).getAbsolutePath();
 
-        String jdbcUrl = System.getenv().getOrDefault("DB_URL", config.getDB_URL());
-        String username = System.getenv().getOrDefault("DB_USER", config.getDB_USER());
-        String password = System.getenv().getOrDefault("DB_PASSWORD", config.getDB_PASSWORD());
-
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password)) {
-
+        try (Connection conn = DriverManager.getConnection(config.getDB_URL(), config.getDB_USER(), config.getDB_PASSWORD())) {
+            // Очищаем БД перед тестом
             try (Statement stmt = conn.createStatement()) {
                 for (var dbHolder : config.getTables()) {
                     stmt.execute("DROP TABLE IF EXISTS " + dbHolder.getName());
                 }
             }
 
+            // Импорт схемы и статистики
             List<String[]> rawImportedData = Importer.startImport(schemaPath, statsPath, conn);
-
             assertNotNull(rawImportedData, "Импортированные данные не должны быть null");
             assertFalse(rawImportedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
 
+            // Генерация данных
             DatabaseDataGenerator.generateData(rawImportedData, conn);
             System.out.println("✓ Генерация данных завершена");
+
+            // Проверка целостности данных и ограничений
             for (var dbHolder : config.getTables()) {
-                // Проверка количества записей
-                try (Statement stmt = conn.createStatement()) {
-                    ResultSet rs = stmt.executeQuery(
-                            "SELECT COUNT(*) FROM " + dbHolder.getSchema() + "." + dbHolder.getName());
-                    rs.next();
-                    long rowCount = rs.getLong(1);
-                    assertEquals(dbHolder.getSize(), rowCount,
-                            "Количество записей в таблице " + dbHolder.getName() +
-                                    " должно быть " + dbHolder.getSize());
-                    System.out.println("✓ Таблица "  + dbHolder.getSchema() + "." + dbHolder.getName() + ": " + rowCount + " записей");
-                }
-                
-                // Проверка уникальных ограничений
-                for (var uniqueCols : dbHolder.getUniques()) {
-                    String colsJoined = String.join(", ", uniqueCols);
-                    try (Statement stmt = conn.createStatement()) {
-                        ResultSet rs = stmt.executeQuery(
-                        "SELECT COUNT(*) as duplicate_count FROM (" +
-                                "  SELECT " + colsJoined + ", COUNT(*) as cnt " +
-                                "  FROM " + dbHolder.getSchema() + "." + dbHolder.getName() + " " +
-                                "  GROUP BY " + colsJoined + " " +
-                                "  HAVING COUNT(*) > 1" +
-                                ") duplicates");
-                        rs.next();
-                        long duplicateCount = rs.getLong("duplicate_count");
-                        assertEquals(0, duplicateCount,
-                        "Пары (" + colsJoined + ") должны быть уникальными");
-                        System.out.println("✓ UNIQUE constraint (" + colsJoined + ") соблюден");
-                    }
-                }
-
-                // Проверка первичных ключей
-                for (var pkCol : dbHolder.getPks()) {
-                    try (Statement stmt = conn.createStatement()) {
-                        ResultSet rs = stmt.executeQuery(
-                        "SELECT COUNT(DISTINCT " + pkCol + ") as distinct_count, COUNT(*) as total_count " +
-                        "FROM " + dbHolder.getSchema() + "." + dbHolder.getName());
-                        rs.next();
-                        int distinctCount = rs.getInt("distinct_count");
-                        int totalCount = rs.getInt("total_count");
-                        assertEquals(totalCount, distinctCount,
-                        "Колонка " + pkCol + " должна содержать уникальные значения (PK)");
-                        System.out.println("✓ Первичный ключ " + pkCol + " уникален");
-                    }
-
-                    try (Statement stmt = conn.createStatement()) {
-                        ResultSet rs = stmt.executeQuery(
-                                "SELECT COUNT(*) FROM " + dbHolder.getSchema() + "." + dbHolder.getName() 
-                                + " WHERE " + pkCol + " <= 0");
-                        rs.next();
-                        int invalidIds = rs.getInt(1);
-                        assertEquals(0, invalidIds, "Все " + pkCol + " должны быть положительными");
-                    }
-                }
+                checkTableIntegrity(conn, dbHolder);
             }
 
             System.out.println("\n========================================");
             System.out.println("✓✓✓ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО ✓✓✓");
             System.out.println("========================================");
+        }
+    }
 
-            // conn.createStatement().execute("")
+    /**
+     * Проверяет целостность таблицы: размер, уникальность PK и UNIQUE
+     */
+    private void checkTableIntegrity(Connection conn, TableHolder dbHolder) throws SQLException {
+        checkTableSize(conn, dbHolder);
+        
+        validateUniqueConstraints(conn, dbHolder);
+
+        validatePrimaryKeys(conn, dbHolder);
+
+        System.out.println("✓ Проверка целостности таблицы " + dbHolder.getName() + " завершена\n");
+
+    }
+
+    /**
+     * Проверяет что все первичные ключи уникальны и положительны
+     */
+    private void validatePrimaryKeys(Connection conn, TableHolder dbHolder) throws SQLException {
+        for (var pkCol : dbHolder.getPks()) {
+            try (Statement stmt = conn.createStatement()) {
+                ResultSet rs = stmt.executeQuery(
+                "SELECT COUNT(DISTINCT " + pkCol + ") as distinct_count, COUNT(*) as total_count " +
+                "FROM " + dbHolder.getSchema() + "." + dbHolder.getName());
+                rs.next();
+                int distinctCount = rs.getInt("distinct_count");
+                int totalCount = rs.getInt("total_count");
+                assertEquals(totalCount, distinctCount,
+                "Колонка " + pkCol + " должна содержать уникальные значения (PK)");
+                System.out.println("✓ Первичный ключ " + pkCol + " уникален");
+            }
+
+            try (Statement stmt = conn.createStatement()) {
+                ResultSet rs = stmt.executeQuery(
+                        "SELECT COUNT(*) FROM " + dbHolder.getSchema() + "." + dbHolder.getName() 
+                        + " WHERE " + pkCol + " <= 0");
+                rs.next();
+                int invalidIds = rs.getInt(1);
+                assertEquals(0, invalidIds, "Все " + pkCol + " должны быть положительными");
+                System.out.println("✓ Все значения первичного ключа " + pkCol + " положительны");
+            }
+        }
+    }
+
+    /**
+     * Проверяет что все уникальные ограничения соблюдены
+     */
+    private void validateUniqueConstraints(Connection conn, TableHolder dbHolder) throws SQLException {
+        for (var uniqueCols : dbHolder.getUniques()) {
+            String colsJoined = String.join(", ", uniqueCols);
+            try (Statement stmt = conn.createStatement()) {
+                ResultSet rs = stmt.executeQuery(
+                "SELECT COUNT(*) as duplicate_count FROM (" +
+                        "  SELECT " + colsJoined + ", COUNT(*) as cnt " +
+                        "  FROM " + dbHolder.getSchema() + "." + dbHolder.getName() + " " +
+                        "  GROUP BY " + colsJoined + " " +
+                        "  HAVING COUNT(*) > 1" +
+                        ") duplicates");
+                rs.next();
+                long duplicateCount = rs.getLong("duplicate_count");
+                assertEquals(0, duplicateCount,
+                "Пары (" + colsJoined + ") должны быть уникальными");
+                System.out.println("✓ UNIQUE constraint (" + colsJoined + ") соблюден");
+            }
+        }
+    }
+
+    // Проверяет что размер таблицы соответствует ожидаемому
+    private void checkTableSize(Connection conn, TableHolder dbHolder) throws SQLException {
+        // Проверка количества записей
+        try (Statement stmt = conn.createStatement()) {
+            ResultSet rs = stmt.executeQuery(
+                    "SELECT COUNT(*) FROM " + dbHolder.getSchema() + "." + dbHolder.getName());
+            rs.next();
+            long rowCount = rs.getLong(1);
+            assertEquals(dbHolder.getSize(), rowCount,
+                    "Количество записей в таблице " + dbHolder.getName() +
+                            " должно быть " + dbHolder.getSize());
+            System.out.println("✓ Таблица "  + dbHolder.getSchema() + "." + dbHolder.getName() + ": " + rowCount + " записей");
         }
     }
 
