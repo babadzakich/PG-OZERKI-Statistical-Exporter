@@ -1,0 +1,13 @@
+user: kubicl
+password: kubicl
+db_url: jdbc:postgresql://localhost:5432/testdb
+schema: schema.sql
+statistic: stats.csv
+tables:
+  - name: product_review
+    schema: public
+    expectedCount: 500000
+    uniques:
+      - [product_id, user_id]
+    pk:
+      - id
