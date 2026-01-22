@@ -24,7 +24,7 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 
 public class MarkovGenerator implements UniqueKeyGenerator {
-    private final List<Map<String, Double>> columns;
+    private final List<Map<Object, Double>> columns;
     private final List<String> names;
     private final int ncols;
     private final int recordCount;
@@ -55,11 +55,11 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     @Override
     public void generate(Map<String, List<Object>> columnData) {
-        List<List<String>> uniqueValues = generateUnique(recordCount, 200);
+        List<List<Object>> uniqueValues = generateUnique(recordCount, 200);
         
         for (int colIdx = 0; colIdx < names.size(); colIdx++) {
             List<Object> columnValues = new ArrayList<>();
-            for (List<String> uniqueValue : uniqueValues) {
+            for (List<Object> uniqueValue : uniqueValues) {
                 columnValues.add(uniqueValue.get(colIdx));
             }
             columnData.put(names.get(colIdx), columnValues);
@@ -71,11 +71,11 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         // Implementation here
     }
     
-    private String weightedChoice(Map<String, Double> dist) {
+    private Object weightedChoice(Map<Object, Double> dist) {
         double r = random.nextDouble();
         double cum = 0.0;
         
-        for (Map.Entry<String, Double> entry : dist.entrySet()) {
+        for (Map.Entry<Object, Double> entry : dist.entrySet()) {
             cum += entry.getValue();
             if (r <= cum) {
                 return entry.getKey();
@@ -84,9 +84,9 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         return dist.keySet().iterator().next();
     }
     
-    public List<List<String>> generateUnique(int count, int maxAttemptsPerItem) {
-        Set<List<String>> uniques = new HashSet<>();
-        List<List<String>> results = new ArrayList<>();
+    public List<List<Object>> generateUnique(int count, int maxAttemptsPerItem) {
+        Set<List<Object>> uniques = new HashSet<>();
+        List<List<Object>> results = new ArrayList<>();
         int attempts = 0;
         int maxAttempts = count * maxAttemptsPerItem;
         
@@ -95,7 +95,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             while (results.size() < count && attempts < maxAttempts) {
                 attempts++;
 
-                List<String> seq = sampleOneWithUpdate(columns);
+                List<Object> seq = sampleOneWithUpdate(columns);
                 if (uniques.add(seq)) {
                     results.add(seq);
                     decreaseProbabilities(columns, seq);
@@ -113,7 +113,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             
             // Сбрасываем вероятности до равномерных после расширения
             // чтобы синтетические значения имели шанс быть выбранными
-            for (Map<String, Double> col : columns) {
+            for (Map<Object, Double> col : columns) {
                 double uniformProb = 1.0 / col.size();
                 col.replaceAll((k, v) -> uniformProb);
             }
@@ -123,7 +123,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             while (results.size() < count && attempts < maxAttempts) {
                 attempts++;
                 
-                List<String> seq = sampleOneWithUpdate(columns);
+                List<Object> seq = sampleOneWithUpdate(columns);
                 if (uniques.add(seq)) {
                     results.add(seq);
                     // Не уменьшаем вероятности в фазе 2 для равномерного использования пространства
@@ -140,23 +140,23 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         }
         System.err.println(uniques.size());
         System.err.println("Успешно сгенерировано " + results.size() + " уникальных записей");
-        try (FileWriter fw = new FileWriter("markov.txt")) {
-            for (List<String> seq : results) {
-                fw.write(String.join(",", seq) + "\n");
-            }
-        } catch (IOException e) {
-            System.err.println("Error logging: " + e.getMessage());
-        }
+        // try (FileWriter fw = new FileWriter("markov.txt")) {
+        //     for (List<Object> seq : results) {
+        //         fw.write(String.join(",", seq) + "\n");
+        //     }
+        // } catch (IOException e) {
+        //     System.err.println("Error logging: " + e.getMessage());
+        // }
         return results;
     }
     
     /**
      * Генерирует одну последовательность из модифицируемых распределений
      */
-    private List<String> sampleOneWithUpdate(List<Map<String, Double>> workingCols) {
-        List<String> seq = new ArrayList<>();
+    private List<Object> sampleOneWithUpdate(List<Map<Object, Double>> workingCols) {
+        List<Object> seq = new ArrayList<>();
         
-        String token = weightedChoice(workingCols.get(0));
+        Object token = weightedChoice(workingCols.get(0));
         seq.add(token);
         
         for (int i = 1; i < ncols; i++) {
@@ -170,10 +170,10 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     /**
      * Уменьшает вероятности использованных значений
      */
-    private void decreaseProbabilities(List<Map<String, Double>> workingCols, List<String> usedSeq) {
+    private void decreaseProbabilities(List<Map<Object, Double>> workingCols, List<Object> usedSeq) {
         for (int i = 0; i < usedSeq.size(); i++) {
-            String usedValue = usedSeq.get(i);
-            Map<String, Double> col = workingCols.get(i);
+            Object usedValue = usedSeq.get(i);
+            Map<Object, Double> col = workingCols.get(i);
             
             Double currentProb = col.get(usedValue);
             if (currentProb != null && currentProb > 0) {
@@ -193,9 +193,9 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     /**
      * Расширяет рабочие колонки синтетическими значениями, используя ndistinct как ориентир.
      */
-    private void expandColumnsForRequiredSpace(List<Map<String, Double>> columns, int totalRequired) {
+    private void expandColumnsForRequiredSpace(List<Map<Object, Double>> columns, int totalRequired) {
         for (int i = 0; i < columns.size(); i++) {
-            Map<String, Double> col = columns.get(i);
+            Map<Object, Double> col = columns.get(i);
             String type = types.get(i);
             double ndistinctVal = ndistincts.get(i);
             

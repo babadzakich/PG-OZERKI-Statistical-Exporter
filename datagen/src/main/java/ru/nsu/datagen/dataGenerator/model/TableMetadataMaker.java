@@ -81,11 +81,11 @@ public class TableMetadataMaker {
         return tableMetadataList;
     }
 
-    private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount, String dataType) {
-        List<String> processedMCV = parsePgArrayString(rawMCVArray, dataType);
+    private static Map<Object, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount, String dataType) {
+        List<Object> processedMCV = parsePgArrayString(rawMCVArray, dataType);
         List<Double> processedMCF = parseMCFArray(rawMCFArray);
 
-        Map<String, Double> resultDistribution = new HashMap<>();
+        Map<Object, Double> resultDistribution = new HashMap<>();
 
         for (int i = 0; i < processedMCV.size(); i++) {
             resultDistribution.put(processedMCV.get(i), processedMCF.get(i));
@@ -114,9 +114,9 @@ public class TableMetadataMaker {
     }
 
     /**
-     * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список строк Java.
+     * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список объектов Java.
      */
-    public static List<String> parsePgArrayString(String arrayString, String datatype) {
+    public static List<Object> parsePgArrayString(String arrayString, String datatype) {
         if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
             return List.of();
         }
@@ -125,21 +125,60 @@ public class TableMetadataMaker {
         if (cleanedString.isEmpty()) {
             return List.of();
         }
-        if (datatype.equals("integer[]")) {
-
-        }
-        List<String> result = new ArrayList<>();
+        
+        List<String> stringValues = new ArrayList<>();
         if (cleanedString.startsWith("\"")) {
             Pattern pattern = Pattern.compile("\"(.*?)\"");
             Matcher matcher = pattern.matcher(cleanedString);
 
             while (matcher.find()) {
-                result.add(matcher.group(1));
+                stringValues.add(matcher.group(1));
             }
         } else {
-            result = getStrings(cleanedString);
+            stringValues = getStrings(cleanedString);
         }
-        return result;
+        
+        // Парсим строковые значения в соответствующий тип данных
+        return stringValues.stream()
+                .map(str -> parseValueByType(str, datatype))
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Парсит строковое значение в соответствующий тип данных
+     */
+    private static Object parseValueByType(String value, String datatype) {
+        if (value == null || value.isEmpty() || value.equals("NULL")) {
+            return null;
+        }
+        
+        String lowerDatatype = datatype.toLowerCase();
+        
+        try {
+            if (lowerDatatype.contains("int") || lowerDatatype.equals("integer") || 
+                lowerDatatype.equals("smallint") || lowerDatatype.equals("int2") || 
+                lowerDatatype.equals("int4")) {
+                return Integer.parseInt(value.trim());
+            } else if (lowerDatatype.equals("bigint") || lowerDatatype.equals("int8")) {
+                return Long.parseLong(value.trim());
+            } else if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal") || 
+                       lowerDatatype.equals("real") || lowerDatatype.equals("float4") ||
+                       lowerDatatype.equals("double precision") || lowerDatatype.equals("float8")) {
+                return Double.parseDouble(value.trim());
+            } else if (lowerDatatype.equals("boolean") || lowerDatatype.equals("bool")) {
+                return Boolean.parseBoolean(value.trim());
+            } else if (lowerDatatype.equals("date")) {
+                return java.sql.Date.valueOf(value.trim());
+            } else if (lowerDatatype.equals("timestamp") || lowerDatatype.equals("timestamp without time zone")) {
+                return java.sql.Timestamp.valueOf(value.trim());
+            } else if (lowerDatatype.equals("time") || lowerDatatype.equals("time without time zone")) {
+                return java.sql.Time.valueOf(value.trim());
+            } else {
+                return value;
+            }
+        } catch (Exception e) {
+            return value;
+        }
     }
 
     private static List<String> getStrings(String cleanedString) {
@@ -149,17 +188,14 @@ public class TableMetadataMaker {
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i];
 
-            // Удаляем ведущую кавычку у первого элемента
             if (i == 0 && part.startsWith("\"")) {
                 part = part.substring(1);
             }
 
-            // Удаляем завершающую кавычку у последнего элемента
             if (i == parts.length - 1 && part.endsWith("\"")) {
                 part = part.substring(0, part.length() - 1);
             }
 
-            // Обрабатываем экранирование двойных кавычек
             part = part.replace("\"\"", "\"");
 
             result.add(part);

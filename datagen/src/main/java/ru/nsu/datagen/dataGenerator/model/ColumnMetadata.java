@@ -18,7 +18,7 @@ public class ColumnMetadata {
     private final int recordCount;
     private final Integer maxLength;
     private final ForeignKeyMetadata foreignKeyMetadata;
-    @Getter private final Map<String, Double> mvc;
+    @Getter private final Map<Object, Double> mvc;
     @Getter private final int avgTupleSize;
     @Getter private final double ndistinct;
     private final boolean isArray;
@@ -26,7 +26,7 @@ public class ColumnMetadata {
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<String, Double> mvc, int avgTupleSize, double ndistinct, boolean isArray) {
+                          Map<Object, Double> mvc, int avgTupleSize, double ndistinct, boolean isArray) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;
