@@ -1,6 +1,8 @@
 #include "ddl.h"
 #include "ozerki_utils.h"
 
+
+
 void generate_constraints_ddl(StringInfo buf) {
     int ret;
     char *query;
@@ -15,7 +17,13 @@ void generate_constraints_ddl(StringInfo buf) {
             "JOIN pg_namespace n ON n.oid = t.relnamespace "
             "WHERE n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
             "AND c.contype IN ('f', 'c', 'u') "  
-            "ORDER BY n.nspname, t.relname, c.contype, c.conname";
+            "ORDER BY "
+            "CASE c.contype "
+            "  WHEN 'u' THEN 1 " 
+            "  WHEN 'f' THEN 2 "  
+            "  WHEN 'c' THEN 3 "  
+            "END, "
+            "n.nspname, t.relname, c.conname";
     
     ret = SPI_execute(query, true, 0);
     if (ret == SPI_OK_SELECT && SPI_processed > 0)
@@ -23,7 +31,6 @@ void generate_constraints_ddl(StringInfo buf) {
         TupleDesc tupdesc = SPI_tuptable->tupdesc;
         
         appendStringInfoString(buf, "--\n-- Constraints\n--\n\n");
-        
         for (int i = 0; i < SPI_processed; i++)
         {
             HeapTuple tuple = SPI_tuptable->vals[i];
@@ -123,13 +130,15 @@ void generate_sequences_ddl(StringInfo buf) {
     ret = SPI_execute(query, true, 0);
     if (ret == SPI_OK_SELECT && SPI_processed > 0)
     {
-        TupleDesc tupdesc = SPI_tuptable->tupdesc;
         
+        int sequences_processed = SPI_processed;
+        SPITupleTable saved = *SPI_tuptable;
+        TupleDesc tupdesc = saved.tupdesc;
         appendStringInfoString(buf, "--\n-- Sequences\n--\n\n");
         
-        for (int i = 0; i < SPI_processed; i++)
+        for (int i = 0; i < sequences_processed; i++)
         {
-            HeapTuple tuple = SPI_tuptable->vals[i];
+            HeapTuple tuple = saved.vals[i];
             bool isNull[11];
             
             char* nspname = SPI_getvalue(tuple, tupdesc, 1);
@@ -145,7 +154,7 @@ void generate_sequences_ddl(StringInfo buf) {
             char* description = SPI_getvalue(tuple, tupdesc, 11);
             
             
-            
+            elog(LOG, "\n\n SEQUENCE %d NSPNAME = %s SEQUENCE NAME = %s\n\n", i, nspname, seqname);
             
             if (nspname && seqname)
             {
@@ -407,11 +416,11 @@ int ret;
             "JOIN pg_class i ON i.oid = x.indexrelid "
             "JOIN pg_class c ON c.oid = x.indrelid "
             "JOIN pg_namespace n ON n.oid = i.relnamespace "
-            "LEFT JOIN pg_constraint con ON con.conindid = i.oid "  // Проверяем, связан ли с constraint
+            "LEFT JOIN pg_constraint con ON con.conindid = i.oid "  
             "WHERE i.relkind = 'i' "
             "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-            "AND NOT x.indisprimary "  // Исключаем PRIMARY KEY
-            "AND (con.oid IS NULL OR NOT x.indisunique) "  // Включаем уникальные индексы без constraints
+            "AND NOT x.indisprimary "  
+            "AND (con.oid IS NULL OR NOT x.indisunique) "  
             "ORDER BY n.nspname, c.relname, i.relname";
     
     ret = SPI_execute(query, true, 0);
@@ -577,12 +586,19 @@ generate_table_ddl(StringInfo buf, Oid tableOid)
             }
             else if (attr->atttypid == NUMERICOID)
             {
+                
                 int32 precision = (attr->atttypmod >> 16) & 0xFFFF;
                 int32 scale = attr->atttypmod & 0xFFFF;
-                if (scale > 0)
-                    appendStringInfo(buf, "(%d,%d)", precision - 4, scale);
+                elog(LOG, "\n\nATTYPMOD = %x, PRECISION = %d, SCALE = %d\n\n", attr->atttypmod, precision, scale );
+                
+                if (scale - 4 > 0) {
+                    if (scale - 4 > 1000) {
+                        scale -= 2048;
+                    }
+                    appendStringInfo(buf, "(%d,%d)", precision, scale - 4);
+                }
                 else
-                    appendStringInfo(buf, "(%d)", precision - 4);
+                    appendStringInfo(buf, "(%d)", precision);
             }
         }
         

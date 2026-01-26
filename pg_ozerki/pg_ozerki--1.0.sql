@@ -13,6 +13,11 @@ RETURNS text
 AS 'MODULE_PATHNAME', 'dump_schema'
 LANGUAGE C STRICT;
 
+CREATE FUNCTION dump_schema_by_query(query text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'dump_schema_by_query'
+LANGUAGE C STRICT;
+
 CREATE OR REPLACE FUNCTION to_schema_qualified_operator(opid oid) RETURNS TEXT AS $$
 	DECLARE
 		result	text;
@@ -738,7 +743,6 @@ ORDER BY
     cs.table_name,
     cs.column_number
 $$;
-
 
 
 
