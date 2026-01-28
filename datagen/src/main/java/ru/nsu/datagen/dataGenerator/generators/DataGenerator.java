@@ -2,7 +2,7 @@ package ru.nsu.datagen.dataGenerator.generators;
 
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
-import ru.nsu.datagen.dataGenerator.generators.normal.TypeBasedGenerator;
+import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.pk.PrimaryKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
@@ -19,7 +19,7 @@ public class DataGenerator {
     public DataGenerator() {
         this.pkGeneratorFactory = new PrimaryKeyGeneratorFactory();
         this.fkGeneratorFactory = new ForeignKeyGeneratorFactory();
-        this.normalValueGenerator = new TypeBasedGenerator();
+        this.normalValueGenerator = new StatTypeBasedGenerator();
     }
 
     /**

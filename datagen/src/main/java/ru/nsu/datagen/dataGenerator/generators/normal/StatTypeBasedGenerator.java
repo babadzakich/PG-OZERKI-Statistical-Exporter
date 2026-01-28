@@ -1,14 +1,11 @@
 package ru.nsu.datagen.dataGenerator.generators.normal;
 
-import ru.nsu.datagen.dataGenerator.DataGeneratorException;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
-import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import org.postgresql.util.PGobject;
 import org.postgresql.geometric.PGpoint;
 
 public class StatTypeBasedGenerator implements NormalValueGenerator {
@@ -23,7 +20,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             : (long)columnMetadata.getNdistinct();
         
         List<Object> values = new ArrayList<>();
-        int recordCount = (int) columnMetadata.getRecordCount();
+        int recordCount = columnMetadata.getRecordCount();
         double nullPercentage = columnMetadata.getNullPercentage();
         
         for (Object mvcValue : columnMetadata.getMvc().keySet()) {
@@ -64,60 +61,38 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
     private Object generateValue(ColumnMetadata column) {
         String dataType = column.getDataType().toLowerCase();
 
-        switch (dataType) {
-            case "integer[]":
-            case "integer":
-            case "smallint":
-            case "int":
-                return random.nextInt(1000);
-            case "bigint":
-                return random.nextLong();
-            case "varchar":
-            case "text":
-            case "char":
-                return generateString(column);
-            case "boolean":
-                return random.nextBoolean();
-            case "decimal":
-            case "numeric":
-                return Math.round(random.nextDouble() * 1000 * 100.0) / 100.0;
-            case "date":
-                return generateDate();
-            case "timestamp":
-                return generateTimestamp();
-            case "timestamp with time zone":
-            case "timestamptz":
-                return generateTimestampWithTimeZone();
-            case "time without time zone":
-            case "time":
-                return generateTimeWithoutTimeZone();
-            case "interval":
-                return generateInterval();
-            case "tstzrange":
-                return generateTstzRange();
-            case "point":
-                return generatePoint();
-            case "jsonb":
-            case "json":
-                return generateJson();
-            default:
+        return switch (dataType) {
+            case "integer[]", "integer", "smallint", "int" -> random.nextInt(1000);
+            case "bigint" -> random.nextLong();
+            case "varchar", "text", "char" -> generateString(column);
+            case "boolean" -> random.nextBoolean();
+            case "decimal", "numeric" -> Math.round(random.nextDouble() * 1000 * 100.0) / 100.0;
+            case "date" -> generateDate();
+            case "timestamp" -> generateTimestamp();
+            case "timestamp with time zone", "timestamptz" -> generateTimestampWithTimeZone();
+            case "time without time zone", "time" -> generateTimeWithoutTimeZone();
+            case "interval" -> generateInterval();
+            case "tstzrange" -> generateTstzRange();
+            case "point" -> generatePoint();
+            case "jsonb", "json" -> generateJson();
+            default -> {
                 // always return numeric(
                 if (dataType.contains("numeric(")) {
-                    return (long)random.nextInt(0, 10) / 10.0;
+                    yield (long) random.nextInt(0, 10) / 10.0;
                 }
-                return "value_" + random.nextInt(1000);
-        }
+                yield "value_" + random.nextInt(1000);
+            }
+        };
     }
 
     private String generateString(ColumnMetadata column) {
-        String base = "Value_" + random.nextInt(1000);
-        Integer maxLength = column.getMaxLength();
-
-        if (maxLength != -1 && base.length() > maxLength) {
-            return base.substring(0, maxLength);
+        StringBuilder sb = new StringBuilder();
+        long length = column.getAvgTupleSize();
+        String chars = "01234563456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
         }
-
-        return base;
+        return sb.toString();
     }
 
     private java.sql.Date generateDate() {

@@ -5,8 +5,6 @@ import java.util.Map;
 import java.sql.Date;
 import java.sql.Timestamp;
 
-import org.checkerframework.checker.units.qual.C;
-
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
