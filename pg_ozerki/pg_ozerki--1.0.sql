@@ -585,9 +585,10 @@ RETURNS TABLE (
     referenced_table text,
     referenced_column text,
     mcv text,
-    mcv_frequencies text,
-    avg_column_width_bytes integer,
-	ndistinct integer
+    mcv_frequencies float4[],
+    avg_column_width_bytes int4,
+	ndistinct float4,
+    hbounds text
 )
 LANGUAGE sql
 AS $$
@@ -729,7 +730,8 @@ SELECT
     s.most_common_vals AS mcv,
     s.most_common_freqs AS mcv_frequencies,
     s.avg_width AS avg_column_width_bytes,
-    s.n_distinct AS ndistinct
+    s.n_distinct AS ndistinct,
+    s.histogram_bounds as hbounds
 FROM column_stats cs
 JOIN table_counts tc ON cs.table_schema = tc.schemaname AND cs.table_name = tc.table_name
 LEFT JOIN pg_stats s ON s.schemaname = cs.table_schema 

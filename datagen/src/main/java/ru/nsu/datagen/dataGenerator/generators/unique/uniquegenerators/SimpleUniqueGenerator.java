@@ -5,6 +5,7 @@ import java.util.Map;
 import java.sql.Date;
 import java.sql.Timestamp;
 
+import com.github.javafaker.Faker;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
@@ -57,7 +58,7 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     }
 
     private void generateDateValues(List<Object> values) {
-        long start = Date.valueOf("2000-01-01").getTime();
+        long start = Faker.instance().date().birthday().getTime();
         for (int i = 0; i < recordCount; i++) {
             values.add(new Date(start + (long)i * 24 * 60 * 60 * 1000));
         }
