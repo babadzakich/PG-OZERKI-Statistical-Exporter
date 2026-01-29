@@ -5,7 +5,6 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.io.File;
 import java.io.FileWriter;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.*;
 
@@ -56,7 +55,7 @@ public class TableStore {
                 // debug PK airplane code end
 
                 // Обработка массивов
-                if (columnMetadata.getIsArray()) {
+                if (columnMetadata.isArray()) {
                     //System.out.println(type);
                     if (type.contains("[]")) {
                         type = type.substring(0, type.indexOf("[]"));

@@ -1,5 +1,6 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Map;
 
@@ -7,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 @Builder
+@Getter
 public class ColumnMetadata {
     private final String name;
     private final String dataType;
@@ -18,15 +20,16 @@ public class ColumnMetadata {
     private final int recordCount;
     private final Integer maxLength;
     private final ForeignKeyMetadata foreignKeyMetadata;
-    @Getter private final Map<Object, Double> mvc;
-    @Getter private final int avgTupleSize;
-    @Getter private final double ndistinct;
+    private final Map<Object, Double> mvc;
+    private final int avgTupleSize;
+    private final double ndistinct;
     private final boolean isArray;
+    private final List<Object> histogramm;
 
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<Object, Double> mvc, int avgTupleSize, double ndistinct, boolean isArray) {
+                          Map<Object, Double> mvc, int avgTupleSize, double ndistinct, boolean isArray, List<Object> histogramm) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;
@@ -54,20 +57,8 @@ public class ColumnMetadata {
         } else {
             this.dataType = dataType;
         }
-
+        this.histogramm = histogramm;
     }
-
-    public String getName() { return name; }
-    public String getSourceDataType() { return sourceDataType; }
-    public String getDataType() { return dataType; }
-    public boolean isPrimaryKey() { return isPrimaryKey; }
-    public boolean isForeignKey() { return isForeignKey; }
-    public boolean isUnique() { return isUnique; }
-    public double getNullPercentage() { return nullPercentage; }
-    public int getRecordCount() {return recordCount; }
-    public Integer getMaxLength() { return maxLength; }
-    public ForeignKeyMetadata getForeignKeyMetadata() { return foreignKeyMetadata; }
-    public boolean getIsArray() { return isArray; }
 
     @Override
     public boolean equals(Object o) {
