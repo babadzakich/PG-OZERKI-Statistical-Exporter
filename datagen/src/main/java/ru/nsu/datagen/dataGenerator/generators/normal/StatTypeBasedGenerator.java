@@ -1,5 +1,6 @@
 package ru.nsu.datagen.dataGenerator.generators.normal;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
@@ -13,13 +14,16 @@ import java.util.regex.Pattern;
 import org.postgresql.geometric.PGpoint;
 import com.github.javafaker.Faker;
 
+@Slf4j
 public class StatTypeBasedGenerator implements NormalValueGenerator {
     private final Random random = new Random();
     private final Faker faker = new Faker();
 
     @Override
     public List<Object> generateValues(ColumnMetadata columnMetadata) {
+        log.info("Generating values for column: {}", columnMetadata.getName());
         if (columnMetadata.getNdistinct() == -1) {
+            log.debug("Using SimpleUniqueGenerator for column: {}, because ndistinct = -1", columnMetadata.getName());
             UniqueKeyGenerator generator = new SimpleUniqueGenerator(List.of(columnMetadata), columnMetadata.getRecordCount());
             return generator.generate();
         }
@@ -28,25 +32,26 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         long requiredUniqueCount = columnMetadata.getNdistinct() < 0 
             ? (long)(Math.abs(columnMetadata.getNdistinct()) * columnMetadata.getRecordCount())
             : (long)columnMetadata.getNdistinct();
-        System.err.println("Generating " + requiredUniqueCount + " unique values for column " + columnMetadata.getName() + " where ndistinct = " + columnMetadata.getNdistinct());
+        log.debug("Generating {} unique values for column {} where ndistinct = {}", requiredUniqueCount, columnMetadata.getName(), columnMetadata.getNdistinct());
         List<Object> values = new ArrayList<>();
         int recordCount = columnMetadata.getRecordCount();
-        System.err.println("Total record count: " + recordCount);
+        log.debug("Total record count for column {}: {}", columnMetadata.getName(), recordCount);
         double nullPercentage = columnMetadata.getNullPercentage();
-        System.err.println("Null percentage: " + nullPercentage);
+        log.debug("Null percentage for column {}: {}", columnMetadata.getName(), nullPercentage);
 
-        System.err.println("Processing MCVs for column " + columnMetadata.getName());
+        log.debug("Processing MCVs for column {}", columnMetadata.getName());
         for (Object mvcValue : columnMetadata.getMcv().keySet()) {
             objectSet.add(mvcValue);
             double freq = columnMetadata.getMcv().get(mvcValue);
             long mvcCount = (long)(freq * recordCount);
-            System.err.println("Adding MVC value: " + mvcValue + " with frequency: " + freq + " resulting in count: " + mvcCount);
+            log.trace("Adding MVC value: {} with frequency: {} resulting in count: {}", mvcValue, freq, mvcCount);
             for (long j = 0; j < mvcCount; j++) {
                 values.add(mvcValue);
             }
         }
+
         int nullCount = (int)(recordCount * nullPercentage);
-        System.err.println("Adding nulls, count: " + nullCount);
+        log.debug("Adding {} null values for column {}", nullCount, columnMetadata.getName());
         for (int i = 0; i < nullCount; i++) {
             values.add(null);
         }
@@ -55,15 +60,17 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         long hasNulls = nullPercentage > 0 ? 1 : 0;
         long remainingUniqueCount = requiredUniqueCount - mvcCount - hasNulls;
         long remainingValueCount = recordCount - values.size();
-        System.err.println("Remaining unique count to generate: " + remainingUniqueCount);
-        System.err.println("Remaining value count to fill: " + remainingValueCount);
+        log.debug("Remaining unique count to generate for column {}: {}", columnMetadata.getName(), remainingUniqueCount);
+        log.debug("Remaining value count to fill for column {}: {}", columnMetadata.getName(), remainingValueCount);
 
         int histogramBuckets = columnMetadata.getHistogramm().size() - 1;
 
         if (histogramBuckets > 0 && remainingUniqueCount > 0 && remainingValueCount > 0) {
+            log.debug("Using histogram-based generation for column {} with {} buckets", columnMetadata.getName(), histogramBuckets);
             for (int i = 0; i < histogramBuckets; i++) {
                 Object lowerBound = columnMetadata.getHistogramm().get(i);
                 Object upperBound = columnMetadata.getHistogramm().get(i + 1);
+                log.trace("Bucket {}: Lower bound = {}, Upper bound = {}", i, lowerBound, upperBound);
 
                 // Распределяем уникальные значения равномерно по бакетам с учётом остатка
                 // Например: 2002 значения на 100 бакетов = 20 + (1 если i < 2), т.е. первые 2 бакета по 21, остальные по 20
@@ -76,12 +83,13 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
                 long valueRemainder = remainingValueCount % histogramBuckets;
                 long rangeValueCount = baseValueCount + (i < valueRemainder ? 1 : 0);
 
-                System.err.println("Bucket " + i + ": Generating " + rangeUniqueCount + " unique values between " + lowerBound + " and " + upperBound);
-                System.err.println("Bucket " + i + ": Will fill " + rangeValueCount + " total values");
+                log.trace("Bucket {}: Calculated unique count = {}, value count = {}", i, rangeUniqueCount, rangeValueCount);
 
                 // Генерируем уникальные значения для данного бакета
                 List<Object> bucketUniqueValues = new ArrayList<>();
-                for (long j = 0; j < rangeUniqueCount; j++) {
+                bucketUniqueValues.add(lowerBound);
+                bucketUniqueValues.add(upperBound);
+                for (long j = 2; j < rangeUniqueCount; j++) {
                     Object val = generateValue(columnMetadata, lowerBound, upperBound);
                     int attempts = 0;
                     while (!objectSet.add(val) && attempts < 10000) {
@@ -92,15 +100,21 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
                         bucketUniqueValues.add(val);
                     }
                 }
+                log.trace("Bucket {}: Generated {} unique values: {}", i, bucketUniqueValues.size(), bucketUniqueValues);
 
                 // Заполняем values случайными значениями из сгенерированных уникальных
                 if (!bucketUniqueValues.isEmpty()) {
-                    for (long j = 0; j < rangeValueCount; j++) {
+                    log.trace("Bucket {}: Filling {} values from unique values", i, rangeValueCount);
+                    for (int j = i == 0 ? 0 : 1; j < rangeUniqueCount; j++) {
+                        values.add(bucketUniqueValues.get(j));
+                    }
+                    log.trace("Bucket {}: Added {} unique values, now filling remaining {} values", i, rangeUniqueCount, rangeValueCount - rangeUniqueCount);
+                    for (long j = rangeUniqueCount; j < rangeValueCount; j++) {
                         values.add(bucketUniqueValues.get(random.nextInt(bucketUniqueValues.size())));
                     }
-                    System.err.println("Bucket " + i + ": Added " + rangeValueCount + " values from " + bucketUniqueValues.size() + " unique values");
+                    log.trace("Bucket {}: Filled {} values", i, rangeValueCount);
                 } else {
-                    System.err.println("Warning: Could not generate unique values for bucket " + i);
+                    log.warn("Warning: Could not generate unique values for bucket {}", i);
                 }
             }
         }
@@ -110,8 +124,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             long missingValueCount = recordCount - values.size();
             long missingUniqueCount = Math.min(missingValueCount, requiredUniqueCount - objectSet.size());
 
-            System.err.println("After histogram processing, still missing " + missingValueCount + " values");
-            System.err.println("Generating " + missingUniqueCount + " more unique values as fallback");
+            log.debug("Generating fallback values for column {}: missingValueCount = {}, missingUniqueCount = {}", columnMetadata.getName(), missingValueCount, missingUniqueCount);
 
             List<Object> fallbackUniqueValues = new ArrayList<>();
             for (long i = 0; i < missingUniqueCount; i++) {
@@ -127,12 +140,12 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             }
 
             if (!fallbackUniqueValues.isEmpty()) {
-                System.err.println("Filling " + missingValueCount + " missing values from " + fallbackUniqueValues.size() + " fallback unique values");
+                log.debug("Filling {} missing values from {} fallback unique values for column {}", missingValueCount, fallbackUniqueValues.size(), columnMetadata.getName());
                 for (long i = 0; i < missingValueCount; i++) {
                     values.add(fallbackUniqueValues.get(random.nextInt(fallbackUniqueValues.size())));
                 }
             } else {
-                System.err.println("Warning: Could not generate fallback values, filling with nulls");
+                log.warn("Warning: Could not generate fallback unique values for column {}, filling with nulls", columnMetadata.getName());
                 for (long i = 0; i < missingValueCount; i++) {
                     values.add(null);
                 }
@@ -153,11 +166,11 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             case "double precision", "float8" -> random.nextDouble() * ((double)rightBound - (double)leftBound) + (double)leftBound;
             case "varchar", "text", "char" -> generateString(column, (String)leftBound, (String)rightBound);
             case "boolean" -> random.nextBoolean();
-            case "date" -> generateDate();
-            case "timestamp" -> generateTimestamp();
-            case "timestamp with time zone", "timestamptz" -> generateTimestampWithTimeZone();
-            case "time without time zone", "time" -> generateTimeWithoutTimeZone();
-            case "interval" -> generateInterval();
+            case "date" -> generateDateBetween((java.sql.Date)leftBound, (java.sql.Date)rightBound);
+            case "timestamp" -> generateTimestampBetween((java.sql.Timestamp)leftBound, (java.sql.Timestamp)rightBound);
+            case "timestamp with time zone", "timestamptz" -> generateTimestampWithTimeZoneBetween((String)leftBound, (String)rightBound);
+            case "time without time zone", "time" -> generateTimeWithoutTimeZoneBetween((String)leftBound, (String)rightBound);
+            case "interval" -> generateIntervalBetween((String)leftBound, (String)rightBound);
             case "tstzrange" -> generateTstzRange();
             case "point" -> generatePoint();
             case "jsonb", "json" -> generateJson();
@@ -240,42 +253,30 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         StringBuilder result = new StringBuilder();
         int minLen = Math.min(leftBound.length(), rightBound.length());
 
-        // Генерируем строку посимвольно, учитывая лексикографические границы
         for (int i = 0; i < maxLength; i++) {
             char leftChar = i < leftBound.length() ? leftBound.charAt(i) : '\0';
             char rightChar = i < rightBound.length() ? rightBound.charAt(i) : Character.MAX_VALUE;
 
-            // Если мы уже вышли за пределы общего префикса
             if (i >= minLen) {
-                // Если мы в зоне leftBound (leftBound длиннее)
                 if (i < leftBound.length()) {
-                    // Генерируем символ >= leftChar
                     char randomChar = (char) (leftChar + random.nextInt(Character.MAX_VALUE - leftChar + 1));
                     result.append(randomChar);
                 }
-                // Если мы в зоне rightBound (rightBound длиннее)
                 else if (i < rightBound.length()) {
-                    // Генерируем символ <= rightChar
                     char randomChar = (char) random.nextInt(rightChar + 1);
                     result.append(randomChar);
                 } else {
-                    // Можем добавить любой символ
                     result.append((char) (32 + random.nextInt(95))); // Печатные ASCII символы
                 }
             } else {
-                // В пределах общей длины
                 if (leftChar == rightChar) {
-                    // Символы совпадают - используем его
                     result.append(leftChar);
                 } else if (leftChar < rightChar) {
-                    // Генерируем символ между leftChar и rightChar
                     int range = rightChar - leftChar + 1;
                     char randomChar = (char) (leftChar + random.nextInt(range));
                     result.append(randomChar);
 
-                    // После первого различающегося символа можем генерировать свободно
                     if (randomChar > leftChar && randomChar < rightChar) {
-                        // Заполняем оставшуюся часть случайными символами
                         int remainingLength = random.nextInt(Math.max(1, maxLength - i));
                         for (int j = 0; j < remainingLength; j++) {
                             result.append((char) (32 + random.nextInt(95)));
@@ -283,7 +284,6 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
                         break;
                     }
                 } else {
-                    // leftChar > rightChar - некорректная ситуация, берем средний символ
                     result.append((char) ((leftChar + rightChar) / 2));
                 }
             }
@@ -325,14 +325,60 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         return new java.sql.Date(faker.date().past(730, java.util.concurrent.TimeUnit.DAYS).getTime());
     }
 
+    private java.sql.Date generateDateBetween(java.sql.Date leftBound, java.sql.Date rightBound) {
+        java.util.Date randomDate = faker.date().between(leftBound, rightBound);
+        return new java.sql.Date(randomDate.getTime());
+    }
+
     private java.sql.Timestamp generateTimestamp() {
         return new java.sql.Timestamp(faker.date().past(730, java.util.concurrent.TimeUnit.DAYS).getTime());
+    }
+
+    private java.sql.Timestamp generateTimestampBetween(java.sql.Timestamp leftBound, java.sql.Timestamp rightBound) {
+        java.util.Date randomDate = faker.date().between(leftBound, rightBound);
+        return new java.sql.Timestamp(randomDate.getTime());
     }
 
     private String generateTimestampWithTimeZone() {
         java.util.Date date = faker.date().past(730, java.util.concurrent.TimeUnit.DAYS);
         LocalDateTime dateTime = LocalDateTime.ofInstant(date.toInstant(), java.time.ZoneId.systemDefault());
         return dateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
+    }
+
+    private String generateTimestampWithTimeZoneBetween(String leftBound, String rightBound) {
+        try {
+            // Парсим строки формата "2023-01-15 10:30:45+00" или "2023-01-15T10:30:45Z"
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[XXX]");
+
+            LocalDateTime leftDateTime;
+            LocalDateTime rightDateTime;
+
+            // Пробуем различные форматы
+            try {
+                leftDateTime = LocalDateTime.parse(leftBound.replace("Z", "").replace("+00", ""), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            } catch (Exception e) {
+                leftDateTime = LocalDateTime.parse(leftBound, formatter);
+            }
+
+            try {
+                rightDateTime = LocalDateTime.parse(rightBound.replace("Z", "").replace("+00", ""), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            } catch (Exception e) {
+                rightDateTime = LocalDateTime.parse(rightBound, formatter);
+            }
+
+            // Преобразуем в java.util.Date для использования с faker
+            java.util.Date leftDate = java.util.Date.from(leftDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+            java.util.Date rightDate = java.util.Date.from(rightDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+
+            // Используем faker для генерации случайной даты между границами
+            java.util.Date randomDate = faker.date().between(leftDate, rightDate);
+            LocalDateTime randomDateTime = LocalDateTime.ofInstant(randomDate.toInstant(), java.time.ZoneId.systemDefault());
+
+            return randomDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
+        } catch (Exception e) {
+            log.warn("Warning: Could not parse timestamp bounds, using default generation: {}", e.getMessage());
+            return generateTimestampWithTimeZone();
+        }
     }
 
     private String generateTimeWithoutTimeZone() {
@@ -342,6 +388,23 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
                 faker.number().numberBetween(0, 60)
         );
         return randomTime.format(DateTimeFormatter.ISO_LOCAL_TIME);
+    }
+
+    private String generateTimeWithoutTimeZoneBetween(String leftBound, String rightBound) {
+        try {
+            LocalTime leftTime = LocalTime.parse(leftBound, DateTimeFormatter.ISO_LOCAL_TIME);
+            LocalTime rightTime = LocalTime.parse(rightBound, DateTimeFormatter.ISO_LOCAL_TIME);
+
+            long leftNano = leftTime.toNanoOfDay();
+            long rightNano = rightTime.toNanoOfDay();
+            long randomNano = leftNano + (long)(random.nextDouble() * (rightNano - leftNano));
+
+            LocalTime randomTime = LocalTime.ofNanoOfDay(randomNano);
+            return randomTime.format(DateTimeFormatter.ISO_LOCAL_TIME);
+        } catch (Exception e) {
+            log.warn("Warning: Could not parse time bounds, using default generation: {}", e.getMessage());
+            return generateTimeWithoutTimeZone();
+        }
     }
 
     private String generateInterval() {
@@ -361,6 +424,99 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         );
 
         return intervals.get(faker.number().numberBetween(0, intervals.size()));
+    }
+
+    private String generateIntervalBetween(String leftBound, String rightBound) {
+        try {
+            long leftSeconds = parseIntervalToSeconds(leftBound);
+            long rightSeconds = parseIntervalToSeconds(rightBound);
+
+            long randomSeconds = leftSeconds + faker.number().numberBetween(0L, rightSeconds - leftSeconds + 1);
+
+            return formatSecondsAsInterval(randomSeconds);
+        } catch (Exception e) {
+            log.warn("Warning: Could not parse interval bounds, using default generation: {}", e.getMessage());
+            return generateInterval();
+        }
+    }
+
+    /**
+     * Парсит строку интервала PostgreSQL в количество секунд
+     * Поддерживает форматы: "N days", "N hours", "N minutes", "N seconds",
+     * "N days N hours", "N hours N minutes", ISO 8601 "PnDTnHnMnS"
+     */
+    private long parseIntervalToSeconds(String interval) {
+        long totalSeconds = 0;
+
+        // Пробуем парсить ISO 8601 формат (PnDTnHnMnS)
+        if (interval.startsWith("P")) {
+            Pattern pattern = Pattern.compile("P(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?");
+            Matcher matcher = pattern.matcher(interval);
+            if (matcher.matches()) {
+                if (matcher.group(1) != null) totalSeconds += Long.parseLong(matcher.group(1)) * 86400; // days
+                if (matcher.group(2) != null) totalSeconds += Long.parseLong(matcher.group(2)) * 3600;  // hours
+                if (matcher.group(3) != null) totalSeconds += Long.parseLong(matcher.group(3)) * 60;    // minutes
+                if (matcher.group(4) != null) totalSeconds += Long.parseLong(matcher.group(4));         // seconds
+                return totalSeconds;
+            }
+        }
+
+        // Парсим обычный формат PostgreSQL
+        Pattern daysPattern = Pattern.compile("(\\d+)\\s+days?");
+        Pattern hoursPattern = Pattern.compile("(\\d+)\\s+hours?");
+        Pattern minutesPattern = Pattern.compile("(\\d+)\\s+minutes?");
+        Pattern secondsPattern = Pattern.compile("(\\d+)\\s+seconds?");
+
+        Matcher matcher = daysPattern.matcher(interval);
+        if (matcher.find()) {
+            totalSeconds += Long.parseLong(matcher.group(1)) * 86400;
+        }
+
+        matcher = hoursPattern.matcher(interval);
+        if (matcher.find()) {
+            totalSeconds += Long.parseLong(matcher.group(1)) * 3600;
+        }
+
+        matcher = minutesPattern.matcher(interval);
+        if (matcher.find()) {
+            totalSeconds += Long.parseLong(matcher.group(1)) * 60;
+        }
+
+        matcher = secondsPattern.matcher(interval);
+        if (matcher.find()) {
+            totalSeconds += Long.parseLong(matcher.group(1));
+        }
+
+        return totalSeconds;
+    }
+
+    /**
+     * Форматирует количество секунд в строку интервала PostgreSQL
+     */
+    private String formatSecondsAsInterval(long totalSeconds) {
+        long days = totalSeconds / 86400;
+        long hours = (totalSeconds % 86400) / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
+
+        StringBuilder result = new StringBuilder();
+        if (days > 0) {
+            result.append(days).append(" days");
+        }
+        if (hours > 0) {
+            if (!result.isEmpty()) result.append(" ");
+            result.append(hours).append(" hours");
+        }
+        if (minutes > 0) {
+            if (!result.isEmpty()) result.append(" ");
+            result.append(minutes).append(" minutes");
+        }
+        if (seconds > 0 || result.isEmpty()) {
+            if (!result.isEmpty()) result.append(" ");
+            result.append(seconds).append(" seconds");
+        }
+
+        return result.toString();
     }
 
     private String generateTstzRange() {
