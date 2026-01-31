@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class TableMetadataMaker {
     //private Map<String, List<String[]>> columnDataGroupedByTablename;
@@ -54,8 +53,9 @@ public class TableMetadataMaker {
                 .avgTupleSize((line[13].isEmpty() || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
                 
                 .foreignKeyMetadata(fkMetadata)
-                .mvc(processMCV(line[11], line[12], recordCountValue, line[3]))
+                .mcv(processMCV(line[11], line[12], line[3]))
                 .ndistinct(Double.parseDouble(line[14]))
+                .histogramm(parsePgArrayString(line[15], line[3]))
                 .build();
             if (!columnDataGroupedByTablename.containsKey(line[1])) {
                 columnDataGroupedByTablename.put(line[1], new ArrayList<>());
@@ -81,7 +81,7 @@ public class TableMetadataMaker {
         return tableMetadataList;
     }
 
-    private static Map<Object, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount, String dataType) {
+    private static Map<Object, Double> processMCV(String rawMCVArray, String rawMCFArray, String dataType) {
         List<Object> processedMCV = parsePgArrayString(rawMCVArray, dataType);
         List<Double> processedMCF = parseMCFArray(rawMCFArray);
 
@@ -155,27 +155,24 @@ public class TableMetadataMaker {
         String lowerDatatype = datatype.toLowerCase();
         
         try {
-            if (lowerDatatype.contains("int") || lowerDatatype.equals("integer") || 
-                lowerDatatype.equals("smallint") || lowerDatatype.equals("int2") || 
-                lowerDatatype.equals("int4")) {
-                return Integer.parseInt(value.trim());
-            } else if (lowerDatatype.equals("bigint") || lowerDatatype.equals("int8")) {
-                return Long.parseLong(value.trim());
-            } else if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal") || 
-                       lowerDatatype.equals("real") || lowerDatatype.equals("float4") ||
-                       lowerDatatype.equals("double precision") || lowerDatatype.equals("float8")) {
-                return Double.parseDouble(value.trim());
-            } else if (lowerDatatype.equals("boolean") || lowerDatatype.equals("bool")) {
-                return Boolean.parseBoolean(value.trim());
-            } else if (lowerDatatype.equals("date")) {
-                return java.sql.Date.valueOf(value.trim());
-            } else if (lowerDatatype.equals("timestamp") || lowerDatatype.equals("timestamp without time zone")) {
-                return java.sql.Timestamp.valueOf(value.trim());
-            } else if (lowerDatatype.equals("time") || lowerDatatype.equals("time without time zone")) {
-                return java.sql.Time.valueOf(value.trim());
-            } else {
-                return value;
-            }
+            return switch (lowerDatatype) {
+                case "smallint", "int2" -> Short.parseShort(value.trim());
+                case "integer", "int4", "int" -> Integer.parseInt(value.trim());
+                case "bigint", "int8" -> Long.parseLong(value.trim());
+                case "real", "float4" -> Float.parseFloat(value.trim());
+                case "double precision", "float8" -> Double.parseDouble(value.trim());
+                case "varchar", "text", "char", "interval", "tstzrange", "point", "jsonb", "json" -> value;
+                case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
+                case "date" -> java.sql.Date.valueOf(value.trim());
+                case "timestamp", "timestamp with time zone", "timestamptz" -> java.sql.Timestamp.valueOf(value.trim());
+                case "time without time zone", "time" -> java.sql.Time.valueOf(value.trim());
+                default -> {
+                    if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
+                        yield Double.parseDouble(value.trim());
+                    }
+                    yield value;
+                }
+            };
         } catch (Exception e) {
             return value;
         }

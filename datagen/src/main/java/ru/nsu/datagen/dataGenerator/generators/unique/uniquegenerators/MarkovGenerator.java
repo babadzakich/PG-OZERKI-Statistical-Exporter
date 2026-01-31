@@ -1,14 +1,10 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.io.FileWriter;
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +38,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             this.types = new ArrayList<>();
             
             for (ColumnMetadata col : columnsMetadata) {
-                this.columns.add(col.getMvc());
+                this.columns.add(col.getMcv());
                 this.names.add(col.getName());
                 this.recordSize.add(col.getAvgTupleSize());
                 this.ndistincts.add(col.getNdistinct());
@@ -67,8 +63,9 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     }
 
     @Override
-    public void generate() {
-        // Implementation here
+    public List<Object> generate() {
+        throw new UnsupportedOperationException("Markov generator can only be used for Multiple column unique, " +
+                "use generate(Map<String, List<Object>> columnData) instead.");
     }
     
     private Object weightedChoice(Map<Object, Double> dist) {

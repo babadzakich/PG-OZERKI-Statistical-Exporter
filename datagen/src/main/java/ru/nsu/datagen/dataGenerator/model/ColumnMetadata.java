@@ -20,7 +20,7 @@ public class ColumnMetadata {
     private final int recordCount;
     private final Integer maxLength;
     private final ForeignKeyMetadata foreignKeyMetadata;
-    private final Map<Object, Double> mvc;
+    private final Map<Object, Double> mcv;
     private final int avgTupleSize;
     private final double ndistinct;
     private final boolean isArray;
@@ -29,7 +29,7 @@ public class ColumnMetadata {
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<Object, Double> mvc, int avgTupleSize, double ndistinct, boolean isArray, List<Object> histogramm) {
+                          Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray, List<Object> histogramm) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;
@@ -40,7 +40,7 @@ public class ColumnMetadata {
         this.maxLength = maxLength;
         this.foreignKeyMetadata = foreignKeyMetadata;
         this.isArray = dataType.contains("[") && !dataType.contains("char");
-        this.mvc = mvc;
+        this.mcv = mcv;
         this.avgTupleSize = avgTupleSize;
         this.ndistinct = ndistinct;
 
