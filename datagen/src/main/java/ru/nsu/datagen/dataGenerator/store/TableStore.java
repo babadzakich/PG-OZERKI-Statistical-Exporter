@@ -1,10 +1,9 @@
 package ru.nsu.datagen.dataGenerator.store;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.math.BigDecimal;
 import java.sql.*;
 
@@ -12,6 +11,7 @@ import org.postgresql.util.PGobject;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public class TableStore {
     private final Connection conn;
 
@@ -23,17 +23,7 @@ public class TableStore {
         String queryString = getQueryString(tableMetadata);
         conn.createStatement().execute("SET search_path TO public, bookings");
         PreparedStatement pstmnt = conn.prepareStatement(queryString);
-        // debug PK airplane code
-        File log = new File("./log_govna.txt");
-        FileWriter fw = null;
-        try {
-            fw = new FileWriter(log);
-            log.createNewFile();
 
-        } catch (Exception e) {
-            System.out.println("Shti");
-        }
-        // debug PK airplane code end
         // Каждая строка
         for (int i = 0; i < tableMetadata.getRecordCount(); i++) {
             // Каждая колонка
@@ -42,17 +32,6 @@ public class TableStore {
                 Object value = generatedTableData.get(columnName).get(i);
                 ColumnMetadata columnMetadata = tableMetadata.getColumns().get(columnName);
                 String type = columnMetadata.getDataType();
-                // debug PK airplane code
-
-                if (columnMetadata.getName().equals("airplane_code")) {
-                    try {
-                        if (columnMetadata.isPrimaryKey()) { fw.write("PK : " + value.toString() + '\n'); }
-                        else {fw.write("FK : " +value.toString() + '\n');}
-                    } catch (Exception e) {
-                        System.out.println(e.getMessage());
-                    }
-                }
-                // debug PK airplane code end
 
                 // Обработка массивов
                 if (columnMetadata.isArray()) {
@@ -79,9 +58,8 @@ public class TableStore {
                     pgObject.setType("timestamp");
                     pgObject.setValue(timeStr);
                     pstmnt.setObject(++j, pgObject);
-                } else if ((type.equals("timestamp with time zone") || type.equals("timestamptz")) && value instanceof String) {
+                } else if ((type.equals("timestamp with time zone") || type.equals("timestamptz")) && value instanceof String timeStr) {
                     // Обработка timestamp with time zone
-                    String timeStr = (String) value;
 
                     // Удаляем [Zone] из формата ZonedDateTime (например, [Etc/GMT-9])
                     if (timeStr.contains("[")) {
@@ -182,19 +160,20 @@ public class TableStore {
         int i = 1;
         for (String columnName : tableMetadata.getColumns().keySet()) {
             stringBuilder.append(columnName);
-            if (i++ < tableMetadata.getColumns().keySet().size()) {
+            if (i++ < tableMetadata.getColumns().size()) {
                 stringBuilder.append(", ");
             }
         }
         stringBuilder.append(") VALUES (");
-        for (i = 1; i <= tableMetadata.getColumns().keySet().size(); i++) {
+        for (i = 1; i <= tableMetadata.getColumns().size(); i++) {
             stringBuilder.append("?");
-            if (i < tableMetadata.getColumns().keySet().size()) {
+            if (i < tableMetadata.getColumns().size()) {
                 stringBuilder.append(", ");
             }
         }
         stringBuilder.append(")");
-        System.err.println(stringBuilder);
+        log.info("Insert data in table {}", tableMetadata.getTableName());
+        log.debug("Insert query: {}", stringBuilder);
         return stringBuilder.toString();
     }
 }

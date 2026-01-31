@@ -10,16 +10,10 @@ import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUni
 
 public class UniqueKeyGeneratorChooser {
     public static void generate(List<ColumnMetadata> uniqColumns, Map<String, List<Object>> columnData, GeneratorsTypes type, int recordCount) {
-        UniqueKeyGenerator generator;
-        switch (type) {
-            case MARKOV:
-                generator = new MarkovGenerator(uniqColumns, recordCount);
-                break;
-            case SIMPLE:
-                generator = new SimpleUniqueGenerator(uniqColumns, recordCount);
-            default:
-                throw new IllegalArgumentException("algorithm " + type + " not presented");
-        }
+        UniqueKeyGenerator generator = switch (type) {
+            case MARKOV -> new MarkovGenerator(uniqColumns, recordCount);
+            case SIMPLE -> new SimpleUniqueGenerator(uniqColumns, recordCount);
+        };
         generator.generate(columnData);
 //        generator.generate();
     }

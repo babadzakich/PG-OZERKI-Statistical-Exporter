@@ -1,5 +1,6 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class TableMetadataMaker {
     //private Map<String, List<String[]>> columnDataGroupedByTablename;
    //private Map<String, List<String>> tableToColumnNames;
@@ -57,6 +59,7 @@ public class TableMetadataMaker {
                 .ndistinct(Double.parseDouble(line[14]))
                 .histogramm(parsePgArrayString(line[15], line[3]))
                 .build();
+            log.trace("Processed column metadata: {}", columnMetadata);
             if (!columnDataGroupedByTablename.containsKey(line[1])) {
                 columnDataGroupedByTablename.put(line[1], new ArrayList<>());
             }
@@ -73,7 +76,7 @@ public class TableMetadataMaker {
                     new TableMetadata(
                             tableName,
                             columnMetadataMap,
-                            columnDataGroupedByTablename.get(tableName).get(0).getRecordCount()
+                            columnDataGroupedByTablename.get(tableName).getFirst().getRecordCount()
                     )
             );
         }
@@ -164,7 +167,7 @@ public class TableMetadataMaker {
                 case "varchar", "text", "char", "interval", "tstzrange", "point", "jsonb", "json" -> value;
                 case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
                 case "date" -> java.sql.Date.valueOf(value.trim());
-                case "timestamp", "timestamp with time zone", "timestamptz" -> java.sql.Timestamp.valueOf(value.trim());
+                case "timestamp", "timestamp with time zone", "timestamptz" -> value.trim();
                 case "time without time zone", "time" -> java.sql.Time.valueOf(value.trim());
                 default -> {
                     if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
@@ -174,6 +177,7 @@ public class TableMetadataMaker {
                 }
             };
         } catch (Exception e) {
+            log.warn("Failed to parse value '{}' as type '{}', returning as String. Error: {}", value, datatype, e.getMessage());
             return value;
         }
     }

@@ -1,12 +1,10 @@
 package ru.nsu.datagen.importer;
 
-import com.opencsv.CSVParser;
-import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
 import com.opencsv.exceptions.CsvException;
+import lombok.extern.slf4j.Slf4j;
 
-import javax.swing.plaf.nimbus.State;
 import java.io.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -14,7 +12,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
-
+@Slf4j
 public class Importer {
     static public List<String[]> startImport(
             String schemasScriptPath, String statisticDataPath, Connection conn
@@ -24,29 +22,30 @@ public class Importer {
             importSchemas(schemasScriptPath, statement);
             return importStatistic(statisticDataPath, conn, statement);
         } catch (ImporterException e) {
+            log.error("Importer exception occurred.", e);
             throw e;
         } catch (SQLException e) {
+            log.error("SQL exception occurred during import.", e);
             throw new RuntimeException(e);
         }
     }
 
     static private List<String[]> importStatistic(String path, Connection conn, Statement statement) {
-        if (new File(path).exists() == false) {
+        if (!new File(path).exists()) {
             throw new ImporterException("There is no import statistic file " + path );
         }
         try {
-            System.out.println(new File(path).exists());
+//            System.out.println(new File(path).exists());
             FileReader filereader = new FileReader(path);
             // CSVParser parser = new CSVParserBuilder().withSeparator('|').build();
             CSVReader csvReader = new CSVReaderBuilder(filereader)
                     .withSkipLines(1)
                     // .withCSVParser(parser)
                     .build();
-            List<String[]> allData = csvReader.readAll();
 
-            return allData;
+            return csvReader.readAll();
         } catch (RuntimeException | IOException e) {
-            System.err.println(e);
+            log.error("Cannot import statistic from CSV file.", e);
             throw new ImporterException("Cannot import statistic from CSV file.");
         } catch (CsvException e) {
             throw new RuntimeException(e);
@@ -54,7 +53,7 @@ public class Importer {
     }
 
     static private void importSchemas(String path, Statement statement) throws ImporterException {
-        if (new File(path).exists() == false) {
+        if (!new File(path).exists()) {
             throw new ImporterException("There is no import schemas script " + path);
         }
         try {
@@ -88,17 +87,17 @@ public class Importer {
                 }
             }
 
-            System.out.println("Script file " + path + " executed");
+            log.debug("Script file {} executed", path);
 
             // Getting the ResultSet after executing the Script File
             ResultSet resultSet = statement.getResultSet();
-            System.out.println("Result set: " + resultSet);
+            log.debug("Result set: {}", resultSet);
         }
         catch (IOException e) {
-            System.err.println(e);
+            log.error("Some troubles with IO ops.", e);
             throw new IOException("Some troubles with IO ops.");
         } catch (SQLException e) {
-            System.err.println(e);
+            log.error("Troubles with executing SQL script!", e);
             throw new SQLException("Troubles with executing SQL script!");
         }
     }

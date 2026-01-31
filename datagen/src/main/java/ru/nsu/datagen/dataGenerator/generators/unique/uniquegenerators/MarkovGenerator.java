@@ -15,10 +15,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.github.javafaker.Faker;
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
-
+@Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
     private final List<Map<Object, Double>> columns;
     private final List<String> names;
@@ -51,6 +52,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     @Override
     public void generate(Map<String, List<Object>> columnData) {
+        log.info("Запуск Markov генератора для {} уникальных записей и {} колонок", recordCount, ncols);
         List<List<Object>> uniqueValues = generateUnique(recordCount, 200);
         
         for (int colIdx = 0; colIdx < names.size(); colIdx++) {
@@ -102,9 +104,10 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         
         // Фаза 2: Если не хватило - расширяем пространство синтетическими данными
         if (results.size() < count) {
-            System.err.println("Недостаточно уникальных комбинаций из реальных данных. "
-                    + "Сгенерировано: " + results.size() + "/" + count
-                    + ". Расширяем пространство синтетическими значениями...");
+            log.debug("Недостаточно уникальных комбинаций из реальных данных. Сгенерировано: {}/{}. " +
+                            "Расширяем пространство синтетическими значениями...",
+                    results.size(), count);
+
             
             expandColumnsForRequiredSpace(columns, count);
             
@@ -135,15 +138,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 );
             }
         }
-        System.err.println(uniques.size());
-        System.err.println("Успешно сгенерировано " + results.size() + " уникальных записей");
-        // try (FileWriter fw = new FileWriter("markov.txt")) {
-        //     for (List<Object> seq : results) {
-        //         fw.write(String.join(",", seq) + "\n");
-        //     }
-        // } catch (IOException e) {
-        //     System.err.println("Error logging: " + e.getMessage());
-        // }
+
+        log.debug("Всего попыток: {}, Уникальных записей: {}", attempts, results.size());
         return results;
     }
     
@@ -153,7 +149,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private List<Object> sampleOneWithUpdate(List<Map<Object, Double>> workingCols) {
         List<Object> seq = new ArrayList<>();
         
-        Object token = weightedChoice(workingCols.get(0));
+        Object token = weightedChoice(workingCols.getFirst());
         seq.add(token);
         
         for (int i = 1; i < ncols; i++) {
@@ -230,8 +226,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 if (sum > 0) {
                     col.replaceAll((k, v) -> col.get(k) / sum);
                 }
-                
-                System.err.println("Добавлено " + added + " синтетических значений в колонку " + names.get(i));
+                log.debug("Добавлено {} синтетических значений в колонку {}", added, names.get(i));
             }
         }
     }

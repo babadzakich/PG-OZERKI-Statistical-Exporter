@@ -8,6 +8,7 @@ import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,7 +30,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         }
         Set<Object> objectSet = new HashSet<>();
 
-        long requiredUniqueCount = columnMetadata.getNdistinct() < 0 
+        long requiredUniqueCount = columnMetadata.getNdistinct() < 0
             ? (long)(Math.abs(columnMetadata.getNdistinct()) * columnMetadata.getRecordCount())
             : (long)columnMetadata.getNdistinct();
         log.debug("Generating {} unique values for column {} where ndistinct = {}", requiredUniqueCount, columnMetadata.getName(), columnMetadata.getNdistinct());
@@ -167,7 +168,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             case "varchar", "text", "char" -> generateString(column, (String)leftBound, (String)rightBound);
             case "boolean" -> random.nextBoolean();
             case "date" -> generateDateBetween((java.sql.Date)leftBound, (java.sql.Date)rightBound);
-            case "timestamp" -> generateTimestampBetween((java.sql.Timestamp)leftBound, (java.sql.Timestamp)rightBound);
+            case "timestamp" -> generateTimestampBetween((String)leftBound, (String)rightBound);
             case "timestamp with time zone", "timestamptz" -> generateTimestampWithTimeZoneBetween((String)leftBound, (String)rightBound);
             case "time without time zone", "time" -> generateTimeWithoutTimeZoneBetween((String)leftBound, (String)rightBound);
             case "interval" -> generateIntervalBetween((String)leftBound, (String)rightBound);
@@ -244,7 +245,6 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             return generateString(column);
         }
 
-        // Определяем максимальную длину для генерации
         int maxLength = Math.max(leftBound.length(), rightBound.length());
         if (column.getAvgTupleSize() > 0) {
             maxLength = column.getAvgTupleSize();
@@ -339,6 +339,25 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         return new java.sql.Timestamp(randomDate.getTime());
     }
 
+    private java.sql.Timestamp generateTimestampBetween(String leftBound, String rightBound) {
+        try {
+            LocalDateTime leftDateTime = parseTimestampWithTimeZone(leftBound);
+            LocalDateTime rightDateTime = parseTimestampWithTimeZone(rightBound);
+
+            // Преобразуем в java.util.Date для использования с faker
+            java.util.Date leftDate = java.util.Date.from(leftDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+            java.util.Date rightDate = java.util.Date.from(rightDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+
+            // Используем faker для генерации случайной даты между границами
+            java.util.Date randomDate = faker.date().between(leftDate, rightDate);
+            return new java.sql.Timestamp(randomDate.getTime());
+        } catch (Exception e) {
+            log.warn("Warning: Could not parse timestamp bounds '{}' and '{}', using default generation: {}",
+                leftBound, rightBound, e.getMessage());
+            return generateTimestamp();
+        }
+    }
+
     private String generateTimestampWithTimeZone() {
         java.util.Date date = faker.date().past(730, java.util.concurrent.TimeUnit.DAYS);
         LocalDateTime dateTime = LocalDateTime.ofInstant(date.toInstant(), java.time.ZoneId.systemDefault());
@@ -347,24 +366,8 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
 
     private String generateTimestampWithTimeZoneBetween(String leftBound, String rightBound) {
         try {
-            // Парсим строки формата "2023-01-15 10:30:45+00" или "2023-01-15T10:30:45Z"
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[XXX]");
-
-            LocalDateTime leftDateTime;
-            LocalDateTime rightDateTime;
-
-            // Пробуем различные форматы
-            try {
-                leftDateTime = LocalDateTime.parse(leftBound.replace("Z", "").replace("+00", ""), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } catch (Exception e) {
-                leftDateTime = LocalDateTime.parse(leftBound, formatter);
-            }
-
-            try {
-                rightDateTime = LocalDateTime.parse(rightBound.replace("Z", "").replace("+00", ""), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } catch (Exception e) {
-                rightDateTime = LocalDateTime.parse(rightBound, formatter);
-            }
+            LocalDateTime leftDateTime = parseTimestampWithTimeZone(leftBound);
+            LocalDateTime rightDateTime = parseTimestampWithTimeZone(rightBound);
 
             // Преобразуем в java.util.Date для использования с faker
             java.util.Date leftDate = java.util.Date.from(leftDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
@@ -376,9 +379,47 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
 
             return randomDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
         } catch (Exception e) {
-            log.warn("Warning: Could not parse timestamp bounds, using default generation: {}", e.getMessage());
+            log.warn("Warning: Could not parse timestamp bounds '{}' and '{}', using default generation: {}",
+                leftBound, rightBound, e.getMessage());
             return generateTimestampWithTimeZone();
         }
+    }
+
+    /**
+     * Парсит timestamp with time zone в различных форматах PostgreSQL:
+     * - "2026-01-29 03:35:00+07"
+     * - "2026-01-29 03:35:00.893332+07"
+     * - "2026-01-29 03:35:00+00"
+     * - "2026-01-29T03:35:00Z"
+     * - "2026-01-29T03:35:00.123456+03:00"
+     */
+    private LocalDateTime parseTimestampWithTimeZone(String timestamp) {
+        log.trace("Parsing timestamp: '{}'", timestamp);
+
+        String normalized = timestamp;
+
+        normalized = normalized.replaceAll("[+-]\\d{2}:\\d{2}$", "");
+        log.trace("After removing +HH:MM: '{}'", normalized);
+
+        normalized = normalized.replaceAll("[+-]\\d{2}$", "");
+        log.trace("After removing +HH: '{}'", normalized);
+
+        normalized = normalized.replace("Z", "");
+
+        normalized = normalized.replace("T", " ");
+
+        normalized = normalized.trim();
+
+        log.trace("Normalized timestamp: '{}'", normalized);
+
+        DateTimeFormatter formatter = new DateTimeFormatterBuilder()
+                .appendPattern("yyyy-MM-dd HH:mm:ss")
+                .optionalStart()
+                .appendFraction(java.time.temporal.ChronoField.NANO_OF_SECOND, 0, 9, true)
+                .optionalEnd()
+                .toFormatter();
+
+        return LocalDateTime.parse(normalized, formatter);
     }
 
     private String generateTimeWithoutTimeZone() {
@@ -448,7 +489,6 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
     private long parseIntervalToSeconds(String interval) {
         long totalSeconds = 0;
 
-        // Пробуем парсить ISO 8601 формат (PnDTnHnMnS)
         if (interval.startsWith("P")) {
             Pattern pattern = Pattern.compile("P(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?");
             Matcher matcher = pattern.matcher(interval);
@@ -461,7 +501,6 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
             }
         }
 
-        // Парсим обычный формат PostgreSQL
         Pattern daysPattern = Pattern.compile("(\\d+)\\s+days?");
         Pattern hoursPattern = Pattern.compile("(\\d+)\\s+hours?");
         Pattern minutesPattern = Pattern.compile("(\\d+)\\s+minutes?");
