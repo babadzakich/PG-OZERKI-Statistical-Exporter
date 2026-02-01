@@ -44,14 +44,14 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         for (Object mvcValue : columnMetadata.getMcv().keySet()) {
             objectSet.add(mvcValue);
             double freq = columnMetadata.getMcv().get(mvcValue);
-            long mvcCount = (long)(freq * recordCount);
+            long mvcCount = Math.round(freq * recordCount);
             log.trace("Adding MVC value: {} with frequency: {} resulting in count: {}", mvcValue, freq, mvcCount);
             for (long j = 0; j < mvcCount; j++) {
                 values.add(mvcValue);
             }
         }
 
-        int nullCount = (int)(recordCount * nullPercentage);
+        int nullCount = (int)(recordCount * (nullPercentage / 100.0));
         log.debug("Adding {} null values for column {}", nullCount, columnMetadata.getName());
         for (int i = 0; i < nullCount; i++) {
             values.add(null);
@@ -334,22 +334,9 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         return new java.sql.Timestamp(faker.date().past(730, java.util.concurrent.TimeUnit.DAYS).getTime());
     }
 
-    private java.sql.Timestamp generateTimestampBetween(java.sql.Timestamp leftBound, java.sql.Timestamp rightBound) {
-        java.util.Date randomDate = faker.date().between(leftBound, rightBound);
-        return new java.sql.Timestamp(randomDate.getTime());
-    }
-
     private java.sql.Timestamp generateTimestampBetween(String leftBound, String rightBound) {
         try {
-            LocalDateTime leftDateTime = parseTimestampWithTimeZone(leftBound);
-            LocalDateTime rightDateTime = parseTimestampWithTimeZone(rightBound);
-
-            // Преобразуем в java.util.Date для использования с faker
-            java.util.Date leftDate = java.util.Date.from(leftDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
-            java.util.Date rightDate = java.util.Date.from(rightDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
-
-            // Используем faker для генерации случайной даты между границами
-            java.util.Date randomDate = faker.date().between(leftDate, rightDate);
+            Date randomDate = getRandomDate(leftBound, rightBound);
             return new java.sql.Timestamp(randomDate.getTime());
         } catch (Exception e) {
             log.warn("Warning: Could not parse timestamp bounds '{}' and '{}', using default generation: {}",
@@ -366,15 +353,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
 
     private String generateTimestampWithTimeZoneBetween(String leftBound, String rightBound) {
         try {
-            LocalDateTime leftDateTime = parseTimestampWithTimeZone(leftBound);
-            LocalDateTime rightDateTime = parseTimestampWithTimeZone(rightBound);
-
-            // Преобразуем в java.util.Date для использования с faker
-            java.util.Date leftDate = java.util.Date.from(leftDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
-            java.util.Date rightDate = java.util.Date.from(rightDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
-
-            // Используем faker для генерации случайной даты между границами
-            java.util.Date randomDate = faker.date().between(leftDate, rightDate);
+            Date randomDate = getRandomDate(leftBound, rightBound);
             LocalDateTime randomDateTime = LocalDateTime.ofInstant(randomDate.toInstant(), java.time.ZoneId.systemDefault());
 
             return randomDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
@@ -383,6 +362,19 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
                 leftBound, rightBound, e.getMessage());
             return generateTimestampWithTimeZone();
         }
+    }
+
+    private Date getRandomDate(String leftBound, String rightBound) {
+        LocalDateTime leftDateTime = parseTimestampWithTimeZone(leftBound);
+        LocalDateTime rightDateTime = parseTimestampWithTimeZone(rightBound);
+
+        // Преобразуем в java.util.Date для использования с faker
+        Date leftDate = Date.from(leftDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+        Date rightDate = Date.from(rightDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+
+        // Используем faker для генерации случайной даты между границами
+        Date randomDate = faker.date().between(leftDate, rightDate);
+        return randomDate;
     }
 
     /**
