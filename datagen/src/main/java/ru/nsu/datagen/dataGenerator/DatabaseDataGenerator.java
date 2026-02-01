@@ -12,6 +12,8 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.FutureTask;
 
 /*
 TODO:
@@ -38,13 +40,26 @@ public class DatabaseDataGenerator {
         // generate
         Map<String, Map<String, List<Object>>> generatedData = new HashMap<>();
         DataGenerator dataGenerator = new DataGenerator();
+        CompletableFuture<Void> lastFuture = CompletableFuture.completedFuture(null);
         for (TableMetadata table : generationOrder) {
-            log.info("Generate table: " + table.getTableName());
+            log.info("Generate table: {}", table.getTableName());
             Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
-            // TODO: надо распараллелить
-            tableStore.storeTable(table, generatedTableData);
+            lastFuture = lastFuture.thenRunAsync(() -> {
+                log.info("Async store table: {}", table.getTableName());
+                try {
+                    tableStore.storeTable(table, generatedTableData);
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            }).exceptionally(ex -> {
+                log.error("Exception during storing table: {}", table.getTableName(), ex);
+                return null;
+            });
+//            tableStore.storeTable(table, generatedTableData);
             generatedData.put(table.getTableName(), generatedTableData);
         }
+        lastFuture.join();
+        log.info("Data generation and storage completed.");
         debugPrintData(generatedData);
 
     }
