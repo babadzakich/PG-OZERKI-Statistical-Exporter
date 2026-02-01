@@ -5,6 +5,7 @@
 #include "catalog/pg_class_d.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_attrdef.h"
 #include "commands/defrem.h"
 #include "nodes/pg_list.h"

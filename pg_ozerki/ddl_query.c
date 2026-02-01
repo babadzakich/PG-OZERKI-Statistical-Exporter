@@ -1,7 +1,79 @@
 #include "ddl.h"
 #include "ozerki_utils.h"
 #include "ddl_query.h"
+#include "catalog/namespace.h"
 
+
+static void
+add_table(QueryDependencies *deps, const char *name)
+{
+    if (deps->tableCount == 0) {
+        deps->tableNames = palloc(sizeof(char *));
+    } else {
+        deps->tableNames = repalloc(
+            deps->tableNames,
+            sizeof(char *) * (deps->tableCount + 1)
+        );
+    }
+    deps->tableNames[deps->tableCount] = pstrdup(name);
+    deps->tableCount++;
+}
+
+static void
+extract_tables_from_yaml(const char *plan, QueryDependencies* deps)
+{
+    
+    const char *p = plan;
+
+    //deps = palloc0(sizeof(QueryDependencies));
+
+    while ((p = strstr(p, "Relation Name:")) != NULL)
+    {
+        const char *rel_start, *rel_end;
+        const char *schema_p, *schema_start, *schema_end;
+        char *relname;
+        char *schemaname;
+        char *fullname;
+
+        rel_start = strchr(p, '"');
+        if (!rel_start)
+            break;
+        rel_start++;
+
+        rel_end = strchr(rel_start, '"');
+        if (!rel_end)
+            break;
+
+        relname = pnstrdup(rel_start, rel_end - rel_start);
+
+        schema_p = strstr(rel_end, "Schema:");
+        schemaname = NULL;
+
+        if (schema_p)
+        {
+            schema_start = strchr(schema_p, '"');
+            if (schema_start)
+            {
+                schema_start++;
+                schema_end = strchr(schema_start, '"');
+                if (schema_end)
+                    schemaname = pnstrdup(schema_start,
+                                          schema_end - schema_start);
+            }
+        }
+
+        if (!schemaname)
+            schemaname = pstrdup("public");
+
+        add_schema_to_deps(deps, schemaname);
+        fullname = psprintf("%s.%s", schemaname, relname);
+        add_table(deps, fullname);
+
+        p = rel_end + 1;
+    }
+
+    return deps;
+}
 
 void add_table_constraints_to_deps(QueryDependencies *deps) {
     if (!deps || deps->tableCount == 0) {
@@ -17,10 +89,12 @@ void add_table_constraints_to_deps(QueryDependencies *deps) {
         "FROM pg_constraint c "
         "JOIN pg_class t ON t.oid = c.conrelid "
         "WHERE t.oid IN (");
-    
+    Oid* tableOids = palloc(deps->tableCount * sizeof(Oid));
     for (int i = 0; i < deps->tableCount; i++) {
         if (i > 0) appendStringInfoString(&constrQuery, ", ");
-        appendStringInfo(&constrQuery, "%u", deps->tableOids[i]);
+        tableOids[i] = table_name_to_oid_internal(deps->tableNames[i]);
+        appendStringInfo(&constrQuery, "%u", tableOids[i]);
+        
     }
     
     appendStringInfo(&constrQuery, ") AND c.contype IN ('p', 'f', 'c', 'u')");
@@ -48,7 +122,7 @@ void add_table_constraints_to_deps(QueryDependencies *deps) {
 
                     bool referenced_table_in_query = false;
                     for (int j = 0; j < deps->tableCount; j++) {
-                        if (deps->tableOids[j] == referencedTableOid) {
+                        if (tableOids[j] == referencedTableOid) {
                             referenced_table_in_query = true;
                             break;
                         }
@@ -112,7 +186,7 @@ void add_table_indexes_to_deps(QueryDependencies *deps) {
     
     for (int i = 0; i < deps->tableCount; i++) {
         if (i > 0) appendStringInfoString(&idxQuery, ", ");
-        appendStringInfo(&idxQuery, "%u", deps->tableOids[i]);
+        appendStringInfo(&idxQuery, "%u", table_name_to_oid_internal(deps->tableNames[i]));
     }
     
     appendStringInfo(&idxQuery, ")");
@@ -160,7 +234,7 @@ QueryDependencies* extract_tables_from_query_text(const char *query) {
     QueryDependencies *deps = (QueryDependencies*)palloc0(sizeof(QueryDependencies));
     
 
-    deps->tableOids = NULL;
+    deps->tableNames = NULL;
     deps->viewOids = NULL;
     deps->functionOids = NULL;
     deps->sequenceOids = NULL;
@@ -177,388 +251,31 @@ QueryDependencies* extract_tables_from_query_text(const char *query) {
     deps->schemaCount = 0;
     
     elog(LOG, "Starting query analysis: %s", query);
+    StringInfoData explainQuery;
+    initStringInfo(&explainQuery);
     
-    char *query_copy = pstrdup(query);
+    appendStringInfoString(&explainQuery,
+        "EXPLAIN (FORMAT YAML, VERBOSE) ");
+    appendStringInfo(&explainQuery, query);
+        
+    char* explainQueryCopy = explainQuery.data;
     
-
-    for (int i = 0; query_copy[i]; i++) {
-        query_copy[i] = tolower(query_copy[i]);
+    int ret = SPI_execute(explainQueryCopy, false, 0);
+    
+    if (ret == SPI_OK_UTILITY && SPI_processed > 0) {
+        TupleDesc tupdesc = SPI_tuptable->tupdesc;
+        HeapTuple tuple = SPI_tuptable->vals[0];
+        char* plan = SPI_getvalue(tuple, tupdesc, 1);
+        elog(LOG, "\n\n EXPLAIN RESULT = %s", plan);
+        extract_tables_from_yaml(plan, deps);
     }
-    
-    elog(LOG, "Lowercased query: %s", query_copy);
-    
-
-    char *from_pos = strstr(query_copy, "from");
-    
-    if (!from_pos) {
-        elog(LOG, "No FROM clause found in query");
-        pfree(query_copy);
-        return deps;
-    }
-    
-
-    from_pos += 4;
-    
-
-    char *end_pos = from_pos;
-    char *where_pos = strstr(from_pos, "where");
-    char *group_pos = strstr(from_pos, "group");
-    char *order_pos = strstr(from_pos, "order");
-    char *limit_pos = strstr(from_pos, "limit");
-    char *union_pos = strstr(from_pos, "union");
-    char *intersect_pos = strstr(from_pos, "intersect");
-    char *except_pos = strstr(from_pos, "except");
-    
-
-    char *closest_end = NULL;
-    if (where_pos && (!closest_end || where_pos < closest_end)) closest_end = where_pos;
-    if (group_pos && (!closest_end || group_pos < closest_end)) closest_end = group_pos;
-    if (order_pos && (!closest_end || order_pos < closest_end)) closest_end = order_pos;
-    if (limit_pos && (!closest_end || limit_pos < closest_end)) closest_end = limit_pos;
-    if (union_pos && (!closest_end || union_pos < closest_end)) closest_end = union_pos;
-    if (intersect_pos && (!closest_end || intersect_pos < closest_end)) closest_end = intersect_pos;
-    if (except_pos && (!closest_end || except_pos < closest_end)) closest_end = except_pos;
-    
-
-    if (!closest_end) {
-        closest_end = from_pos + strlen(from_pos);
-    }
-    
-
-    size_t section_len = closest_end - from_pos;
-    char *from_section = (char*)palloc(section_len + 1);
-    strncpy(from_section, from_pos, section_len);
-    from_section[section_len] = '\0';
-    
-    elog(LOG, "FROM section: '%s'", from_section);
-    
-
-    char *section_ptr = from_section;
-    int table_num = 0;
-    
-    while (*section_ptr) {
-
-        while (*section_ptr == ' ' || *section_ptr == '\t' || *section_ptr == '\n' || *section_ptr == '\r') {
-            section_ptr++;
-        }
-        
-        if (*section_ptr == '\0') break;
-        
-
-        bool is_join = false;
-        
-
-        if (strncmp(section_ptr, "join", 4) == 0) {
-            char *after_join = section_ptr + 4;
-            if (*after_join == ' ' || *after_join == '\t' || *after_join == '\n' || *after_join == '\r' || *after_join == '\0') {
-                is_join = true;
-                section_ptr = after_join;
-                elog(LOG, "Found JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        if (strncmp(section_ptr, "inner", 5) == 0) {
-            char *after_inner = section_ptr + 5;
-
-            while (*after_inner == ' ' || *after_inner == '\t' || *after_inner == '\n' || *after_inner == '\r') {
-                after_inner++;
-            }
-            if (strncmp(after_inner, "join", 4) == 0) {
-                is_join = true;
-                section_ptr = after_inner + 4;
-                elog(LOG, "Found INNER JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        if (strncmp(section_ptr, "left", 4) == 0) {
-            char *after_left = section_ptr + 4;
-            while (*after_left == ' ' || *after_left == '\t' || *after_left == '\n' || *after_left == '\r') {
-                after_left++;
-            }
-            if (strncmp(after_left, "join", 4) == 0) {
-                is_join = true;
-                section_ptr = after_left + 4;
-                elog(LOG, "Found LEFT JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        if (strncmp(section_ptr, "right", 5) == 0) {
-            char *after_right = section_ptr + 5;
-            while (*after_right == ' ' || *after_right == '\t' || *after_right == '\n' || *after_right == '\r') {
-                after_right++;
-            }
-            if (strncmp(after_right, "join", 4) == 0) {
-                is_join = true;
-                section_ptr = after_right + 4;
-                elog(LOG, "Found RIGHT JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        if (strncmp(section_ptr, "full", 4) == 0) {
-            char *after_full = section_ptr + 4;
-            while (*after_full == ' ' || *after_full == '\t' || *after_full == '\n' || *after_full == '\r') {
-                after_full++;
-            }
-            if (strncmp(after_full, "join", 4) == 0) {
-                is_join = true;
-                section_ptr = after_full + 4;
-                elog(LOG, "Found FULL JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        if (strncmp(section_ptr, "cross", 5) == 0) {
-            char *after_cross = section_ptr + 5;
-            while (*after_cross == ' ' || *after_cross == '\t' || *after_cross == '\n' || *after_cross == '\r') {
-                after_cross++;
-            }
-            if (strncmp(after_cross, "join", 4) == 0) {
-                is_join = true;
-                section_ptr = after_cross + 4;
-                elog(LOG, "Found CROSS JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        if (strncmp(section_ptr, "natural", 7) == 0) {
-            char *after_natural = section_ptr + 7;
-            while (*after_natural == ' ' || *after_natural == '\t' || *after_natural == '\n' || *after_natural == '\r') {
-                after_natural++;
-            }
-            if (strncmp(after_natural, "join", 4) == 0) {
-                is_join = true;
-                section_ptr = after_natural + 4;
-                elog(LOG, "Found NATURAL JOIN keyword");
-                continue;
-            }
-        }
-        
-
-        char *table_start = section_ptr;
-        
-
-        while (*section_ptr && 
-               *section_ptr != ' ' && 
-               *section_ptr != '\t' && 
-               *section_ptr != '\n' && 
-               *section_ptr != '\r' && 
-               *section_ptr != ',' && 
-               !(strncmp(section_ptr, " on", 3) == 0 && 
-                 (section_ptr[3] == ' ' || section_ptr[3] == '\t' || section_ptr[3] == '('))) {
-            section_ptr++;
-        }
-        
-        if (section_ptr == table_start) {
-            continue;
-        }
-        
-
-        size_t table_name_len = section_ptr - table_start;
-        char *table_name = (char*)palloc(table_name_len + 1);
-        strncpy(table_name, table_start, table_name_len);
-        table_name[table_name_len] = '\0';
-        
-        elog(LOG, "Table %d raw name: '%s'", ++table_num, table_name);
-        
-
-        char *clean_name = table_name;
-        if (clean_name[0] == '"') {
-            clean_name++;
-            if (clean_name[strlen(clean_name)-1] == '"') {
-                clean_name[strlen(clean_name)-1] = '\0';
-            }
-        }
-        
-
-        char *schema_name = "public"; 
-        char *table_name_only = clean_name;
-        char *dot_pos = strchr(clean_name, '.');
-        
-        if (dot_pos) {
-            *dot_pos = '\0';
-            schema_name = clean_name;
-            table_name_only = dot_pos + 1;
-            
-
-            if (schema_name[0] == '"' && schema_name[strlen(schema_name)-1] == '"') {
-                schema_name[strlen(schema_name)-1] = '\0';
-                schema_name++;
-            }
-        }
-        
-
-        if (table_name_only[0] == '"' && table_name_only[strlen(table_name_only)-1] == '"') {
-            table_name_only[strlen(table_name_only)-1] = '\0';
-            table_name_only++;
-        }
-        
-        elog(LOG, "Parsed table: schema='%s', table='%s'", schema_name, table_name_only);
-        
-
-        char *find_table_query = psprintf(
-            "SELECT c.oid, c.relkind FROM pg_class c "
-            "JOIN pg_namespace n ON c.relnamespace = n.oid "
-            "WHERE n.nspname = '%s' AND c.relname = '%s' "
-            "AND c.relkind IN ('r', 'm', 'v', 'p')",
-            schema_name, table_name_only);
-        
-        elog(LOG, "Executing query: %s", find_table_query);
-        
-        int ret = SPI_execute(find_table_query, true, 0);
-        
-        if (ret != SPI_OK_SELECT) {
-            elog(LOG, "SPI_execute failed with code: %d", ret);
-        } else if (SPI_processed == 0) {
-            elog(LOG, "Table not found: %s.%s", schema_name, table_name_only);
-        } else {
-            elog(LOG, "Found %d rows for table %s.%s", SPI_processed, schema_name, table_name_only);
-        }
-        
-        pfree(find_table_query);
-        
-        if (ret == SPI_OK_SELECT && SPI_processed > 0) {
-            HeapTuple tuple = SPI_tuptable->vals[0];
-            bool isNull1, isNull2;
-            
-            Datum oid_datum = SPI_getbinval(tuple, SPI_tuptable->tupdesc, 1, &isNull1);
-            char *relkind = SPI_getvalue(tuple, SPI_tuptable->tupdesc, 2);
-            
-            if (!isNull1) {
-                Oid objOid = DatumGetObjectId(oid_datum);
-                elog(LOG, "Found OID: %u, relkind: %s", objOid, relkind ? relkind : "NULL");
-                
-
-                bool schema_exists = false;
-                for (int i = 0; i < deps->schemaCount; i++) {
-                    if (strcmp(deps->schemas[i], schema_name) == 0) {
-                        schema_exists = true;
-                        break;
-                    }
-                }
-                
-                if (!schema_exists) {
-                    if (deps->schemaCount == 0) {
-                        deps->schemas = (char**)palloc(sizeof(char*));
-                    } else {
-                        deps->schemas = (char**)repalloc(deps->schemas, (deps->schemaCount + 1) * sizeof(char*));
-                    }
-                    deps->schemas[deps->schemaCount] = pstrdup(schema_name);
-                    deps->schemaCount++;
-                    elog(LOG, "Added schema: %s", schema_name);
-                }
-                
-
-                if (relkind) {
-                    switch (relkind[0]) {
-                        case 'r': 
-                        case 'm': 
-                        case 'p': 
-                            if (deps->tableCount == 0) {
-                                deps->tableOids = (Oid*)palloc(sizeof(Oid));
-                            } else {
-                                deps->tableOids = (Oid*)repalloc(deps->tableOids, (deps->tableCount + 1) * sizeof(Oid));
-                            }
-                            deps->tableOids[deps->tableCount++] = objOid;
-                            elog(LOG, "Added table OID: %u", objOid);
-                            break;
-                            
-                        case 'v': 
-                            if (deps->viewCount == 0) {
-                                deps->viewOids = (Oid*)palloc(sizeof(Oid));
-                            } else {
-                                deps->viewOids = (Oid*)repalloc(deps->viewOids, (deps->viewCount + 1) * sizeof(Oid));
-                            }
-                            deps->viewOids[deps->viewCount++] = objOid;
-                            elog(LOG, "Added view OID: %u", objOid);
-                            break;
-                    }
-                }
-                
-                if (relkind) pfree(relkind);
-            }
-        }
-        
-        pfree(table_name);
-        
-
-        while (*section_ptr == ' ' || *section_ptr == '\t' || *section_ptr == '\n' || *section_ptr == '\r') {
-            section_ptr++;
-        }
-        
-
-        if (*section_ptr && strncmp(section_ptr, "as", 2) == 0 && 
-            (section_ptr[2] == ' ' || section_ptr[2] == '\t')) {
-            section_ptr += 2;
-            while (*section_ptr == ' ' || *section_ptr == '\t') section_ptr++;
-
-            while (*section_ptr && 
-                   *section_ptr != ' ' && 
-                   *section_ptr != '\t' && 
-                   *section_ptr != ',' && 
-                   *section_ptr != '\n' && 
-                   *section_ptr != '\r') {
-                section_ptr++;
-            }
-        } else if (*section_ptr && *section_ptr != ',' && *section_ptr != '\0') {
-
-            char *check = section_ptr;
-            while (*check && 
-                   *check != ' ' && 
-                   *check != '\t' && 
-                   *check != ',' && 
-                   *check != '\n' && 
-                   *check != '\r' && 
-                   !(strncmp(check, " on", 3) == 0 && 
-                     (check[3] == ' ' || check[3] == '\t' || check[3] == '('))) {
-                check++;
-            }
-            
-
-            if (*check && strncmp(check, " on", 3) != 0) {
-                section_ptr = check;
-            }
-        }
-        
-
-        while (*section_ptr == ' ' || *section_ptr == '\t' || *section_ptr == '\n' || *section_ptr == '\r') {
-            section_ptr++;
-        }
-        
-
-        if (*section_ptr && strncmp(section_ptr, "on", 2) == 0 && 
-            (section_ptr[2] == ' ' || section_ptr[2] == '\t' || section_ptr[2] == '(')) {
-            elog(LOG, "Found ON clause, skipping");
-            section_ptr += 2;
-
-            int paren_count = 0;
-            while (*section_ptr && !(*section_ptr == ',' && paren_count == 0)) {
-                if (*section_ptr == '(') paren_count++;
-                else if (*section_ptr == ')') paren_count--;
-                section_ptr++;
-            }
-        }
-        
-
-        if (*section_ptr == ',') {
-            section_ptr++;
-        }
-    }
-    
-    pfree(from_section);
-    pfree(query_copy);
-    
+    elog(LOG, "\n\n EXPLAIN EXECUTED; ret = %d, SPI_PROCESSED = %d", ret, SPI_processed);
     elog(LOG, "Finished analysis. Found %d tables, %d schemas", 
          deps->tableCount, deps->schemaCount);
+    
+    for (int i = 0; i < deps->tableCount; i++) {
+        elog(LOG, "\n table: %s, oid = %d\n", deps->tableNames[i], table_name_to_oid_internal(deps->tableNames[i]));
+    }
     
     return deps;
 }
@@ -568,11 +285,83 @@ QueryDependencies* analyze_query_dependencies(const char *query) {
     int ret; 
     deps = extract_tables_from_query_text(query);
     find_sequences_for_tables(deps);
+    find_views_for_tables(deps);
     add_table_constraints_to_deps(deps);
     add_table_indexes_to_deps(deps);
+    
     return deps;
 }
 
+void find_views_for_tables(QueryDependencies *deps)
+{
+    if (!deps || deps->tableCount == 0)
+        return;
+
+    StringInfoData sql;
+    initStringInfo(&sql);
+
+
+    appendStringInfo(&sql,
+        "SELECT DISTINCT v.oid "
+        "FROM pg_class v "
+        "JOIN pg_rewrite r ON r.ev_class = v.oid "
+        "JOIN pg_depend d ON d.objid = r.oid "
+        "WHERE v.relkind = 'v' "
+        "AND d.refclassid = 'pg_class'::regclass "
+        "AND d.deptype = 'n' "
+        "AND d.refobjid IN (");
+
+    for (int i = 0; i < deps->tableCount; i++) {
+        if (i > 0)
+            appendStringInfoString(&sql, ", ");
+        appendStringInfo(&sql, "%u", table_name_to_oid_internal(deps->tableNames[i]));
+    }
+
+    appendStringInfoChar(&sql, ')');
+
+    elog(LOG, "\n\n VIEW QUERY = %s\n\n", sql.data);
+    int ret = SPI_execute(sql.data, true, 0);
+    if (ret != SPI_OK_SELECT)
+        elog(ERROR, "SPI_execute failed in find_views_for_tables");
+
+    if (SPI_processed == 0) {
+        pfree(sql.data);
+        return;
+    }
+
+    TupleDesc tupdesc = SPI_tuptable->tupdesc;
+
+    for (int i = 0; i < SPI_processed; i++) {
+        HeapTuple tuple = SPI_tuptable->vals[i];
+        bool isnull;
+
+        Datum d = SPI_getbinval(tuple, tupdesc, 1, &isnull);
+        if (isnull)
+            continue;
+
+        Oid viewOid = DatumGetObjectId(d);
+
+        bool exists = false;
+        for (int j = 0; j < deps->viewCount; j++) {
+            if (deps->viewOids[j] == viewOid) {
+                exists = true;
+                break;
+            }
+        }
+
+        if (exists)
+            continue;
+
+        deps->viewOids = (deps->viewCount == 0)
+            ? palloc(sizeof(Oid))
+            : repalloc(deps->viewOids,
+                       sizeof(Oid) * (deps->viewCount + 1));
+
+        deps->viewOids[deps->viewCount++] = viewOid;
+    }
+
+    pfree(sql.data);
+}
 
 
 void generate_constraints_ddl_query(StringInfo buf, QueryDependencies *deps) {
@@ -714,157 +503,132 @@ void generate_constraints_ddl_query(StringInfo buf, QueryDependencies *deps) {
 
 
 void generate_sequences_ddl_query(StringInfo buf, QueryDependencies* deps) {
-    
-    if (deps->sequenceCount == 0) {
+    if (!deps || deps->sequenceCount == 0)
+        return;
+
+    StringInfoData seqQuery;
+    initStringInfo(&seqQuery);
+
+    appendStringInfo(&seqQuery,
+        "SELECT n.nspname AS schemaname, "
+        "c.relname AS sequencename, "
+        "r.rolname AS sequenceowner, "
+        "s.seqstart AS start_value, "
+        "s.seqmin AS min_value, "
+        "s.seqmax AS max_value, "
+        "s.seqincrement AS increment_by, "
+        "s.seqcycle AS cycle, "
+        "s.seqcache AS cache_size, "
+        "pg_catalog.obj_description(c.oid, 'pg_class') AS description "
+        "FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "JOIN pg_sequence s ON s.seqrelid = c.oid "
+        "JOIN pg_roles r ON r.oid = c.relowner "
+        "WHERE c.oid IN (");
+
+    for (int i = 0; i < deps->sequenceCount; i++) {
+        if (i > 0)
+            appendStringInfoString(&seqQuery, ", ");
+        appendStringInfo(&seqQuery, "%u", deps->sequenceOids[i]);
+    }
+
+    appendStringInfo(&seqQuery,
+        ") AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema') "
+        "ORDER BY n.nspname, c.relname");
+
+    int ret = SPI_execute(seqQuery.data, true, 0);
+    if (ret != SPI_OK_SELECT)
+        elog(ERROR, "SPI_execute failed in generate_sequences_ddl_query");
+
+    if (SPI_processed == 0) {
+        pfree(seqQuery.data);
         return;
     }
-    int ret;
-    char *query;
-    
-    elog(LOG, "\n\n SEQUENCES FOR GEN = %d\n\n", deps->sequenceCount);
-    if (deps && deps->sequenceCount > 0) {
-        StringInfoData seqQuery;
-        initStringInfo(&seqQuery);
-        
-        appendStringInfo(&seqQuery,
-            "SELECT schemaname, sequencename, "
-            "sequenceowner, start_value, min_value, max_value, "
-            "increment_by, cycle, cache_size, last_value, "
-            "pg_catalog.obj_description(pg_sequence.seqrelid, 'pg_class') as description "
-            "FROM pg_sequences "
-            "JOIN pg_sequence ON pg_sequence.seqrelid = pg_sequences.sequencename::regclass "
-            "WHERE pg_sequence.seqrelid IN (");
-        
-        for (int i = 0; i < deps->sequenceCount; i++) {
-            if (i > 0) appendStringInfoString(&seqQuery, ", ");
-            appendStringInfo(&seqQuery, "%u", deps->sequenceOids[i]);
-                elog(LOG, "\n\n SEQUENCE COUNT = %d\n\n", deps->sequenceOids[i]);
 
-        }
-        
-        appendStringInfo(&seqQuery,
-            ") AND schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-            "ORDER BY schemaname, sequencename");
-        query = seqQuery.data;
-    } else {
-        query = "SELECT schemaname, sequencename, "
-                "sequenceowner, start_value, min_value, max_value, "
-                "increment_by, cycle, cache_size, last_value, "
-                "pg_catalog.obj_description(pg_sequence.seqrelid, 'pg_class') as description "
-                "FROM pg_sequences "
-                "JOIN pg_sequence ON pg_sequence.seqrelid = pg_sequences.sequencename::regclass "
-                "WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-                "ORDER BY schemaname, sequencename";
-    }
-    
-    ret = SPI_execute(query, true, 0);
-    if (ret == SPI_OK_SELECT && SPI_processed > 0)
-    {
-        int sequences_processed = SPI_processed;
-        SPITupleTable saved = *SPI_tuptable;
-        TupleDesc tupdesc = saved.tupdesc;
-        appendStringInfoString(buf, "--\n-- Sequences\n--\n\n");
-        
-        for (int i = 0; i < sequences_processed; i++)
+    TupleDesc tupdesc = SPI_tuptable->tupdesc;
+    appendStringInfoString(buf, "--\n-- Sequences\n--\n\n");
+
+    for (int i = 0; i < SPI_processed; i++) {
+        HeapTuple tuple = SPI_tuptable->vals[i];
+        bool isNull[10];
+
+        char* nspname = SPI_getvalue(tuple, tupdesc, 1);
+        char* seqname = SPI_getvalue(tuple, tupdesc, 2);
+        char* owner = SPI_getvalue(tuple, tupdesc, 3);
+
+        Datum start_value_datum = SPI_getbinval(tuple, tupdesc, 4, &isNull[3]);
+        Datum min_value_datum   = SPI_getbinval(tuple, tupdesc, 5, &isNull[4]);
+        Datum max_value_datum   = SPI_getbinval(tuple, tupdesc, 6, &isNull[5]);
+        Datum increment_datum   = SPI_getbinval(tuple, tupdesc, 7, &isNull[6]);
+        Datum cycle_datum       = SPI_getbinval(tuple, tupdesc, 8, &isNull[7]);
+        Datum cache_datum       = SPI_getbinval(tuple, tupdesc, 9, &isNull[8]);
+
+        char* description = SPI_getvalue(tuple, tupdesc, 10);
+
+        int64 start_value = !isNull[3] ? DatumGetInt64(start_value_datum) : 1;
+        int64 min_value   = !isNull[4] ? DatumGetInt64(min_value_datum) : 1;
+        int64 max_value   = !isNull[5] ? DatumGetInt64(max_value_datum) : 0;
+        int64 increment   = !isNull[6] ? DatumGetInt64(increment_datum) : 1;
+        bool cycle        = !isNull[7] ? DatumGetBool(cycle_datum) : false;
+        int64 cache       = !isNull[8] ? DatumGetInt64(cache_datum) : 1;
+
+        int64 last_value = 0;
         {
-            HeapTuple tuple = saved.vals[i];
-            bool isNull[11];
-            
-            char* nspname = SPI_getvalue(tuple, tupdesc, 1);
-            char* seqname = SPI_getvalue(tuple, tupdesc, 2);
-            char* owner = SPI_getvalue(tuple, tupdesc, 3);
-            Datum start_value_datum = SPI_getbinval(tuple, tupdesc, 4, &isNull[3]);
-            Datum min_value_datum = SPI_getbinval(tuple, tupdesc, 5, &isNull[4]);
-            Datum max_value_datum = SPI_getbinval(tuple, tupdesc, 6, &isNull[5]);
-            Datum increment_datum = SPI_getbinval(tuple, tupdesc, 7, &isNull[6]);
-            Datum cycle_datum = SPI_getbinval(tuple, tupdesc, 8, &isNull[7]);
-            Datum cache_datum = SPI_getbinval(tuple, tupdesc, 9, &isNull[8]);
-            Datum last_value_datum = SPI_getbinval(tuple, tupdesc, 10, &isNull[9]);
-            char* description = SPI_getvalue(tuple, tupdesc, 11);
-            
-            
-            
-            
-            if (nspname && seqname)
-            {
-                int64 start_value = !isNull[3] ? DatumGetInt64(start_value_datum) : 1;
-                int64 min_value = !isNull[4] ? DatumGetInt64(min_value_datum) : 1;
-                int64 max_value = !isNull[5] ? DatumGetInt64(max_value_datum) : 0;
-                int64 increment = !isNull[6] ? DatumGetInt64(increment_datum) : 1;
-                bool cycle = !isNull[7] ? DatumGetBool(cycle_datum) : false;
-                int64 cache = !isNull[8] ? DatumGetInt64(cache_datum) : 1;
-                int64 last_value = !isNull[9] ? DatumGetInt64(last_value_datum) : 0;
+            StringInfoData lastValQuery;
+            initStringInfo(&lastValQuery);
+            appendStringInfo(&lastValQuery, "SELECT last_value FROM %s.%s", nspname, seqname);
 
-                elog(LOG, "\n\nINCREMENT = %d\n\n", increment);
-                appendStringInfo(buf, "CREATE SEQUENCE %s.%s", nspname, seqname);
-                
-                appendStringInfo(buf, "\n    INCREMENT BY %ld", increment);
-                
-                appendStringInfo(buf, "\n    MINVALUE %ld", min_value);
-                
-                if (max_value != 0) 
-                {
-                    appendStringInfo(buf, "\n    MAXVALUE %ld", max_value);
-                }
-                else
-                {
-                    appendStringInfoString(buf, "\n    NO MAXVALUE");
-                }
-                
-                if (start_value != 1)
-                {
-                    appendStringInfo(buf, "\n    START WITH %ld", start_value);
-                }
-                
-                
-                if (cache != 1)
-                {
-                    appendStringInfo(buf, "\n    CACHE %ld", cache);
-                }
-                
-                
-                if (cycle)
-                {
-                    appendStringInfoString(buf, "\n    CYCLE");
-                }
-                else
-                {
-                    appendStringInfoString(buf, "\n    NO CYCLE");
-                }
-                
-                appendStringInfoString(buf, ";");
-                
-                char *owned_by = get_sequence_owned_by(nspname, seqname);
-                if (owned_by)
-                {
-                    appendStringInfo(buf, "\nALTER SEQUENCE %s.%s OWNED BY %s;", 
-                                   nspname, seqname, owned_by);
-                    pfree(owned_by);
-                }
-                
-                if (last_value > 0)
-                {
-                    appendStringInfo(buf, "\nSELECT pg_catalog.setval('%s.%s', %ld, false);", 
-                                   nspname, seqname, last_value);
-                }
-                
-                appendStringInfoString(buf, "\n\n");
-                
-                if (description)
-                {
-                    appendStringInfo(buf, "COMMENT ON SEQUENCE %s.%s IS '%s';\n\n", 
-                                   nspname, seqname, description);
-                }
-                
-                pfree(nspname);
-                pfree(seqname);
-                elog(LOG, "OWNER = %s\n\n", owner);
-                if (owner) pfree(owner);
-                if (description) pfree(description);
-             }
+            int ret2 = SPI_execute(lastValQuery.data, true, 1);
+            if (ret2 == SPI_OK_SELECT && SPI_processed > 0) {
+                HeapTuple t = SPI_tuptable->vals[0];
+                bool isNullLast;
+                Datum d = SPI_getbinval(t, SPI_tuptable->tupdesc, 1, &isNullLast);
+                if (!isNullLast)
+                    last_value = DatumGetInt64(d);
+            }
+            pfree(lastValQuery.data);
         }
+
+        appendStringInfo(buf, "CREATE SEQUENCE %s.%s", nspname, seqname);
+        appendStringInfo(buf, "\n    INCREMENT BY %ld", increment);
+        appendStringInfo(buf, "\n    MINVALUE %ld", min_value);
+        if (max_value != 0)
+            appendStringInfo(buf, "\n    MAXVALUE %ld", max_value);
+        else
+            appendStringInfoString(buf, "\n    NO MAXVALUE");
+
+        if (start_value != 1)
+            appendStringInfo(buf, "\n    START WITH %ld", start_value);
+        if (cache != 1)
+            appendStringInfo(buf, "\n    CACHE %ld", cache);
+        appendStringInfoString(buf, cycle ? "\n    CYCLE" : "\n    NO CYCLE");
+        appendStringInfoString(buf, ";");
+
+        char* owned_by = get_sequence_owned_by(nspname, seqname);
+        if (owned_by) {
+            appendStringInfo(buf, "\nALTER SEQUENCE %s.%s OWNED BY %s;", nspname, seqname, owned_by);
+            pfree(owned_by);
+        }
+
+        if (last_value > 0)
+            appendStringInfo(buf, "\nSELECT pg_catalog.setval('%s.%s', %ld, false);",
+                             nspname, seqname, last_value);
+
+        appendStringInfoString(buf, "\n\n");
+
+        if (description)
+            appendStringInfo(buf, "COMMENT ON SEQUENCE %s.%s IS '%s';\n\n", nspname, seqname, description);
+
+        if (nspname) pfree(nspname);
+        if (seqname) pfree(seqname);
+        if (owner) pfree(owner);
+        if (description) pfree(description);
     }
+
+    pfree(seqQuery.data);
 }
+
+
 
 void generate_extensions_ddl_query(StringInfo buf, QueryDependencies* deps) {
     int ret;
@@ -940,84 +704,62 @@ void generate_tables_ddl_query(StringInfo buf, QueryDependencies* deps) {
     int ret;
     char *query;
     elog(LOG, "\n\nTABLE COUNT = %d\n\n", deps->tableCount);
-    if (deps && deps->tableCount > 0) {
-
-        StringInfoData tableQuery;
-        initStringInfo(&tableQuery);
-        
-        appendStringInfo(&tableQuery, "SELECT c.oid "
-                        "FROM pg_class c "
-                        "JOIN pg_namespace n ON c.relnamespace = n.oid "
-                        "WHERE c.oid IN (");
-        
-        for (int i = 0; i < deps->tableCount; i++) {
-            if (i > 0) appendStringInfoString(&tableQuery, ", ");
-            appendStringInfo(&tableQuery, "%u", deps->tableOids[i]);
-        }
-        
-        appendStringInfo(&tableQuery, ") "
-                        "AND c.relkind = 'r' "
-                        "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-                        "ORDER BY n.nspname, c.relname");
-        
-        query = tableQuery.data;
-    } else if (deps && deps->schemaCount > 0) {
-
-        StringInfoData schemaQuery;
-        initStringInfo(&schemaQuery);
-        
-        appendStringInfo(&schemaQuery, "SELECT c.oid "
-                        "FROM pg_class c "
-                        "JOIN pg_namespace n ON c.relnamespace = n.oid "
-                        "WHERE n.nspname IN (");
-        
-        for (int i = 0; i < deps->schemaCount; i++) {
-            if (i > 0) appendStringInfoString(&schemaQuery, ", ");
-            appendStringInfo(&schemaQuery, "'%s'", deps->schemas[i]);
-        }
-        
-        appendStringInfo(&schemaQuery, ") "
-                        "AND c.relkind = 'r' "
-                        "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-                        "ORDER BY n.nspname, c.relname");
-        
-        query = schemaQuery.data;
-    } else {
-        query = "SELECT c.oid "
-                "FROM pg_class c "
-                "JOIN pg_namespace n ON c.relnamespace = n.oid "
-                "WHERE c.relkind = 'r' "
-                "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-                "ORDER BY n.nspname, c.relname";
-    }
+   
     
-    ret = SPI_execute(query, true, 0);
-    
-    if (ret == SPI_OK_SELECT && SPI_processed > 0) {
+    if (deps->tableCount > 0) {
         appendStringInfoString(buf, "--\n-- Tables\n--\n\n");
         
         SPITupleTable saved = *SPI_tuptable;
         TupleDesc tupdesc = saved.tupdesc;
         int tables_processed = SPI_processed;
-        for (int i = 0; i < tables_processed; i++) {
-            HeapTuple tuple = saved.vals[i];
-            bool isNull;
-            elog(LOG, "\n\nTABLES PROCESSED %d\n\n", tables_processed);
-            Datum oid_datum = SPI_getbinval(tuple, tupdesc, 1, &isNull);
-            if (!isNull) {
-                Oid tableOid = DatumGetObjectId(oid_datum);
-                generate_table_ddl(buf, tableOid);
-                appendStringInfoString(buf, "\n\n");
-            }
+        for (int i = 0; i < deps->tableCount; i++) {
+            Oid tableOid = table_name_to_oid_internal(deps->tableNames[i]);
+            
+            
+            generate_table_ddl(buf, tableOid);
+            appendStringInfoString(buf, "\n\n");
+            
         }
     }
     
-
-    if (deps && (deps->tableCount > 0 || deps->schemaCount > 0)) {
-        pfree(query);
-    }
 }
- 
+
+
+Oid
+table_name_to_oid_internal(const char *full_name)
+{
+    int     ret;
+    Oid     relid = InvalidOid;
+    bool    isnull;
+    char   *sql;
+
+    sql = psprintf(
+        "SELECT to_regclass('%s')::oid",
+        full_name
+    );
+
+   
+    ret = SPI_execute(sql, true, 1);
+
+    if (ret != SPI_OK_SELECT || SPI_processed != 1)
+        elog(ERROR, "SPI_execute failed");
+
+    Datum d = SPI_getbinval(
+        SPI_tuptable->vals[0],
+        SPI_tuptable->tupdesc,
+        1,
+        &isnull
+    );
+
+    if (isnull)
+        elog(ERROR, "relation \"%s\" does not exist", full_name);
+
+    relid = DatumGetObjectId(d);
+
+
+    return relid;
+}
+
 char* escape_string(char *str) {
     if (!str) return pstrdup("");
     
@@ -1036,11 +778,13 @@ char* escape_string(char *str) {
 }
 
 void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps) {
+
+    elog(LOG, "\n\n VIEWS COUNT = %d\n\n", deps->viewCount);
     if (!deps || deps->viewCount == 0) {
         return;
     }
     
-    SPI_execute("SET search_path = ''", false, 0);
+    //SPI_execute("SET search_path = ''", false, 0);
     
     StringInfoData viewQuery;
     initStringInfo(&viewQuery);
@@ -1062,10 +806,11 @@ void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps) {
         ") AND c.relkind = 'v' "
         "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
         "ORDER BY "
-        "CASE WHEN c.relname LIKE 'pg_%' THEN 1 ELSE 0 END, "  
+        "CASE WHEN c.relname LIKE 'pg_%%' THEN 1 ELSE 0 END, "  
         "n.nspname, c.relname");
     
     char *query = viewQuery.data;
+    elog(LOG, "\n\n GENERATE VIEW QUERY = %s\n\n", query);
     int ret = SPI_execute(query, true, 0);
     
     if (ret == SPI_OK_SELECT && SPI_processed > 0) {
@@ -1120,10 +865,14 @@ void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps) {
 
 }
 
+
 void generate_indexes_ddl_query(StringInfo buf, QueryDependencies *deps) {
     int ret;
     char *query;
-    
+    Oid* tableOids = palloc(sizeof(Oid) * deps->tableCount);
+    for (int i = 0; i < deps->tableCount; i++) {
+        tableOids[i] = table_name_to_oid_internal(deps->tableNames[i]);
+    }
     if (deps && deps->indexCount > 0) {
 
         StringInfoData idxQuery;
@@ -1177,7 +926,7 @@ void generate_indexes_ddl_query(StringInfo buf, QueryDependencies *deps) {
         
         for (int i = 0; i < deps->tableCount; i++) {
             if (i > 0) appendStringInfoString(&tableIdxQuery, ", ");
-            appendStringInfo(&tableIdxQuery, "%u", deps->tableOids[i]);
+            appendStringInfo(&tableIdxQuery, "%u", tableOids[i]);
         }
         
         appendStringInfo(&tableIdxQuery,
@@ -1361,76 +1110,99 @@ void add_sequence_oid_to_deps(QueryDependencies *deps, Oid sequenceOid) {
     deps->sequenceOids[deps->sequenceCount++] = sequenceOid;
 }
 
-void find_sequences_for_tables(QueryDependencies *deps) {
-    if (!deps || deps->tableCount == 0) {
+void
+find_sequences_for_tables(QueryDependencies *deps)
+{
+    if (!deps || deps->tableCount == 0)
         return;
+
+    StringInfoData sql;
+    initStringInfo(&sql);
+
+    
+    appendStringInfo(&sql,
+        "SELECT DISTINCT seq.oid "
+        "FROM pg_class seq "
+        "JOIN pg_sequence s ON s.seqrelid = seq.oid "
+        "JOIN pg_depend d ON d.objid = seq.oid "
+        "LEFT JOIN pg_class tbl_direct ON tbl_direct.oid = d.refobjid "
+        "LEFT JOIN pg_attribute a ON a.attrelid = d.refobjid "
+        "LEFT JOIN pg_class tbl_attr ON tbl_attr.oid = a.attrelid "
+        "WHERE seq.relkind = 'S' "
+        "AND d.deptype IN ('a','i') "
+        "AND COALESCE(tbl_direct.oid, tbl_attr.oid) IN ("
+        "SELECT c.oid "
+        "FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE (n.nspname, c.relname) IN ("
+    );
+
+    for (int i = 0; i < deps->tableCount; i++)
+    {
+        char *name = pstrdup(deps->tableNames[i]);
+        char *schema = strtok(name, ".");
+        char *rel = strtok(NULL, ".");
+
+        if (!schema || !rel)
+            elog(ERROR, "Invalid table name: %s", deps->tableNames[i]);
+
+        if (i > 0)
+            appendStringInfoString(&sql, ", ");
+
+        appendStringInfo(&sql,
+            "('%s','%s')",
+            schema,
+            rel
+        );
     }
-    
 
-    StringInfoData seqQuery;
-    initStringInfo(&seqQuery);
-    
-    appendStringInfo(&seqQuery,
-        "SELECT DISTINCT s.seqrelid "
-        "FROM pg_depend d "
-        "JOIN pg_class c ON c.oid = d.objid "
-        "JOIN pg_sequence s ON s.seqrelid = c.oid "
-        "JOIN pg_class t ON t.oid = d.refobjid "
-        "WHERE d.deptype = 'a' "  
-        "AND d.classid = 'pg_class'::regclass::oid "
-        "AND d.refclassid = 'pg_class'::regclass::oid "
-        "AND c.relkind = 'S' "  
-        "AND t.oid IN (");
-    
-    for (int i = 0; i < deps->tableCount; i++) {
-        if (i > 0) appendStringInfoString(&seqQuery, ", ");
-        appendStringInfo(&seqQuery, "%u", deps->tableOids[i]);
-        elog(LOG, "\n\n TABLE WITH SEQUENCE OID = %d\n\n", deps->tableOids[i]);
-    }
-    
-    appendStringInfo(&seqQuery, ")");
-    
-    int ret = SPI_execute(seqQuery.data, true, 0);
-    elog(LOG, "\n\n SEQUENCES FOUND = %d\n\n", SPI_processed);
-    if (ret == SPI_OK_SELECT && SPI_processed > 0) {
-        TupleDesc tupdesc = SPI_tuptable->tupdesc;
-        
-        for (int i = 0; i < SPI_processed; i++) {
-            HeapTuple tuple = SPI_tuptable->vals[i];
-            bool isNull;
-            
-            Datum seqOid_datum = SPI_getbinval(tuple, tupdesc, 1, &isNull);
-            
-            if (!isNull) {
-                Oid seqOid = DatumGetObjectId(seqOid_datum);
-                
+    appendStringInfo(&sql, "))");
 
-                bool exists = false;
-                for (int j = 0; j < deps->sequenceCount; j++) {
-                    if (deps->sequenceOids[j] == seqOid) {
-                        exists = true;
-                        break;
-                    }
-                }
-                
-                if (!exists) {
+    int ret = SPI_execute(sql.data, true, 0);
+    if (ret != SPI_OK_SELECT)
+        elog(ERROR, "SPI_execute failed in find_sequences_for_tables");
 
-                    if (deps->sequenceCount == 0) {
-                        deps->sequenceOids = (Oid*)palloc(sizeof(Oid));
-                    } else {
-                        deps->sequenceOids = (Oid*)repalloc(deps->sequenceOids, 
-                                                          (deps->sequenceCount + 1) * sizeof(Oid));
-                    }
-                    deps->sequenceOids[deps->sequenceCount++] = seqOid;
-                    
-                    elog(LOG, "Added sequence OID %u for table", seqOid);
-                }
+    if (SPI_processed == 0)
+        pfree(sql.data);
+
+    TupleDesc tupdesc = SPI_tuptable->tupdesc;
+
+    for (int i = 0; i < SPI_processed; i++)
+    {
+        HeapTuple tuple = SPI_tuptable->vals[i];
+        bool isnull;
+
+        Datum d = SPI_getbinval(tuple, tupdesc, 1, &isnull);
+        if (isnull)
+            continue;
+
+        Oid seqOid = DatumGetObjectId(d);
+
+        bool exists = false;
+        for (int j = 0; j < deps->sequenceCount; j++)
+        {
+            if (deps->sequenceOids[j] == seqOid)
+            {
+                exists = true;
+                break;
             }
         }
+
+        if (exists)
+            continue;
+
+        deps->sequenceOids = (deps->sequenceCount == 0)
+            ? palloc(sizeof(Oid))
+            : repalloc(deps->sequenceOids,
+                       sizeof(Oid) * (deps->sequenceCount + 1));
+
+        deps->sequenceOids[deps->sequenceCount++] = seqOid;
     }
+
+
     
-    pfree(seqQuery.data);
 }
+
 
 void generate_functions_ddl_query(StringInfo buf, QueryDependencies* deps)
 {
