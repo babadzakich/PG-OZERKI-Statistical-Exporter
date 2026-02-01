@@ -195,12 +195,11 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             if (ndistinctVal < 0) {
                 ndistinctVal = -ndistinctVal * recordCount;
             }
-            
 
-            int targetSize = (int) Math.min(ndistinctVal, totalRequired * 2.0);
+            long targetSize = (long) Math.min(ndistinctVal, totalRequired * 2.0);
             
             int currentSize = col.size();
-            int toAdd = targetSize - currentSize;
+            long toAdd = targetSize - currentSize;
             
             if (toAdd > 0) {
                 int avgTupleSize = recordSize.get(i);
@@ -214,7 +213,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 
                 while (added < toAdd && attempts < toAdd * 100) {
                     attempts++;
-                    String candidate = generateRandomString(avgTupleSize, type);
+                    Object candidate = generateRandomString(avgTupleSize, type);
                     if (!col.containsKey(candidate)) {
                         col.put(candidate, avgProb);
                         added++;
@@ -232,23 +231,23 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     }
     
     /**
-     * Генерирует случайную строку заданной длины из цифр и букв
+     * Генерирует случайное значение определенного типа, заданной длины с помощью Faker и Random.
      */
-    private String generateRandomString(int length, String type) {
+    private Object generateRandomString(int length, String type) {
 
         if (length <= 0) return "";
 //        System.err.println(type);
         switch (type) {
             case "smallint", "smallserial":
-                return String.valueOf(random.nextInt(65536) - 32768);
+                return faker.number().numberBetween(Short.MIN_VALUE, Short.MAX_VALUE);
             case "integer", "serial":
-                return String.valueOf(random.nextInt());
+                return faker.number().numberBetween(Integer.MIN_VALUE, Integer.MAX_VALUE);
             case "bigint", "bigserial":
-                return String.valueOf(random.nextLong());
+                return faker.number().randomNumber();
             case "real":
-                return String.valueOf(random.nextFloat());
+                return random.nextFloat();
             case "double precision":
-                return String.valueOf(random.nextDouble());
+                return random.nextDouble();
             case "money":
                 return faker.commerce().price(0, 1000000).replace(",", ".");
             case "bytea":
@@ -256,7 +255,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 random.nextBytes(bytes);
                 return "\\x" + java.util.HexFormat.of().formatHex(bytes);
             case "timestamp", "timestamp without time zone":
-                return faker.date().past(3650, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
+                return faker.date().past(3650, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime().toString();
             case "timestamp with time zone":
                 return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault())
                         .withZoneSameInstant(ZoneId.of(ZoneId.getAvailableZoneIds().stream()
@@ -303,10 +302,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
                 double randomDouble = faker.number().randomDouble(scale, minBound, maxBound);
 
-                BigDecimal randomNumeric = BigDecimal.valueOf(randomDouble)
+                return BigDecimal.valueOf(randomDouble)
                         .setScale(scale, RoundingMode.HALF_UP);
-
-                return randomNumeric.toString();
             }
         }
 
