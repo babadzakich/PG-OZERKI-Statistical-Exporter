@@ -450,7 +450,7 @@ export_query_plan(PG_FUNCTION_ARGS) {
                 
                 
                 appendStringInfoString(&explainQuery,
-                    "EXPLAIN (FORMAT YAML, VERBOSE) ");
+                    "EXPLAIN (FORMAT YAML, VERBOSE, ANALYZE) ");
                 appendStringInfo(&explainQuery, query);
                     
                 char* explainQueryCopy = explainQuery.data;
