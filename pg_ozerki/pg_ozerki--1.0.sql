@@ -43,7 +43,7 @@ RETURNS SETOF ozerki_statistic
 AS 'MODULE_PATHNAME', 'dump_statistic_by_query'
 LANGUAGE C STRICT;
 
-CREATE OR REPLACE FUNCTION export_query_plan(query text) 
+CREATE OR REPLACE FUNCTION export_query_plan(query text, use_analyze boolean) 
 RETURNS TEXT
 AS 'MODULE_PATHNAME', 'export_query_plan'
 LANGUAGE C STRICT;
@@ -110,6 +110,7 @@ column_constraints AS (
         a.attnum,
         BOOL_OR(c.contype = 'p') AS is_pk,
         BOOL_OR(c.contype = 'u') AS is_unique_constraint,
+        BOOL_OR(c.contype = 'c') AS is_check_constraint,
         -- Проверяем уникальные индексы
         BOOL_OR(EXISTS (
             SELECT 1 FROM pg_index i
@@ -171,6 +172,8 @@ column_stats AS (
          WHERE conrelid = c.oid AND contype = 'f' AND a.attnum = ANY(conkey)) AS is_foreign_key,
         (SELECT COUNT(*) FROM pg_constraint 
          WHERE conrelid = c.oid AND contype = 'u' AND a.attnum = ANY(conkey)) AS is_unique,
+        (SELECT COUNT(*) FROM pg_constraint 
+         WHERE conrelid = c.oid AND contype = 'c' AND a.attnum = ANY(conkey)) AS is_check,
         (SELECT COUNT(*) FROM pg_index 
          WHERE indrelid = c.oid AND indisunique = true AND indisprimary = false 
          AND a.attnum = ANY(indkey)) AS is_unique_index
@@ -198,7 +201,8 @@ SELECT
     TRIM(
         CASE WHEN cs.is_primary_key > 0 THEN 'PK ' ELSE '' END ||
         CASE WHEN cs.is_foreign_key > 0 THEN 'FK ' ELSE '' END ||
-        CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE' ELSE '' END
+        CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE ' ELSE '' END ||
+        CASE WHEN cs.is_check > 0 THEN 'CHECK' ELSE '' END
     ) AS modifiers,
     cs.max_length,
     rt.relation_type,

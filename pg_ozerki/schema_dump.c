@@ -222,6 +222,7 @@ dump_statistic_by_query(PG_FUNCTION_ARGS)
     "        a.attnum, "
     "        BOOL_OR(c.contype = 'p') AS is_pk, "
     "        BOOL_OR(c.contype = 'u') AS is_unique_constraint, "
+    "        BOOL_OR(c.contype = 'c') AS is_check_constraint, "
     "        BOOL_OR(EXISTS ("
     "            SELECT 1 FROM pg_index i "
     "            WHERE i.indrelid = a.attrelid "
@@ -280,6 +281,8 @@ dump_statistic_by_query(PG_FUNCTION_ARGS)
     "         WHERE conrelid = c.oid AND contype = 'f' AND a.attnum = ANY(conkey)) AS is_foreign_key,"
     "        (SELECT COUNT(*) FROM pg_constraint "
     "         WHERE conrelid = c.oid AND contype = 'u' AND a.attnum = ANY(conkey)) AS is_unique,"
+    "        (SELECT COUNT(*) FROM pg_constraint "
+    "         WHERE conrelid = c.oid AND contype = 'c' AND a.attnum = ANY(conkey)) AS is_check,"
     "        (SELECT COUNT(*) FROM pg_index "
     "         WHERE indrelid = c.oid AND indisunique = true AND indisprimary = false "
     "         AND a.attnum = ANY(indkey)) AS is_unique_index "
@@ -321,7 +324,8 @@ dump_statistic_by_query(PG_FUNCTION_ARGS)
         "    TRIM("
         "        CASE WHEN cs.is_primary_key > 0 THEN 'PK ' ELSE '' END ||"
         "        CASE WHEN cs.is_foreign_key > 0 THEN 'FK ' ELSE '' END ||"
-        "        CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE' ELSE '' END"
+        "        CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE ' ELSE '' END ||"
+        "        CASE WHEN cs.is_check > 0 THEN 'CHECK' ELSE '' END"
         "    ) AS modifiers, "
         "    cs.max_length, "
         "    rt.relation_type, "
@@ -435,22 +439,26 @@ Datum
 export_query_plan(PG_FUNCTION_ARGS) {
     int spi;
     
-    
+    bool analyze = false;
     char* query = NULL;
     char* plan;
     SPITupleTable saved;
     StringInfoData explainQuery;
     initStringInfo(&explainQuery);
-    if (PG_NARGS() > 0 && !PG_ARGISNULL(0)) {
-        
+    if (PG_NARGS() > 0 && !PG_ARGISNULL(0) && !PG_ARGISNULL(1)) {
+        analyze = PG_GETARG_BOOL(1);
         query = text_to_cstring(PG_GETARG_TEXT_PP(0));
         if (query && strlen(query) > 0) {
             if ((spi = SPI_connect()) == SPI_OK_CONNECT){
                 elog(LOG, "Starting plan export: %s", query);
                 
-                
+                if (analyze) {
                 appendStringInfoString(&explainQuery,
                     "EXPLAIN (FORMAT YAML, VERBOSE, ANALYZE) ");
+                } else {
+                    appendStringInfoString(&explainQuery,
+                    "EXPLAIN (FORMAT YAML, VERBOSE) ");
+                }
                 appendStringInfo(&explainQuery, query);
                     
                 char* explainQueryCopy = explainQuery.data;
