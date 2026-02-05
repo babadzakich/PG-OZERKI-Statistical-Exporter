@@ -1,13 +1,13 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.sql.Date;
 import java.sql.Timestamp;
 
-import com.github.javafaker.Faker;
+import net.datafaker.Faker;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
@@ -64,9 +64,10 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     }
 
     private void generateDateValues(List<Object> values) {
-        long start = Faker.instance().date().birthday().getTime();
+        Faker f = new Faker();
+        LocalDate start = f.timeAndDate().birthday();
         for (int i = 0; i < recordCount; i++) {
-            Date date = new Date(start + (long)i * 24 * 60 * 60 * 1000);
+            LocalDate date = start.plusDays(i);
             values.add(date.toString());
         }
     }

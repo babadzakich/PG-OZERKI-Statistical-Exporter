@@ -3,17 +3,29 @@ package ru.nsu.datagen.dataGenerator.model;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.sql.Time;
+import java.time.*;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
 public class TableMetadataMaker {
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .toFormatter();
+
+    private static final DateTimeFormatter TIMESTAMPTZ_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .appendPattern("X")
+            .toFormatter();
+
     //private Map<String, List<String[]>> columnDataGroupedByTablename;
    //private Map<String, List<String>> tableToColumnNames;
 
@@ -166,9 +178,10 @@ public class TableMetadataMaker {
                 case "double precision", "float8" -> Double.parseDouble(value.trim());
                 case "varchar", "text", "char", "interval", "tstzrange", "point", "jsonb", "json" -> value;
                 case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
-                case "date" -> java.sql.Date.valueOf(value.trim());
-                case "timestamp", "timestamp with time zone", "timestamptz" -> value.trim();
-                case "time without time zone", "time" -> java.sql.Time.valueOf(value.trim());
+                case "date" -> LocalDate.parse(value.trim());
+                case "timestamp" -> LocalDateTime.parse(value.trim(), TIMESTAMP_FORMATTER);
+                case "timestamp with time zone", "timestamptz" -> OffsetDateTime.parse(value.trim(), TIMESTAMPTZ_FORMATTER).toInstant();
+                case "time without time zone", "time" -> LocalTime.parse(value.trim());
                 default -> {
                     if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
                         yield Double.parseDouble(value.trim());

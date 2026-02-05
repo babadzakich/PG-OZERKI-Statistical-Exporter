@@ -5,6 +5,8 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
+import java.math.BigInteger;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -13,11 +15,15 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.postgresql.geometric.PGpoint;
-import com.github.javafaker.Faker;
+import net.datafaker.Faker;
 
 @Slf4j
 public class StatTypeBasedGenerator implements NormalValueGenerator {
+    private static final int BASE_INT = 65537; // 65536 (max char) + 1 for shift; terminator = 0
+    private static final BigInteger BASE = BigInteger.valueOf(BASE_INT);
+
     private final Random random = new Random();
+    private final SecureRandom secureRandom = new SecureRandom();
     private final Faker faker = new Faker();
 
     @Override
@@ -240,56 +246,111 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         return (Math.round(random.nextDouble() * 1000 * 100.0) / 100.0);
     }
 
+    /**
+     * Кодирует строку в BigInteger (лексикографический порядок сохраняется)
+     * digits: s[i] -> (s.charAt(i) & 0xFFFF) + 1, затем добавляем терминатор 0
+     */
+    private BigInteger encodeString(String s) {
+        BigInteger res = BigInteger.ZERO;
+        for (int i = 0; i < s.length(); i++) {
+            int d = (s.charAt(i) & 0xFFFF) + 1; // 1..65536
+            res = res.multiply(BASE).add(BigInteger.valueOf(d));
+        }
+        // добавляем терминатор
+        res = res.multiply(BASE).add(BigInteger.ZERO);
+        return res;
+    }
+
+    /**
+     * Декодирует BigInteger обратно в строку (предполагаем, что в числе есть терминатор)
+     */
+    private String decodeString(BigInteger encoded) {
+        if (encoded.equals(BigInteger.ZERO)) return ""; // пустая строка
+        BigInteger cur = encoded;
+        // пропускаем завершающий нулевой разряд (терминатор)
+        cur = cur.divide(BASE);
+        if (cur.equals(BigInteger.ZERO)) return "";
+        List<Character> charsReversed = new ArrayList<>();
+        while (!cur.equals(BigInteger.ZERO)) {
+            BigInteger[] qr = cur.divideAndRemainder(BASE);
+            int digit = qr[1].intValue(); // 1..65536
+            if (digit == 0) break; // safety
+            char ch = (char) (digit - 1);
+            charsReversed.add(ch);
+            cur = qr[0];
+        }
+        // собрать в нормальном порядке
+        StringBuilder sb = new StringBuilder(charsReversed.size());
+        for (int i = charsReversed.size() - 1; i >= 0; i--) {
+            sb.append(charsReversed.get(i));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Возвращает случайный BigInteger в диапазоне [0, n-1]
+     */
+    private BigInteger randomBigIntegerLessThan(BigInteger n) {
+        if (n.compareTo(BigInteger.ONE) <= 0) return BigInteger.ZERO;
+        BigInteger r;
+        int bits = n.bitLength();
+        do {
+            r = new BigInteger(bits, secureRandom);
+        } while (r.compareTo(n) >= 0);
+        return r;
+    }
+
+    /**
+     * Генерирует случайную строку строго между left и right используя лексикографическое кодирование
+     */
     private String generateString(ColumnMetadata column, String leftBound, String rightBound) {
         if (leftBound == null || rightBound == null) {
             return generateString(column);
         }
 
-        int maxLength = Math.max(leftBound.length(), rightBound.length());
-        if (column.getAvgTupleSize() > 0) {
-            maxLength = column.getAvgTupleSize();
+        // если левый > правого, поменяем
+        if (leftBound.compareTo(rightBound) >= 0) {
+            String tmp = leftBound;
+            leftBound = rightBound;
+            rightBound = tmp;
         }
 
-        StringBuilder result = new StringBuilder();
-        int minLen = Math.min(leftBound.length(), rightBound.length());
+        // если границы равны, нет строки между ними
+        if (leftBound.equals(rightBound)) {
+            return generateString(column);
+        }
 
-        for (int i = 0; i < maxLength; i++) {
-            char leftChar = i < leftBound.length() ? leftBound.charAt(i) : '\0';
-            char rightChar = i < rightBound.length() ? rightBound.charAt(i) : Character.MAX_VALUE;
+        BigInteger leftBI = encodeString(leftBound);
+        BigInteger rightBI = encodeString(rightBound);
 
-            if (i >= minLen) {
-                if (i < leftBound.length()) {
-                    char randomChar = (char) (leftChar + random.nextInt(Character.MAX_VALUE - leftChar + 1));
-                    result.append(randomChar);
-                }
-                else if (i < rightBound.length()) {
-                    char randomChar = (char) random.nextInt(rightChar + 1);
-                    result.append(randomChar);
-                } else {
-                    result.append((char) (32 + random.nextInt(95))); // Печатные ASCII символы
-                }
-            } else {
-                if (leftChar == rightChar) {
-                    result.append(leftChar);
-                } else if (leftChar < rightChar) {
-                    int range = rightChar - leftChar + 1;
-                    char randomChar = (char) (leftChar + random.nextInt(range));
-                    result.append(randomChar);
+        // проверка пустого промежутка
+        BigInteger gap = rightBI.subtract(leftBI).subtract(BigInteger.ONE); // strictly between
+        if (gap.compareTo(BigInteger.ZERO) <= 0) {
+            log.trace("No string strictly between '{}' and '{}', using fallback generation", leftBound, rightBound);
+            return generateString(column);
+        }
 
-                    if (randomChar > leftChar && randomChar < rightChar) {
-                        int remainingLength = random.nextInt(Math.max(1, maxLength - i));
-                        for (int j = 0; j < remainingLength; j++) {
-                            result.append((char) (32 + random.nextInt(95)));
-                        }
-                        break;
-                    }
-                } else {
-                    result.append((char) ((leftChar + rightChar) / 2));
-                }
+        BigInteger offset = randomBigIntegerLessThan(gap).add(BigInteger.ONE); // 1..gap
+        BigInteger chosen = leftBI.add(offset);
+        String result = decodeString(chosen);
+
+        // Если нужно соблюсти avgTupleSize, обрезаем или дополняем
+        int targetLength = column.getAvgTupleSize() > 0 ? column.getAvgTupleSize() : result.length();
+
+        if (result.length() > targetLength) {
+            result = result.substring(0, targetLength);
+        } else if (result.length() < targetLength) {
+            // Дополняем случайными символами
+            StringBuilder sb = new StringBuilder(result);
+            String chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ";
+            while (sb.length() < targetLength) {
+                sb.append(chars.charAt(random.nextInt(chars.length())));
             }
+            result = sb.toString();
         }
 
-        return result.toString();
+        log.trace("Generated string between '{}' and '{}': '{}'", leftBound, rightBound, result);
+        return result;
     }
 
     private String generateString(ColumnMetadata column) {
@@ -373,8 +434,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         Date rightDate = Date.from(rightDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
 
         // Используем faker для генерации случайной даты между границами
-        Date randomDate = faker.date().between(leftDate, rightDate);
-        return randomDate;
+        return faker.date().between(leftDate, rightDate);
     }
 
     /**
@@ -579,3 +639,4 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         return jsonTemplates.get(faker.number().numberBetween(0, jsonTemplates.size()));
     }
 }
+

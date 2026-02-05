@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.github.javafaker.Faker;
+import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
@@ -52,7 +52,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     @Override
     public void generate(Map<String, List<Object>> columnData) {
-        log.info("Запуск Markov генератора для {} уникальных записей и {} колонок", recordCount, ncols);
+        log.info("Запуск Markov генератора для {} уникальных записей и колонок {}", recordCount, names);
         List<List<Object>> uniqueValues = generateUnique(recordCount, 200);
         
         for (int colIdx = 0; colIdx < names.size(); colIdx++) {
@@ -255,14 +255,14 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 random.nextBytes(bytes);
                 return "\\x" + java.util.HexFormat.of().formatHex(bytes);
             case "timestamp", "timestamp without time zone":
-                return faker.date().past(3650, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime().toString();
+                return faker.timeAndDate().past(3650, TimeUnit.DAYS).atZone(ZoneId.systemDefault()).toLocalDateTime().toString();
             case "timestamp with time zone":
-                return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault())
+                return faker.timeAndDate().past(365, TimeUnit.DAYS).atZone(ZoneId.systemDefault())
                         .withZoneSameInstant(ZoneId.of(ZoneId.getAvailableZoneIds().stream()
                         .skip(random.nextInt(ZoneId.getAvailableZoneIds().size()))
                         .findFirst().orElse("UTC"))).toString();
             case "date":
-                return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
+                return faker.timeAndDate().past(365, TimeUnit.DAYS).atZone(ZoneId.systemDefault()).toLocalDate().toString();
             case "time", "time without time zone", "interval":
                 return LocalTime.of(
                         random.nextInt(24),
