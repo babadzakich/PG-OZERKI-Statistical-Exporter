@@ -1,14 +1,10 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.io.FileWriter;
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,12 +15,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.github.javafaker.Faker;
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
-
+@Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
-    private final List<Map<String, Double>> columns;
+    private final List<Map<Object, Double>> columns;
     private final List<String> names;
     private final int ncols;
     private final int recordCount;
@@ -42,7 +39,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             this.types = new ArrayList<>();
             
             for (ColumnMetadata col : columnsMetadata) {
-                this.columns.add(col.getMvc());
+                this.columns.add(col.getMcv());
                 this.names.add(col.getName());
                 this.recordSize.add(col.getAvgTupleSize());
                 this.ndistincts.add(col.getNdistinct());
@@ -55,11 +52,12 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     @Override
     public void generate(Map<String, List<Object>> columnData) {
-        List<List<String>> uniqueValues = generateUnique(recordCount, 200);
+        log.info("Запуск Markov генератора для {} уникальных записей и {} колонок", recordCount, ncols);
+        List<List<Object>> uniqueValues = generateUnique(recordCount, 200);
         
         for (int colIdx = 0; colIdx < names.size(); colIdx++) {
             List<Object> columnValues = new ArrayList<>();
-            for (List<String> uniqueValue : uniqueValues) {
+            for (List<Object> uniqueValue : uniqueValues) {
                 columnValues.add(uniqueValue.get(colIdx));
             }
             columnData.put(names.get(colIdx), columnValues);
@@ -67,15 +65,16 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     }
 
     @Override
-    public void generate() {
-        // Implementation here
+    public List<Object> generate() {
+        throw new UnsupportedOperationException("Markov generator can only be used for Multiple column unique, " +
+                "use generate(Map<String, List<Object>> columnData) instead.");
     }
     
-    private String weightedChoice(Map<String, Double> dist) {
+    private Object weightedChoice(Map<Object, Double> dist) {
         double r = random.nextDouble();
         double cum = 0.0;
         
-        for (Map.Entry<String, Double> entry : dist.entrySet()) {
+        for (Map.Entry<Object, Double> entry : dist.entrySet()) {
             cum += entry.getValue();
             if (r <= cum) {
                 return entry.getKey();
@@ -84,9 +83,9 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         return dist.keySet().iterator().next();
     }
     
-    public List<List<String>> generateUnique(int count, int maxAttemptsPerItem) {
-        Set<List<String>> uniques = new HashSet<>();
-        List<List<String>> results = new ArrayList<>();
+    public List<List<Object>> generateUnique(int count, int maxAttemptsPerItem) {
+        Set<List<Object>> uniques = new HashSet<>();
+        List<List<Object>> results = new ArrayList<>();
         int attempts = 0;
         int maxAttempts = count * maxAttemptsPerItem;
         
@@ -95,7 +94,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             while (results.size() < count && attempts < maxAttempts) {
                 attempts++;
 
-                List<String> seq = sampleOneWithUpdate(columns);
+                List<Object> seq = sampleOneWithUpdate(columns);
                 if (uniques.add(seq)) {
                     results.add(seq);
                     decreaseProbabilities(columns, seq);
@@ -105,15 +104,16 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         
         // Фаза 2: Если не хватило - расширяем пространство синтетическими данными
         if (results.size() < count) {
-            System.err.println("Недостаточно уникальных комбинаций из реальных данных. "
-                    + "Сгенерировано: " + results.size() + "/" + count
-                    + ". Расширяем пространство синтетическими значениями...");
+            log.debug("Недостаточно уникальных комбинаций из реальных данных. Сгенерировано: {}/{}. " +
+                            "Расширяем пространство синтетическими значениями...",
+                    results.size(), count);
+
             
             expandColumnsForRequiredSpace(columns, count);
             
             // Сбрасываем вероятности до равномерных после расширения
             // чтобы синтетические значения имели шанс быть выбранными
-            for (Map<String, Double> col : columns) {
+            for (Map<Object, Double> col : columns) {
                 double uniformProb = 1.0 / col.size();
                 col.replaceAll((k, v) -> uniformProb);
             }
@@ -123,7 +123,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             while (results.size() < count && attempts < maxAttempts) {
                 attempts++;
                 
-                List<String> seq = sampleOneWithUpdate(columns);
+                List<Object> seq = sampleOneWithUpdate(columns);
                 if (uniques.add(seq)) {
                     results.add(seq);
                     // Не уменьшаем вероятности в фазе 2 для равномерного использования пространства
@@ -138,25 +138,18 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 );
             }
         }
-        System.err.println(uniques.size());
-        System.err.println("Успешно сгенерировано " + results.size() + " уникальных записей");
-        try (FileWriter fw = new FileWriter("markov.txt")) {
-            for (List<String> seq : results) {
-                fw.write(String.join(",", seq) + "\n");
-            }
-        } catch (IOException e) {
-            System.err.println("Error logging: " + e.getMessage());
-        }
+
+        log.debug("Всего попыток: {}, Уникальных записей: {}", attempts, results.size());
         return results;
     }
     
     /**
      * Генерирует одну последовательность из модифицируемых распределений
      */
-    private List<String> sampleOneWithUpdate(List<Map<String, Double>> workingCols) {
-        List<String> seq = new ArrayList<>();
+    private List<Object> sampleOneWithUpdate(List<Map<Object, Double>> workingCols) {
+        List<Object> seq = new ArrayList<>();
         
-        String token = weightedChoice(workingCols.get(0));
+        Object token = weightedChoice(workingCols.getFirst());
         seq.add(token);
         
         for (int i = 1; i < ncols; i++) {
@@ -170,10 +163,10 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     /**
      * Уменьшает вероятности использованных значений
      */
-    private void decreaseProbabilities(List<Map<String, Double>> workingCols, List<String> usedSeq) {
+    private void decreaseProbabilities(List<Map<Object, Double>> workingCols, List<Object> usedSeq) {
         for (int i = 0; i < usedSeq.size(); i++) {
-            String usedValue = usedSeq.get(i);
-            Map<String, Double> col = workingCols.get(i);
+            Object usedValue = usedSeq.get(i);
+            Map<Object, Double> col = workingCols.get(i);
             
             Double currentProb = col.get(usedValue);
             if (currentProb != null && currentProb > 0) {
@@ -193,21 +186,20 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     /**
      * Расширяет рабочие колонки синтетическими значениями, используя ndistinct как ориентир.
      */
-    private void expandColumnsForRequiredSpace(List<Map<String, Double>> columns, int totalRequired) {
+    private void expandColumnsForRequiredSpace(List<Map<Object, Double>> columns, int totalRequired) {
         for (int i = 0; i < columns.size(); i++) {
-            Map<String, Double> col = columns.get(i);
+            Map<Object, Double> col = columns.get(i);
             String type = types.get(i);
             double ndistinctVal = ndistincts.get(i);
             
             if (ndistinctVal < 0) {
                 ndistinctVal = -ndistinctVal * recordCount;
             }
-            
 
-            int targetSize = (int) Math.min(ndistinctVal, totalRequired * 2.0);
+            long targetSize = (long) Math.min(ndistinctVal, totalRequired * 2.0);
             
             int currentSize = col.size();
-            int toAdd = targetSize - currentSize;
+            long toAdd = targetSize - currentSize;
             
             if (toAdd > 0) {
                 int avgTupleSize = recordSize.get(i);
@@ -221,7 +213,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 
                 while (added < toAdd && attempts < toAdd * 100) {
                     attempts++;
-                    String candidate = generateRandomString(avgTupleSize, type);
+                    Object candidate = generateRandomString(avgTupleSize, type);
                     if (!col.containsKey(candidate)) {
                         col.put(candidate, avgProb);
                         added++;
@@ -233,30 +225,29 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 if (sum > 0) {
                     col.replaceAll((k, v) -> col.get(k) / sum);
                 }
-                
-                System.err.println("Добавлено " + added + " синтетических значений в колонку " + names.get(i));
+                log.debug("Добавлено {} синтетических значений в колонку {}", added, names.get(i));
             }
         }
     }
     
     /**
-     * Генерирует случайную строку заданной длины из цифр и букв
+     * Генерирует случайное значение определенного типа, заданной длины с помощью Faker и Random.
      */
-    private String generateRandomString(int length, String type) {
+    private Object generateRandomString(int length, String type) {
 
         if (length <= 0) return "";
 //        System.err.println(type);
         switch (type) {
             case "smallint", "smallserial":
-                return String.valueOf(random.nextInt(65536) - 32768);
+                return faker.number().numberBetween(Short.MIN_VALUE, Short.MAX_VALUE);
             case "integer", "serial":
-                return String.valueOf(random.nextInt());
+                return faker.number().numberBetween(Integer.MIN_VALUE, Integer.MAX_VALUE);
             case "bigint", "bigserial":
-                return String.valueOf(random.nextLong());
+                return faker.number().randomNumber();
             case "real":
-                return String.valueOf(random.nextFloat());
+                return random.nextFloat();
             case "double precision":
-                return String.valueOf(random.nextDouble());
+                return random.nextDouble();
             case "money":
                 return faker.commerce().price(0, 1000000).replace(",", ".");
             case "bytea":
@@ -264,7 +255,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 random.nextBytes(bytes);
                 return "\\x" + java.util.HexFormat.of().formatHex(bytes);
             case "timestamp", "timestamp without time zone":
-                return faker.date().past(3650, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString();
+                return faker.date().past(3650, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime().toString();
             case "timestamp with time zone":
                 return faker.date().past(365, TimeUnit.DAYS).toInstant().atZone(ZoneId.systemDefault())
                         .withZoneSameInstant(ZoneId.of(ZoneId.getAvailableZoneIds().stream()
@@ -311,10 +302,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
                 double randomDouble = faker.number().randomDouble(scale, minBound, maxBound);
 
-                BigDecimal randomNumeric = BigDecimal.valueOf(randomDouble)
+                return BigDecimal.valueOf(randomDouble)
                         .setScale(scale, RoundingMode.HALF_UP);
-
-                return randomNumeric.toString();
             }
         }
 

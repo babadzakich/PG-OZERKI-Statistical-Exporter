@@ -1,5 +1,6 @@
 package ru.nsu.datagen.dataGenerator;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
@@ -8,10 +9,11 @@ import ru.nsu.datagen.dataGenerator.store.TableStore;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.FutureTask;
 
 /*
 TODO:
@@ -22,13 +24,14 @@ TODO:
   шаги пайплайна:
   1. запустить скрипт
  */
+@Slf4j
 public class DatabaseDataGenerator {
     public static void generateData(List<String[]> rawData, Connection conn) throws SQLException {
         // Get table metadata list
         List<TableMetadata> tableMetadataList = TableMetadataMaker.processRawTableMetadata(rawData);
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph();
-        tableMetadataList.forEach(table -> dependencyGraph.addTable(table));
+        tableMetadataList.forEach(dependencyGraph::addTable);
         // Get generation order
         dependencyGraph.buildDependencies();
         List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
@@ -37,13 +40,26 @@ public class DatabaseDataGenerator {
         // generate
         Map<String, Map<String, List<Object>>> generatedData = new HashMap<>();
         DataGenerator dataGenerator = new DataGenerator();
+        CompletableFuture<Void> lastFuture = CompletableFuture.completedFuture(null);
         for (TableMetadata table : generationOrder) {
-            System.out.println("Generate table: " + table.getTableName());
+            log.info("Generate table: {}", table.getTableName());
             Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
-            // TODO: надо распараллелить
-            tableStore.storeTable(table, generatedTableData);
+            lastFuture = lastFuture.thenRunAsync(() -> {
+                log.info("Async store table: {}", table.getTableName());
+                try {
+                    tableStore.storeTable(table, generatedTableData);
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            }).exceptionally(ex -> {
+                log.error("Exception during storing table: {}", table.getTableName(), ex);
+                return null;
+            });
+//            tableStore.storeTable(table, generatedTableData);
             generatedData.put(table.getTableName(), generatedTableData);
         }
+        lastFuture.join();
+        log.info("Data generation and storage completed.");
         debugPrintData(generatedData);
 
     }
@@ -60,10 +76,10 @@ public class DatabaseDataGenerator {
             for (int i = 0; i < size; i++) {
                 StringBuilder data = new StringBuilder("[");
                 for (String columnName : generatedData.get(tableName).keySet()) {
-                    data.append(generatedData.get(tableName).get(columnName).get(i) + ", ");
+                    data.append(generatedData.get(tableName).get(columnName).get(i)).append(", ");
                 }
                 data.append("]");
-                System.out.println("Table: " + tableName + " Row " + i + ": " + data.toString());
+                log.trace("Table: {} Row {}: {}", tableName, i, data);
             }
         }
     }

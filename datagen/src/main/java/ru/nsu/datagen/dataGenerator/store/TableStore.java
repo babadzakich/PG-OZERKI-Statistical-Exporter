@@ -1,11 +1,9 @@
 package ru.nsu.datagen.dataGenerator.store;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.*;
 
@@ -13,6 +11,7 @@ import org.postgresql.util.PGobject;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public class TableStore {
     private final Connection conn;
 
@@ -24,17 +23,7 @@ public class TableStore {
         String queryString = getQueryString(tableMetadata);
         conn.createStatement().execute("SET search_path TO public, bookings");
         PreparedStatement pstmnt = conn.prepareStatement(queryString);
-        // debug PK airplane code
-        File log = new File("./log_govna.txt");
-        FileWriter fw = null;
-        try {
-            fw = new FileWriter(log);
-            log.createNewFile();
 
-        } catch (Exception e) {
-            System.out.println("Shti");
-        }
-        // debug PK airplane code end
         // Каждая строка
         for (int i = 0; i < tableMetadata.getRecordCount(); i++) {
             // Каждая колонка
@@ -43,20 +32,9 @@ public class TableStore {
                 Object value = generatedTableData.get(columnName).get(i);
                 ColumnMetadata columnMetadata = tableMetadata.getColumns().get(columnName);
                 String type = columnMetadata.getDataType();
-                // debug PK airplane code
-
-                if (columnMetadata.getName().equals("airplane_code")) {
-                    try {
-                        if (columnMetadata.isPrimaryKey()) { fw.write("PK : " + value.toString() + '\n'); }
-                        else {fw.write("FK : " +value.toString() + '\n');}
-                    } catch (Exception e) {
-                        System.out.println(e.getMessage());
-                    }
-                }
-                // debug PK airplane code end
 
                 // Обработка массивов
-                if (columnMetadata.getIsArray()) {
+                if (columnMetadata.isArray()) {
                     //System.out.println(type);
                     if (type.contains("[]")) {
                         type = type.substring(0, type.indexOf("[]"));
@@ -75,14 +53,19 @@ public class TableStore {
                     String timeStr = (String) value;
                     // УПРОЩАЕМ: всегда добавляем дату 2000-01-01 к любому времени
                     // Это абсолютно гарантированно сработает
-                    timeStr = "2000-01-01 " + timeStr;
+//                    timeStr = "2000-01-01 " + timeStr;
                     PGobject pgObject = new PGobject();
                     pgObject.setType("timestamp");
                     pgObject.setValue(timeStr);
                     pstmnt.setObject(++j, pgObject);
-                } else if ((type.equals("timestamp with time zone") || type.equals("timestamptz")) && value instanceof String) {
+                } else if ((type.equals("timestamp with time zone") || type.equals("timestamptz")) && value instanceof String timeStr) {
                     // Обработка timestamp with time zone
-                    String timeStr = (String) value;
+
+                    // Удаляем [Zone] из формата ZonedDateTime (например, [Etc/GMT-9])
+                    if (timeStr.contains("[")) {
+                        timeStr = timeStr.substring(0, timeStr.indexOf("["));
+                    }
+
                     // Для timestamptz тоже может быть только время
                     if (!timeStr.contains("T") && !timeStr.contains("-")) {
                         // Если нет T и нет дефиса, значит только время
@@ -103,14 +86,28 @@ public class TableStore {
                     pgObject.setType("tstzrange");
                     pgObject.setValue((String) value);
                     pstmnt.setObject(++j, pgObject);
+                } else if (type.contains("date")) {
+                    PGobject pgObject = new PGobject();
+                    pgObject.setType("date");
+                    pgObject.setValue(value.toString());
+                    pstmnt.setObject(++j, pgObject);
                 } else if (type.contains("num")) {
                     pstmnt.setObject(++j, value);
+                } else if (type.contains("money")) {
+                    PGobject pgObject = new PGobject();
+                    pgObject.setType("money");
+                    pgObject.setValue(value.toString());
+                    pstmnt.setObject(++j, pgObject);
                 } else if (value instanceof String && !type.contains("char")) {
                     PGobject pgObject = new PGobject();
                     pgObject.setType(type);
                     pgObject.setValue((String) value);
                     //pstmnt.setObject(++j, value);
                     switch(type.toLowerCase()) {
+                        case "smallint":
+                        case "int2":
+                            pstmnt.setShort(++j, Short.parseShort((String) value));
+                            break;
                         case "integer":
                         case "int4":
                             pstmnt.setInt(++j, Integer.parseInt((String) value));
@@ -133,11 +130,15 @@ public class TableStore {
                             break;
                         case "float8":
                         case "double":
+                        case "double precision":
                             pstmnt.setDouble(++j, Double.parseDouble((String)value));
                             break;
                         case "float4":
                         case "real":
                             pstmnt.setFloat(++j, Float.parseFloat((String)value));
+                            break;
+                        case "bytea":
+                            pstmnt.setBytes(++j, ((String) value).getBytes());
                             break;
                         default:
                             throw new IllegalArgumentException("Unsupported type: " + type);
@@ -159,19 +160,20 @@ public class TableStore {
         int i = 1;
         for (String columnName : tableMetadata.getColumns().keySet()) {
             stringBuilder.append(columnName);
-            if (i++ < tableMetadata.getColumns().keySet().size()) {
+            if (i++ < tableMetadata.getColumns().size()) {
                 stringBuilder.append(", ");
             }
         }
         stringBuilder.append(") VALUES (");
-        for (i = 1; i <= tableMetadata.getColumns().keySet().size(); i++) {
+        for (i = 1; i <= tableMetadata.getColumns().size(); i++) {
             stringBuilder.append("?");
-            if (i < tableMetadata.getColumns().keySet().size()) {
+            if (i < tableMetadata.getColumns().size()) {
                 stringBuilder.append(", ");
             }
         }
         stringBuilder.append(")");
-        System.err.println(stringBuilder);
+        log.info("Insert data in table {}", tableMetadata.getTableName());
+        log.debug("Insert query: {}", stringBuilder);
         return stringBuilder.toString();
     }
 }

@@ -1,5 +1,6 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
 import java.util.ArrayList;
@@ -10,8 +11,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
+@Slf4j
 public class TableMetadataMaker {
     //private Map<String, List<String[]>> columnDataGroupedByTablename;
    //private Map<String, List<String>> tableToColumnNames;
@@ -54,9 +55,11 @@ public class TableMetadataMaker {
                 .avgTupleSize((line[13].isEmpty() || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
                 
                 .foreignKeyMetadata(fkMetadata)
-                .mvc(processMCV(line[11], line[12], recordCountValue, line[3]))
+                .mcv(processMCV(line[11], line[12], line[3]))
                 .ndistinct(Double.parseDouble(line[14]))
+                .histogramm(parsePgArrayString(line[15], line[3]))
                 .build();
+            log.trace("Processed column metadata: {}", columnMetadata);
             if (!columnDataGroupedByTablename.containsKey(line[1])) {
                 columnDataGroupedByTablename.put(line[1], new ArrayList<>());
             }
@@ -73,7 +76,7 @@ public class TableMetadataMaker {
                     new TableMetadata(
                             tableName,
                             columnMetadataMap,
-                            columnDataGroupedByTablename.get(tableName).get(0).getRecordCount()
+                            columnDataGroupedByTablename.get(tableName).getFirst().getRecordCount()
                     )
             );
         }
@@ -81,11 +84,11 @@ public class TableMetadataMaker {
         return tableMetadataList;
     }
 
-    private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount, String dataType) {
-        List<String> processedMCV = parsePgArrayString(rawMCVArray, dataType);
+    private static Map<Object, Double> processMCV(String rawMCVArray, String rawMCFArray, String dataType) {
+        List<Object> processedMCV = parsePgArrayString(rawMCVArray, dataType);
         List<Double> processedMCF = parseMCFArray(rawMCFArray);
 
-        Map<String, Double> resultDistribution = new HashMap<>();
+        Map<Object, Double> resultDistribution = new HashMap<>();
 
         for (int i = 0; i < processedMCV.size(); i++) {
             resultDistribution.put(processedMCV.get(i), processedMCF.get(i));
@@ -114,9 +117,9 @@ public class TableMetadataMaker {
     }
 
     /**
-     * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список строк Java.
+     * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список объектов Java.
      */
-    public static List<String> parsePgArrayString(String arrayString, String datatype) {
+    public static List<Object> parsePgArrayString(String arrayString, String datatype) {
         if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
             return List.of();
         }
@@ -125,21 +128,58 @@ public class TableMetadataMaker {
         if (cleanedString.isEmpty()) {
             return List.of();
         }
-        if (datatype.equals("integer[]")) {
-
-        }
-        List<String> result = new ArrayList<>();
+        
+        List<String> stringValues = new ArrayList<>();
         if (cleanedString.startsWith("\"")) {
             Pattern pattern = Pattern.compile("\"(.*?)\"");
             Matcher matcher = pattern.matcher(cleanedString);
 
             while (matcher.find()) {
-                result.add(matcher.group(1));
+                stringValues.add(matcher.group(1));
             }
         } else {
-            result = getStrings(cleanedString);
+            stringValues = getStrings(cleanedString);
         }
-        return result;
+        
+        // Парсим строковые значения в соответствующий тип данных
+        return stringValues.stream()
+                .map(str -> parseValueByType(str, datatype))
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Парсит строковое значение в соответствующий тип данных
+     */
+    private static Object parseValueByType(String value, String datatype) {
+        if (value == null || value.isEmpty() || value.equals("NULL")) {
+            return null;
+        }
+        
+        String lowerDatatype = datatype.toLowerCase();
+        
+        try {
+            return switch (lowerDatatype) {
+                case "smallint", "int2" -> Short.parseShort(value.trim());
+                case "integer", "int4", "int" -> Integer.parseInt(value.trim());
+                case "bigint", "int8" -> Long.parseLong(value.trim());
+                case "real", "float4" -> Float.parseFloat(value.trim());
+                case "double precision", "float8" -> Double.parseDouble(value.trim());
+                case "varchar", "text", "char", "interval", "tstzrange", "point", "jsonb", "json" -> value;
+                case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
+                case "date" -> java.sql.Date.valueOf(value.trim());
+                case "timestamp", "timestamp with time zone", "timestamptz" -> value.trim();
+                case "time without time zone", "time" -> java.sql.Time.valueOf(value.trim());
+                default -> {
+                    if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
+                        yield Double.parseDouble(value.trim());
+                    }
+                    yield value;
+                }
+            };
+        } catch (Exception e) {
+            log.warn("Failed to parse value '{}' as type '{}', returning as String. Error: {}", value, datatype, e.getMessage());
+            return value;
+        }
     }
 
     private static List<String> getStrings(String cleanedString) {
@@ -149,17 +189,14 @@ public class TableMetadataMaker {
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i];
 
-            // Удаляем ведущую кавычку у первого элемента
             if (i == 0 && part.startsWith("\"")) {
                 part = part.substring(1);
             }
 
-            // Удаляем завершающую кавычку у последнего элемента
             if (i == parts.length - 1 && part.endsWith("\"")) {
                 part = part.substring(0, part.length() - 1);
             }
 
-            // Обрабатываем экранирование двойных кавычек
             part = part.replace("\"\"", "\"");
 
             result.add(part);

@@ -1,12 +1,13 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.sql.Date;
 import java.sql.Timestamp;
 
-import org.checkerframework.checker.units.qual.C;
-
+import com.github.javafaker.Faker;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
@@ -20,8 +21,11 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     }
 
 	@Override
-	public void generate() {
-		throw new UnsupportedOperationException("Unimplemented method 'generate'");
+	public List<Object> generate() {
+		Map<String, List<Object>> columnData = new HashMap<>();
+        columnData.put(column.getName(), new ArrayList<>());
+        generate(columnData);
+        return columnData.get(column.getName());
 	}
 
 	@Override
@@ -54,14 +58,16 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     private void generateTimestampValues(List<Object> values) {
         long start = Timestamp.valueOf("2000-01-01 00:00:00").getTime();
         for (int i = 0; i < recordCount; i++) {
-            values.add(new Timestamp(start + (long)i * 1000));
+            Timestamp ts = new Timestamp(start + (long)i * 1000);
+            values.add(ts.toString());
         }
     }
 
     private void generateDateValues(List<Object> values) {
-        long start = Date.valueOf("2000-01-01").getTime();
+        long start = Faker.instance().date().birthday().getTime();
         for (int i = 0; i < recordCount; i++) {
-            values.add(new Date(start + (long)i * 24 * 60 * 60 * 1000));
+            Date date = new Date(start + (long)i * 24 * 60 * 60 * 1000);
+            values.add(date.toString());
         }
     }
 
