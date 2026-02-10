@@ -1,6 +1,7 @@
-package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
+package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 
 import java.time.LocalTime;
 import java.time.OffsetTime;
@@ -49,8 +50,8 @@ public class TimeTZValueGenerator implements ValueGenerator {
         }
 
         Set<OffsetTime> uniqueValues = new HashSet<>();
-        int maxAttempts = count * 100;
-        int attempts = 0;
+        long maxAttempts = count * 100L;
+        long attempts = 0;
 
         while (uniqueValues.size() < count && attempts < maxAttempts) {
             LocalTime generatedTime = (LocalTime) generator.generateValue(left.toLocalTime(), right.toLocalTime());

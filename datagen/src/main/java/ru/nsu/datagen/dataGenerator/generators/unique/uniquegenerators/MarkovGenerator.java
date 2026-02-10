@@ -1,52 +1,39 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
+    private final List<ColumnMetadata> columnsMetadata;
     private final List<Map<Object, Double>> columns;
     private final List<String> names;
-    private final int ncols;
     private final int recordCount;
-    private final List<Integer> recordSize;
     private final List<Double> ndistincts;
-    private final List<String> types;
     private final Random random = new Random(System.currentTimeMillis());
-    private final Faker faker = new Faker(random);
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
+            this.columnsMetadata = columnsMetadata;
             this.columns = new ArrayList<>();
-            this.recordSize = new ArrayList<>();
             this.names = new ArrayList<>();
             this.ndistincts = new ArrayList<>();
-            this.types = new ArrayList<>();
-            
+
             for (ColumnMetadata col : columnsMetadata) {
                 this.columns.add(col.getMcv());
                 this.names.add(col.getName());
-                this.recordSize.add(col.getAvgTupleSize());
                 this.ndistincts.add(col.getNdistinct());
-                this.types.add(col.getDataType());
             }
             
-            this.ncols = this.columns.size();
             this.recordCount = recordCount;
         }
 
@@ -152,7 +139,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         Object token = weightedChoice(workingCols.getFirst());
         seq.add(token);
         
-        for (int i = 1; i < ncols; i++) {
+        for (int i = 1; i < columns.size(); i++) {
             token = weightedChoice(workingCols.get(i));
             seq.add(token);
         }
@@ -189,8 +176,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private void expandColumnsForRequiredSpace(List<Map<Object, Double>> columns, int totalRequired) {
         for (int i = 0; i < columns.size(); i++) {
             Map<Object, Double> col = columns.get(i);
-            String type = types.get(i);
             double ndistinctVal = ndistincts.get(i);
+            ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(columnsMetadata.get(i));
             
             if (ndistinctVal < 0) {
                 ndistinctVal = -ndistinctVal * recordCount;
@@ -202,7 +189,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             long toAdd = targetSize - currentSize;
             
             if (toAdd > 0) {
-                int avgTupleSize = recordSize.get(i);
                 double avgProb = col.values().stream()
                         .mapToDouble(Double::doubleValue)
                         .average()
@@ -213,7 +199,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 
                 while (added < toAdd && attempts < toAdd * 100) {
                     attempts++;
-                    Object candidate = generateRandomString(avgTupleSize, type);
+                    Object candidate = generator.generateValue();
                     if (!col.containsKey(candidate)) {
                         col.put(candidate, avgProb);
                         added++;
@@ -228,94 +214,5 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 log.debug("Добавлено {} синтетических значений в колонку {}", added, names.get(i));
             }
         }
-    }
-    
-    /**
-     * Генерирует случайное значение определенного типа, заданной длины с помощью Faker и Random.
-     */
-    private Object generateRandomString(int length, String type) {
-
-        if (length <= 0) return "";
-//        System.err.println(type);
-        switch (type) {
-            case "smallint", "smallserial":
-                return faker.number().numberBetween(Short.MIN_VALUE, Short.MAX_VALUE);
-            case "integer", "serial":
-                return faker.number().numberBetween(Integer.MIN_VALUE, Integer.MAX_VALUE);
-            case "bigint", "bigserial":
-                return faker.number().randomNumber();
-            case "real":
-                return random.nextFloat();
-            case "double precision":
-                return random.nextDouble();
-            case "money":
-                return faker.commerce().price(0, 1000000).replace(",", ".");
-            case "bytea":
-                byte[] bytes = new byte[length];
-                random.nextBytes(bytes);
-                return "\\x" + java.util.HexFormat.of().formatHex(bytes);
-            case "timestamp", "timestamp without time zone":
-                return faker.timeAndDate().past(3650, TimeUnit.DAYS).atZone(ZoneId.systemDefault()).toLocalDateTime().toString();
-            case "timestamp with time zone":
-                return faker.timeAndDate().past(365, TimeUnit.DAYS).atZone(ZoneId.systemDefault())
-                        .withZoneSameInstant(ZoneId.of(ZoneId.getAvailableZoneIds().stream()
-                        .skip(random.nextInt(ZoneId.getAvailableZoneIds().size()))
-                        .findFirst().orElse("UTC"))).toString();
-            case "date":
-                return faker.timeAndDate().past(365, TimeUnit.DAYS).atZone(ZoneId.systemDefault()).toLocalDate().toString();
-            case "time", "time without time zone", "interval":
-                return LocalTime.of(
-                        random.nextInt(24),
-                        random.nextInt(60),
-                        random.nextInt(60)
-                ).toString();
-
-            case "boolean":
-                return random.nextBoolean() ? "t" : "f";
-        }
-
-        StringBuilder sb = new StringBuilder(length);
-        if (type.toLowerCase().startsWith("numeric") || type.toLowerCase().startsWith("decimal")) {
-            Matcher matcher = Pattern.compile("(\\d+),\\s*(\\d+)")
-                    .matcher(type);
-            int precision = -1;
-            int scale = -1;
-
-            if (matcher.find()) {
-                precision = Integer.parseInt(matcher.group(1));
-                scale = Integer.parseInt(matcher.group(2));
-            } else {
-                matcher = Pattern.compile("(\\d+)")
-                        .matcher(type);
-                if (matcher.find()) {
-                    precision = Integer.parseInt(matcher.group(1));
-                    scale = 0;
-                }
-            }
-
-            if (precision > 0 && scale >= 0) {
-                int integerDigits = precision - scale;
-                if (integerDigits < 0) integerDigits = 0;
-
-                long maxBound = (long) Math.pow(10, integerDigits);
-                long minBound = -maxBound;
-
-                double randomDouble = faker.number().randomDouble(scale, minBound, maxBound);
-
-                return BigDecimal.valueOf(randomDouble)
-                        .setScale(scale, RoundingMode.HALF_UP);
-            }
-        }
-
-        if (type.toLowerCase().contains("char") || type.toLowerCase().contains("text")) {
-            String fakeText = faker.lorem().paragraph(1);
-            return fakeText.substring(0, Math.min(length, fakeText.length()));
-        }
-
-        String chars = "01234563456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        for (int i = 0; i < length; i++) {
-            sb.append(chars.charAt(random.nextInt(chars.length())));
-        }
-        return sb.toString();
     }
 }

@@ -1,7 +1,8 @@
-package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
+package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -60,8 +61,8 @@ public class TimestampValueGenerator implements ValueGenerator {
         }
 
         Set<LocalDateTime> uniqueValues = new HashSet<>();
-        int maxAttempts = count * 100;
-        int attempts = 0;
+        long maxAttempts = count * 100L;
+        long attempts = 0;
 
         while (uniqueValues.size() < count && attempts < maxAttempts) {
             uniqueValues.add(faker.timeAndDate().between(

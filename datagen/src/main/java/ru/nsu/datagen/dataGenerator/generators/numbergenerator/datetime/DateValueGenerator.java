@@ -1,7 +1,8 @@
-package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
+package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 
 import java.time.*;
 import java.util.*;
@@ -48,8 +49,8 @@ public class DateValueGenerator implements ValueGenerator {
     @Override
     public List<Object> generateValues(int count) {
         Set<String> uniqueValues = new HashSet<>();
-        int maxAttempts = count * 100;
-        int attempts = 0;
+        long maxAttempts = count * 100L;
+        long attempts = 0;
 
         while (uniqueValues.size() < count && attempts < maxAttempts) {
             uniqueValues.add(faker.timeAndDate().birthday().toString());
@@ -88,7 +89,7 @@ public class DateValueGenerator implements ValueGenerator {
         return new ArrayList<>(uniqueValues);
     }
 
-    private void checkUniqueGeneration(int count, int generated, int maxAttempts) {
+    private void checkUniqueGeneration(int count, int generated, long maxAttempts) {
         if (generated < count) {
             String msg = String.format("Could not generate %d unique dates after %d attempts. Generated only %d unique values.",
                     count, maxAttempts, generated);

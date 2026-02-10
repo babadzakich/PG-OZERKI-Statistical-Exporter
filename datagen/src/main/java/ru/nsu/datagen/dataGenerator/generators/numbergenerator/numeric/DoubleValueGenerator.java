@@ -1,7 +1,8 @@
-package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
+package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -51,8 +52,8 @@ public class DoubleValueGenerator implements ValueGenerator {
         }
 
         Set<Double> uniqueValues = new HashSet<>();
-        int maxAttempts = count * 100;
-        int attempts = 0;
+        long maxAttempts = count * 100L;
+        long attempts = 0;
         for (int i = 0; i < count && attempts < maxAttempts;) {
             double value = faker.number().randomDouble(15, (long)left, (long)right);
             i += uniqueValues.add(value) ? 1 : 0;

@@ -18,7 +18,7 @@ public class StringValueGenerator implements ValueGenerator {
     public StringValueGenerator(int avgSize, int maxSize) {
         this.avgSize = avgSize;
         this.maxSize = maxSize;
-        this.faker = new Faker(new Locale("ru"));
+        this.faker = new Faker(Locale.forLanguageTag("ru"));
     }
 
     public StringValueGenerator(int avgSize, int maxSize, Locale locale) {
@@ -36,6 +36,9 @@ public class StringValueGenerator implements ValueGenerator {
     public Object generateValue(Object leftBorder, Object rightBorder) {
         if (!(leftBorder instanceof String left) || !(rightBorder instanceof String right)) {
             throw new IllegalArgumentException("Borders must be of type String");
+        }
+        if (left.equals(right)) {
+            return left;
         }
         int leftLength = left.length();
         int rightLength = right.length();
@@ -62,8 +65,6 @@ public class StringValueGenerator implements ValueGenerator {
             if (rightChar > leftChar + 1) {
                 char randomChar = (char) (leftChar + 1 + faker.random().nextInt(rightChar - leftChar - 1));
                 result.append(randomChar);
-            } else if (rightChar == leftChar + 1) {
-                result.append(leftChar + 1);
             } else {
                 result.append(leftChar);
             }
@@ -84,8 +85,8 @@ public class StringValueGenerator implements ValueGenerator {
     @Override
     public List<Object> generateValues(int count) {
         Set<String> uniqueValues = new HashSet<>();
-        int maxAttempts = count * 100;
-        int attempts = 0, i = 0;
+        long maxAttempts = count * 100L;
+        long attempts = 0, i = 0;
 
         while (i < count && attempts < maxAttempts) {
             String value = faker.lorem().characters(avgSize);

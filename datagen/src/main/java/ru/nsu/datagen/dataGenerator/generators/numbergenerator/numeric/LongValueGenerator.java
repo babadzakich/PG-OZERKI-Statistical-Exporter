@@ -1,56 +1,58 @@
-package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
+package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 @Slf4j
-public class SmallintValueGenerator implements ValueGenerator {
+public class LongValueGenerator implements ValueGenerator {
     private final Faker faker = new Faker();
 
     @Override
     public Object generateValue() {
-        return generateValue(Integer.MIN_VALUE, Integer.MAX_VALUE);
+        return generateValue(Long.MIN_VALUE, Long.MAX_VALUE);
     }
 
     @Override
     public Object generateValue(Object leftBorder, Object rightBorder) {
-        short left, right;
+        long left, right;
         try {
-            left = (short)leftBorder;
-            right = (short)rightBorder;
+            left = (long) leftBorder;
+            right = (long) rightBorder;
         } catch (ClassCastException e) {
             log.warn("Invalid border types for {} value generation: {} and {}, using MAX and MIN values", this.getClass().toString(), leftBorder.getClass(), rightBorder.getClass());
-            left = Short.MIN_VALUE;
-            right = Short.MAX_VALUE;
+            left = Long.MIN_VALUE;
+            right = Long.MAX_VALUE;
         }
-
-        return (short) faker.number().numberBetween((long)left, (long)right);
+        return faker.number().numberBetween(left, right);
     }
 
     @Override
     public List<Object> generateValues(int count) {
-        return generateValues(count, Short.MIN_VALUE, Short.MAX_VALUE);
+        return generateValues(count, Long.MIN_VALUE, Long.MAX_VALUE);
     }
 
     @Override
     public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
-        short left, right;
+        long left, right;
         try {
-            left = (short) leftBorder;
-            right = (short) rightBorder;
+            left = (long) leftBorder;
+            right = (long) rightBorder;
         } catch (ClassCastException e) {
             log.warn("Invalid border types for {} list generation: {} and {}, using MAX and MIN values", this.getClass().toString(), leftBorder.getClass(), rightBorder.getClass());
-            left = Short.MIN_VALUE;
-            right = Short.MAX_VALUE;
+            left = Long.MIN_VALUE;
+            right = Long.MAX_VALUE;
         }
 
         List<Object> values = new ArrayList<>();
-        long range = (long)right - (long)left;
-        if (range >= count - 1) {
+        // Безопасное вычисление диапазона через BigInteger для избежания переполнения
+        BigInteger range = BigInteger.valueOf(right).subtract(BigInteger.valueOf(left));
+        if (range.compareTo(BigInteger.valueOf(count - 1)) >= 0) {
             for (int i = 0; i < count; i++) {
                 values.add(left + i);
             }

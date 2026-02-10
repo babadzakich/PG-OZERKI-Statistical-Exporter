@@ -3,7 +3,7 @@ package ru.nsu.datagen.dataGenerator.model;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
-import java.sql.Time;
+import java.math.BigDecimal;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -51,7 +51,10 @@ public class TableMetadataMaker {
                     : null;
             
             int recordCountValue = Integer.parseInt(line[4]) == -1 ? 0 : Integer.parseInt(line[4]);
-            
+            if (!line[6].isEmpty() && line[6].contains("CHECK")) {
+                log.error("Column {} in table {} has CHECK constraint, which is currently not supported. .", line[2], line[1]);
+                throw new UnsupportedOperationException("CHECK constraints are not supported.");
+            }
             double nullPercentageValue = (line[5] == null || line[5].isEmpty() || line[5].equals("NULL")) ? 0.0 : Double.parseDouble(line[5]);
             ColumnMetadata columnMetadata = ColumnMetadata.builder()
                 .name(line[2])
@@ -176,7 +179,6 @@ public class TableMetadataMaker {
                 case "bigint", "int8" -> Long.parseLong(value.trim());
                 case "real", "float4" -> Float.parseFloat(value.trim());
                 case "double precision", "float8" -> Double.parseDouble(value.trim());
-                case "varchar", "text", "char", "interval", "tstzrange", "point", "jsonb", "json" -> value;
                 case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
                 case "date" -> LocalDate.parse(value.trim());
                 case "timestamp" -> LocalDateTime.parse(value.trim(), TIMESTAMP_FORMATTER);
@@ -184,7 +186,7 @@ public class TableMetadataMaker {
                 case "time without time zone", "time" -> LocalTime.parse(value.trim());
                 default -> {
                     if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
-                        yield Double.parseDouble(value.trim());
+                        yield BigDecimal.valueOf(Double.parseDouble(value.trim()));
                     }
                     yield value;
                 }
