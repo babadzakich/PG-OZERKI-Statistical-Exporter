@@ -1,8 +1,8 @@
 package ru.nsu.datagen;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -15,7 +15,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -42,8 +41,8 @@ public class IntegrationTest {
     void testFullPipelineIntegration() throws Exception {
         Config config = loadConfig("config.yaml");
         ClassLoader classLoader = getClass().getClassLoader();
-        String schemaPath = new File(classLoader.getResource(config.getSCHEMA_PATH()).getFile()).getAbsolutePath();
-        String statsPath = new File(classLoader.getResource(config.getSTATS_PATH()).getFile()).getAbsolutePath();
+        String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
+        String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
 
         try (Connection conn = DriverManager.getConnection(config.getDB_URL(), config.getDB_USER(), config.getDB_PASSWORD())) {
             // Очищаем БД перед тестом
@@ -182,7 +181,6 @@ public class IntegrationTest {
     }
     /**
      * Хранит информацию о таблице для теста
-     * 
      * Имя таблицы, схема, ожидаемый размер и ограничения
      */
     @Getter
@@ -203,10 +201,9 @@ public class IntegrationTest {
 
     /**
      * Загружает конфигурацию из YAML файла в ресурсах теста
-     * 
      * Конфигурация включает параметры подключения к БД
      * и описание таблиц для генерации и проверки.
-     * 
+     *
      * @param configPath путь к YAML файлу конфигурации
      */
     @SuppressWarnings("unchecked")
