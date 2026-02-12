@@ -78,7 +78,7 @@ extract_tables_from_yaml(const char *plan, QueryDependencies* deps)
         p = rel_end + 1;
     }
 
-    return deps;
+
 }
 
 void add_table_constraints_to_deps(QueryDependencies *deps) {
