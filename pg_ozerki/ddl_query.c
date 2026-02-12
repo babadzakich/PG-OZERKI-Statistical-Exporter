@@ -3,6 +3,12 @@
 #include "ddl_query.h"
 #include "catalog/namespace.h"
 
+void add_schema_to_deps(QueryDependencies *deps, const char *schema);
+
+void
+find_sequences_for_tables(QueryDependencies *deps);
+
+void find_views_for_tables(QueryDependencies *deps);
 
 static void
 add_table(QueryDependencies *deps, const char *name)
