@@ -118,12 +118,22 @@ void generate_sequences_ddl(StringInfo buf) {
     int ret;
     char *query;
     
-    query = "SELECT schemaname, sequencename, "
-            "sequenceowner, start_value, min_value, max_value, "
-            "increment_by, cycle, cache_size, last_value, "
-            "pg_catalog.obj_description(pg_sequence.seqrelid, 'pg_class') as description "
-            "FROM pg_sequences "
-            "JOIN pg_sequence ON pg_sequence.seqrelid = pg_sequences.sequencename::regclass "
+    query = "SELECT "
+            "schemaname, "
+            "sequencename, "
+            "sequenceowner, "
+            "start_value, "
+            "min_value, "
+            "max_value, "
+            "increment_by, "
+            "cycle, "
+            "cache_size, "
+            "last_value, "
+            "pg_catalog.obj_description(c.oid, 'pg_class') as description "
+            "FROM pg_sequences s "
+            "JOIN pg_class c ON c.relname = s.sequencename "
+            "    AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = s.schemaname) "
+            "    AND c.relkind = 'S' "
             "WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
             "ORDER BY schemaname, sequencename";
     
@@ -722,5 +732,60 @@ void generate_functions_ddl(StringInfo buf)
                 pfree(definition);
             }
         }
+    }
+}
+
+void generate_planner_settings_ddl(StringInfo buf) {
+    int ret;
+    const char *query;
+    
+    query = "SELECT name, setting, unit "
+            "FROM pg_settings "
+            "WHERE name IN ("
+            "'seq_page_cost', "
+            "'random_page_cost', "
+            "'cpu_tuple_cost', "
+            "'cpu_index_tuple_cost', "
+            "'effective_cache_size', "
+            "'work_mem'"
+            ") ORDER BY name";
+    
+    ret = SPI_execute(query, true, 0);
+    
+    if (ret == SPI_OK_SELECT && SPI_processed > 0)
+    {
+        TupleDesc tupdesc = SPI_tuptable->tupdesc;
+        
+        appendStringInfoString(buf, "--\n-- Planner Settings\n--\n\n");
+        
+        for (int i = 0; i < SPI_processed; i++)
+        {
+            HeapTuple tuple = SPI_tuptable->vals[i];
+            
+            char* name = SPI_getvalue(tuple, tupdesc, 1);
+            char* setting = SPI_getvalue(tuple, tupdesc, 2);
+            char* unit = SPI_getvalue(tuple, tupdesc, 3); 
+            
+            if (name && setting)
+            {
+                
+                if (unit && strcmp(unit, "") != 0)
+                {
+                    
+                    appendStringInfo(buf, "ALTER SYSTEM SET %s = '%s%s';\n", 
+                                   name, setting, unit);
+                }
+                else
+                {
+                    appendStringInfo(buf, "ALTER SYSTEM SET %s = %s;\n", 
+                                   name, setting);
+                }
+                
+                pfree(name);
+                pfree(setting);
+                if (unit) pfree(unit);
+            }
+        }
+        appendStringInfoString(buf, "\n");
     }
 }

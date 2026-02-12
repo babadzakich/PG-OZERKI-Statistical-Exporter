@@ -35,3 +35,4 @@ void generate_sequences_ddl(StringInfo buf);
 void generate_constraints_ddl(StringInfo buf);
 void generate_schemas_ddl(StringInfo buf);
 void generate_functions_ddl(StringInfo buf);
+void generate_planner_settings_ddl(StringInfo buf);

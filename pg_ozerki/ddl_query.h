@@ -2,7 +2,7 @@
 #include "ozerki_utils.h"
 
 typedef struct {
-   Oid *tableOids;
+    char** tableNames;
     int tableCount;
     Oid *viewOids;
     int viewCount;
@@ -10,9 +10,9 @@ typedef struct {
     int functionCount;
     Oid *sequenceOids;
     int sequenceCount;
-    Oid *indexOids;        // Добавляем для индексов
+    Oid *indexOids;        
     int indexCount;
-    Oid *constraintOids;   // Добавляем для констрейнтов
+    Oid *constraintOids;   
     int constraintCount;
     char **schemas;
     int schemaCount;
@@ -30,3 +30,5 @@ void generate_sequences_ddl_query(StringInfo buf, QueryDependencies* deps);
 void generate_indexes_ddl_query(StringInfo buf, QueryDependencies* deps);
 void generate_constraints_ddl_query(StringInfo buf, QueryDependencies* deps);
 void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps);
+
+Oid table_name_to_oid_internal(const char *full_name);
