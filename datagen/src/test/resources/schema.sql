@@ -5,6 +5,17 @@ SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 --
+-- Planner Settings
+--
+
+ALTER SYSTEM SET cpu_index_tuple_cost = 0.005;
+ALTER SYSTEM SET cpu_tuple_cost = 0.01;
+ALTER SYSTEM SET effective_cache_size = '5242888kB';
+ALTER SYSTEM SET random_page_cost = 4;
+ALTER SYSTEM SET seq_page_cost = 1;
+ALTER SYSTEM SET work_mem = '4096kB';
+
+--
 -- Schemas
 --
 
