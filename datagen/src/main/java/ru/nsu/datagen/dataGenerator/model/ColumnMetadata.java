@@ -7,7 +7,6 @@ import java.util.Map;
 import lombok.Builder;
 import lombok.Getter;
 
-@Builder
 @Getter
 public class ColumnMetadata {
     private final String name;
@@ -26,6 +25,7 @@ public class ColumnMetadata {
     private final boolean isArray;
     private final List<Object> histogramm;
 
+    @Builder
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
@@ -45,13 +45,13 @@ public class ColumnMetadata {
         this.ndistinct = ndistinct;
 
         if (isArray) {
-            char dataTypeCharArray[] = dataType.toCharArray();
+            char[] dataTypeCharArray = dataType.toCharArray();
             StringBuilder dataTypeBuilder = new StringBuilder();
-            for (int i = 0; i < dataTypeCharArray.length; i++) {
-                if (dataTypeCharArray[i] == '[') {
+            for (char c : dataTypeCharArray) {
+                if (c == '[') {
                     break;
                 }
-                dataTypeBuilder.append(dataTypeCharArray[i]);
+                dataTypeBuilder.append(c);
             }
             this.dataType = dataTypeBuilder.toString();
         } else {

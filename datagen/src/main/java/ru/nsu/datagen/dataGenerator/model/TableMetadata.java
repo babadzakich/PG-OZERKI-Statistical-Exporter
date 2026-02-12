@@ -1,26 +1,28 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import lombok.Getter;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
 public class TableMetadata {
+    @Getter
     private final String tableName;
     private final Map<String, ColumnMetadata> columns;
+    @Getter
     private final int recordCount;
-    //private final String namespace;
+    @Getter
+    private final String namespace;
 
-    public TableMetadata(String tableName, Map<String, ColumnMetadata> columns, int recordCount) {
+    public TableMetadata(String tableName, Map<String, ColumnMetadata> columns, int recordCount, String namespace) {
         this.tableName = tableName;
         this.columns = columns;
         this.recordCount = recordCount;
-        //this.namespace = namespace;
+        this.namespace = namespace;
     }
 
-    public String getTableName() { return tableName; }
     public Map<String, ColumnMetadata> getColumns() { return new HashMap<>(columns); }
-    public int getRecordCount() { return recordCount; }
-    //public String getNamespace() {return namespace;}
 
     public boolean hasForeignKeyDependencies() {
         return columns.values().stream()

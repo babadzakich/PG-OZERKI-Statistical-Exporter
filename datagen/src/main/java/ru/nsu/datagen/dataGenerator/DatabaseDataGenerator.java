@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
-import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
 
 import java.sql.Connection;
@@ -13,7 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.FutureTask;
 
 /*
 TODO:
@@ -26,9 +24,7 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    public static void generateData(List<String[]> rawData, Connection conn) throws SQLException {
-        // Get table metadata list
-        List<TableMetadata> tableMetadataList = TableMetadataMaker.processRawTableMetadata(rawData);
+    public static void generateData(List<TableMetadata> tableMetadataList, Connection conn) {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph();
         tableMetadataList.forEach(dependencyGraph::addTable);

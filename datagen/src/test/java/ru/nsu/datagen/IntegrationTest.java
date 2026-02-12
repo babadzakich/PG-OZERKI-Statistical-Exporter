@@ -20,6 +20,7 @@ import org.yaml.snakeyaml.Yaml;
 
 import lombok.Getter;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
+import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.importer.Importer;
 
 /**
@@ -53,13 +54,13 @@ public class IntegrationTest {
             }
 
             // Импорт схемы и статистики
-            List<String[]> rawImportedData = Importer.startImport(schemaPath, statsPath, conn);
-            assertNotNull(rawImportedData, "Импортированные данные не должны быть null");
-            assertFalse(rawImportedData.isEmpty(), "Импортированные данные не должны быть пустыми");
+            List<TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
+            assertNotNull(importedData, "Импортированные данные не должны быть null");
+            assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
 
             // Генерация данных
-            DatabaseDataGenerator.generateData(rawImportedData, conn);
+            DatabaseDataGenerator.generateData(importedData, conn);
             System.out.println("✓ Генерация данных завершена");
 
             // Проверка целостности данных и ограничений

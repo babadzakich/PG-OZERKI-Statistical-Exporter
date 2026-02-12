@@ -91,12 +91,13 @@ public class DataGenerator {
             Map<String, List<Object>> referencedData) {
 
         Map<String, List<Object>> columnData = new HashMap<>();
+        Set<String> generatedColumns = new HashSet<>();
 
-        // Сначала генерируем PK, потом обычные колонки, потом FK
-        generatePrimaryKeys(table, columnData);
-        generateNormalColumns(table, columnData);
-        generateUniqueConstraint(table, columnData);
-        generateForeignKeys(table, columnData, existingData, referencedData);
+        // Сначала генерируем FK, потом PK, потом обычные колонки потом уники
+        generateForeignKeys(table, columnData, existingData, referencedData, generatedColumns);
+        generatePrimaryKeys(table, columnData, generatedColumns);
+        generateNormalColumns(table, columnData, generatedColumns);
+        generateUniqueConstraint(table, columnData, generatedColumns);
 
         return columnData;
     }
@@ -106,12 +107,14 @@ public class DataGenerator {
      */
     private void generatePrimaryKeys(
             TableMetadata table,
-            Map<String, List<Object>> columnData) {
+            Map<String, List<Object>> columnData,
+            Set<String> generatedColumns) {
 
         for (ColumnMetadata column : table.getColumns().values()) {
-            if (column.isPrimaryKey()) {
+            if (column.isPrimaryKey() && !generatedColumns.contains(column.getName())) {
                 List<Object> primaryKeys = pkGeneratorFactory.getGenerator(column).generatePrimaryKeys(column);
                 columnData.put(column.getName(), primaryKeys);
+                generatedColumns.add(column.getName());
             }
         }
     }
@@ -121,12 +124,14 @@ public class DataGenerator {
      */
     private void generateNormalColumns(
             TableMetadata table,
-            Map<String, List<Object>> columnData) {
+            Map<String, List<Object>> columnData,
+            Set<String> generatedColumns) {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (!column.isPrimaryKey() && !column.isForeignKey() && !column.isUnique()) {
                 List<Object> values = normalValueGenerator.generateValues(column);
                 columnData.put(column.getName(), values);
+                generatedColumns.add(column.getName());
             }
         }
     }
@@ -138,35 +143,31 @@ public class DataGenerator {
             TableMetadata table,
             Map<String, List<Object>> columnData,
             Map<String, Map<String, List<Object>>> existingData,
-            Map<String, List<Object>> referencedData) {
+            Map<String, List<Object>> referencedData,
+            Set<String> generatedColumns) {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isForeignKey()) {
                 List<Object> foreignKeys = fkGeneratorFactory.getGenerator(column)
                         .generateForeignKeys(column, referencedData, existingData);
                 columnData.put(column.getName(), foreignKeys);
+                generatedColumns.add(column.getName());
             }
         }
     }
 
     private void generateUniqueConstraint(
         TableMetadata table,
-        Map<String, List<Object>> columnData) {
+        Map<String, List<Object>> columnData,
+        Set<String> generatedColumns) {
             List<ColumnMetadata> uniqueList = new ArrayList<>();
             for (ColumnMetadata column : table.getColumns().values()) {
-                if (column.isUnique()) {
+                if (column.isUnique() && !generatedColumns.contains(column.getName())) {
                     uniqueList.add(column);
                 }
             }
             if (!uniqueList.isEmpty())
                 UniqueKeyGeneratorChooser.generate(uniqueList, columnData, uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE, table.getRecordCount());
-    }
-
-    public PrimaryKeyGeneratorFactory getPkGeneratorFactory() {
-        return pkGeneratorFactory;
-    }
-
-    public ForeignKeyGeneratorFactory getFkGeneratorFactory() {
-        return fkGeneratorFactory;
+            uniqueList.forEach(column -> generatedColumns.add(column.getName()));
     }
 }
