@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Reader;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,7 +32,11 @@ public class TableMetadataMaker {
 
                     int recordCount = tableCsvColumns.isEmpty() ? 0 : tableCsvColumns.getFirst().getRecordCount();
                     String namespace = tableCsvColumns.isEmpty() ? "public" : tableCsvColumns.getFirst().getSchemaName();
-                    return new TableMetadata(tableName, columnMetadataMap, recordCount, namespace);
+                    Set<String> refTables = columnMetadataMap.keySet().stream()
+                            .filter(colName -> columnMetadataMap.get(colName).isForeignKey())
+                            .map(colName -> columnMetadataMap.get(colName).getForeignKeyMetadata().getReferencedTable())
+                            .collect(Collectors.toSet());
+                    return new TableMetadata(tableName, columnMetadataMap, recordCount, namespace, refTables);
                 })
                 .collect(Collectors.toList());
     }

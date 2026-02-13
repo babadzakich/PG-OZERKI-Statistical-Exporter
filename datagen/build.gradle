@@ -20,6 +20,7 @@ dependencies {
     implementation 'ch.qos.logback:logback-classic:1.5.13'
     implementation 'com.opencsv:opencsv:5.12.0'
     implementation 'org.yaml:snakeyaml:2.0'
+    implementation 'com.zaxxer:HikariCP:5.1.0'
     compileOnly 'org.projectlombok:lombok:1.18.30'
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
     testCompileOnly 'org.projectlombok:lombok:1.18.30'
