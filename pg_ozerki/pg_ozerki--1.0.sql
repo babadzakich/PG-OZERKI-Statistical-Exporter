@@ -57,6 +57,7 @@ RETURNS TABLE (
     row_count bigint,
     null_percent numeric,
     modifiers text,
+    composite_peers text,
     max_length integer,
     relation_type text,
     referenced_table text,
