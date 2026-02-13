@@ -92,7 +92,6 @@ fk_constraints AS (
         con_tbl_ns.nspname AS table_schema,
         conf_tbl.relname AS referenced_table,
         conf_tbl_ns.nspname AS referenced_schema,
-        -- Получаем имя referenced колонки
         (SELECT attname FROM pg_attribute 
          WHERE attrelid = con.confrelid AND attnum = con.confkey[1]) AS referenced_column
     FROM pg_constraint con
@@ -103,6 +102,40 @@ fk_constraints AS (
     JOIN pg_namespace conf_tbl_ns ON conf_tbl_ns.oid = conf_tbl.relnamespace
     WHERE con.contype = 'f'
 ),
+
+composite_unique_info AS (
+    SELECT 
+        a.attrelid,
+        a.attname,
+        (
+            SELECT string_agg(DISTINCT a_other.attname, ', ')
+            FROM (
+                
+                SELECT unnest(conkey) as col_num, conrelid as rel_id
+                FROM pg_constraint 
+                WHERE contype IN ('u', 'p') AND array_length(conkey, 1) > 1
+                UNION ALL
+                
+                SELECT unnest(indkey) as col_num, indrelid as rel_id
+                FROM pg_index 
+                WHERE indisunique = true AND array_length(indkey, 1) > 1
+            ) sub
+            JOIN pg_attribute a_other ON a_other.attrelid = sub.rel_id AND a_other.attnum = sub.col_num
+            WHERE sub.rel_id = a.attrelid 
+              AND a_other.attname <> a.attname
+              AND EXISTS (
+                  
+                  SELECT 1 FROM (
+                      SELECT conkey as keys, conrelid as rid FROM pg_constraint WHERE contype IN ('u', 'p')
+                      UNION ALL
+                      SELECT indkey as keys, indrelid as rid FROM pg_index WHERE indisunique = true
+                  ) check_sub 
+                  WHERE rid = a.attrelid AND a.attnum = ANY(keys) AND a_other.attnum = ANY(keys)
+              )
+        ) as composite_unique_peers
+    FROM pg_attribute a
+    WHERE a.attnum > 0 AND NOT a.attisdropped
+),
 column_constraints AS (
     SELECT
         a.attrelid,
@@ -111,7 +144,6 @@ column_constraints AS (
         BOOL_OR(c.contype = 'p') AS is_pk,
         BOOL_OR(c.contype = 'u') AS is_unique_constraint,
         BOOL_OR(c.contype = 'c') AS is_check_constraint,
-        -- Проверяем уникальные индексы
         BOOL_OR(EXISTS (
             SELECT 1 FROM pg_index i
             WHERE i.indrelid = a.attrelid
@@ -133,9 +165,7 @@ relation_types AS (
         fk.referenced_table,
         fk.referenced_column,
         CASE
-            -- Если FK колонка является частью PK или уникального ограничения или индекса
             WHEN cc.is_pk OR cc.is_unique_constraint OR cc.is_unique_index THEN
-                -- И целевая колонка тоже является частью PK или уникального ограничения
                 CASE WHEN EXISTS (
                     SELECT 1 FROM column_constraints ref_cc
                     JOIN pg_class ref_tbl ON ref_tbl.oid = ref_cc.attrelid
@@ -145,7 +175,6 @@ relation_types AS (
                     AND ref_cc.attname = fk.referenced_column
                     AND (ref_cc.is_pk OR ref_cc.is_unique_constraint)
                 ) THEN 'ONE_TO_ONE' ELSE 'ONE_TO_ONE' END
-            -- Если FK колонка не уникальна, это OTM
             ELSE 'ONE_TO_MANY'
         END AS relation_type
     FROM fk_constraints fk
@@ -158,6 +187,7 @@ column_stats AS (
         a.attname AS column_name,
         pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
         a.attnum AS column_number,
+        a.attrelid as table_oid,
         CASE 
             WHEN a.atttypid IN (1042, 1043, 25) THEN
                 CASE 
@@ -193,10 +223,7 @@ SELECT
     tc.row_count,
     CASE 
         WHEN tc.row_count = 0 THEN 0
-        ELSE ROUND(
-            (s.null_frac * 100)::numeric, 
-            2
-        )
+        ELSE ROUND((s.null_frac * 100)::numeric, 2)
     END AS null_percent,
     TRIM(
         CASE WHEN cs.is_primary_key > 0 THEN 'PK ' ELSE '' END ||
@@ -204,6 +231,7 @@ SELECT
         CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE ' ELSE '' END ||
         CASE WHEN cs.is_check > 0 THEN 'CHECK' ELSE '' END
     ) AS modifiers,
+    cui.composite_unique_peers, 
     cs.max_length,
     rt.relation_type,
     rt.referenced_table,
@@ -221,10 +249,13 @@ LEFT JOIN pg_stats s ON s.schemaname = cs.table_schema
 LEFT JOIN relation_types rt ON rt.table_schema = cs.table_schema 
                            AND rt.table_name = cs.table_name 
                            AND rt.column_name = cs.column_name
+LEFT JOIN composite_unique_info cui ON cui.attrelid = cs.table_oid 
+                                   AND cui.attname = cs.column_name
 ORDER BY 
     cs.table_schema,
     cs.table_name,
     cs.column_number
+
 $$;
 
 
