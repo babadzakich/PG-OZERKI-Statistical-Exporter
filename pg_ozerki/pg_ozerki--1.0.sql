@@ -57,6 +57,7 @@ RETURNS TABLE (
     row_count bigint,
     null_percent numeric,
     modifiers text,
+    composite_unique_peers text,
     max_length integer,
     relation_type text,
     referenced_table text,
@@ -255,7 +256,6 @@ ORDER BY
     cs.table_schema,
     cs.table_name,
     cs.column_number
-
 $$;
 
 
