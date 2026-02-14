@@ -6,8 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,8 +43,11 @@ public class ColumnMetadataCSV {
     private double ndistinct;
     @CsvBindByName(column = "hbounds")
     private String hbounds;
+    @CsvBindByName(column = "composite_peers")
+    private String compositePeers;
 
     public ColumnMetadata transformToColumnMetadata() {
+        log.debug("Start transforming column: {}.{}.{}", schemaName, tableName, columnName);
         boolean isFk = false, isPk = false, isUnique = false;
         if (modifiers != null) {
             String[] mods = modifiers.split(" ");
@@ -56,8 +57,8 @@ public class ColumnMetadataCSV {
             isUnique = modSet.contains("UNIQUE") && !isPk;
         }
 
-        String refTable = isFk ? null : referencedTable;
-        String refCol = isFk ? null : referencedColumn;
+        String refTable = isFk ? referencedTable : null;
+        String refCol = isFk ? referencedColumn : null;
 
         RelationshipType relType = null;
         if (relationshipType != null && !relationshipType.isEmpty() && !relationshipType.equals("NULL")) {
@@ -91,8 +92,11 @@ public class ColumnMetadataCSV {
     }
 
     private Map<Object, Double> processMCV(String rawMCVArray, String rawMCFArray, String dataType) {
+        log.debug("Processing MCV for column: {}.{}.{}", schemaName, tableName, columnName);
         List<Object> processedMCV = parsePgArrayString(rawMCVArray, dataType);
+        log.debug("Processed MCV values: {}", processedMCV);
         List<Double> processedMCF = parseMCFArray(rawMCFArray);
+        log.debug("Processed MCF values: {}", processedMCF);
 
         Map<Object, Double> resultDistribution = new HashMap<>();
 
@@ -136,16 +140,36 @@ public class ColumnMetadataCSV {
         }
 
         List<String> stringValues = new ArrayList<>();
-        if (cleanedString.startsWith("\"")) {
-            Pattern pattern = Pattern.compile("\"(.*?)\"");
-            Matcher matcher = pattern.matcher(cleanedString);
+        StringBuilder currentElement = new StringBuilder();
+        boolean inQuote = false;
+        boolean escaped = false;
 
-            while (matcher.find()) {
-                stringValues.add(matcher.group(1));
+        for (int i = 0; i < cleanedString.length(); i++) {
+            char c = cleanedString.charAt(i);
+
+            if (escaped) {
+                currentElement.append(c);
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (inQuote) {
+                if (c == '"') {
+                    inQuote = false;
+                } else {
+                    currentElement.append(c);
+                }
+            } else {
+                if (c == '"') {
+                    inQuote = true;
+                } else if (c == ',') {
+                    stringValues.add(currentElement.toString());
+                    currentElement.setLength(0);
+                } else {
+                    currentElement.append(c);
+                }
             }
-        } else {
-            stringValues = getStrings(cleanedString);
         }
+        stringValues.add(currentElement.toString());
 
         // Парсим строковые значения в соответствующий тип данных
         return stringValues.stream()
@@ -186,27 +210,5 @@ public class ColumnMetadataCSV {
             log.warn("Failed to parse value '{}' as type '{}', returning as String. Error: {}", value, datatype, e.getMessage());
             return value;
         }
-    }
-
-    private List<String> getStrings(String cleanedString) {
-        List<String> result = new ArrayList<>();
-        String[] parts = cleanedString.split(",");
-
-        for (int i = 0; i < parts.length; i++) {
-            String part = parts[i];
-
-            if (i == 0 && part.startsWith("\"")) {
-                part = part.substring(1);
-            }
-
-            if (i == parts.length - 1 && part.endsWith("\"")) {
-                part = part.substring(0, part.length() - 1);
-            }
-
-            part = part.replace("\"\"", "\"");
-
-            result.add(part);
-        }
-        return result;
     }
 }

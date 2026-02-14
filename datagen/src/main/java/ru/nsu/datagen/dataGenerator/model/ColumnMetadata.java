@@ -1,8 +1,6 @@
 package ru.nsu.datagen.dataGenerator.model;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.Map;
+import java.util.*;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -24,12 +22,15 @@ public class ColumnMetadata {
     private final double ndistinct;
     private final boolean isArray;
     private final List<Object> histogramm;
+    public List<Set<String>> uniquePeers = new ArrayList<>();
 
     @Builder
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray, List<Object> histogramm) {
+                          Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
+                          List<Object> histogramm
+    ) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;
