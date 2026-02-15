@@ -58,6 +58,8 @@ RETURNS TABLE (
     null_percent numeric,
     modifiers text,
     composite_unique_peers text,
+    composite_fk_peers text,
+    composite_fk_references text,
     max_length integer,
     relation_type text,
     referenced_table text,
@@ -136,6 +138,23 @@ composite_unique_info AS (
         ) as composite_unique_peers
     FROM pg_attribute a
     WHERE a.attnum > 0 AND NOT a.attisdropped
+),
+composite_fk_info AS (
+    SELECT 
+        a.attrelid,
+        a.attname,
+        string_agg(DISTINCT peer.attname, ', ') as peers,
+        string_agg(DISTINCT n.nspname || '.' || cl.relname, ', ') as ref_tables
+    FROM pg_attribute a
+    JOIN pg_constraint con ON con.conrelid = a.attrelid AND a.attnum = ANY(con.conkey)
+    JOIN pg_class cl ON cl.oid = con.confrelid
+    JOIN pg_namespace n ON n.oid = cl.relnamespace
+    JOIN pg_attribute peer ON peer.attrelid = a.attrelid AND peer.attnum = ANY(con.conkey) AND peer.attnum <> a.attnum
+    WHERE con.contype = 'f' 
+      AND array_length(con.conkey, 1) > 1
+      AND a.attnum > 0 
+      AND NOT a.attisdropped
+    GROUP BY a.attrelid, a.attname
 ),
 column_constraints AS (
     SELECT
@@ -233,6 +252,8 @@ SELECT
         CASE WHEN cs.is_check > 0 THEN 'CHECK' ELSE '' END
     ) AS modifiers,
     cui.composite_unique_peers, 
+    cfk.peers AS composite_fk_peers,
+    cfk.ref_tables AS composite_fk_references,
     cs.max_length,
     rt.relation_type,
     rt.referenced_table,
@@ -252,6 +273,7 @@ LEFT JOIN relation_types rt ON rt.table_schema = cs.table_schema
                            AND rt.column_name = cs.column_name
 LEFT JOIN composite_unique_info cui ON cui.attrelid = cs.table_oid 
                                    AND cui.attname = cs.column_name
+LEFT JOIN composite_fk_info cfk ON cfk.attrelid = cs.table_oid AND cfk.attname = cs.column_name
 ORDER BY 
     cs.table_schema,
     cs.table_name,
