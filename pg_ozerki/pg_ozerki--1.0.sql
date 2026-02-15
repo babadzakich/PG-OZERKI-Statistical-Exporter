@@ -59,7 +59,6 @@ RETURNS TABLE (
     modifiers text,
     composite_unique_peers text,
     composite_fk_peers text,
-    composite_fk_references text,
     max_length integer,
     relation_type text,
     referenced_table text,
@@ -143,12 +142,9 @@ composite_fk_info AS (
     SELECT 
         a.attrelid,
         a.attname,
-        string_agg(DISTINCT peer.attname, ', ') as peers,
-        string_agg(DISTINCT n.nspname || '.' || cl.relname, ', ') as ref_tables
+        string_agg(DISTINCT peer.attname, ', ') as peers
     FROM pg_attribute a
     JOIN pg_constraint con ON con.conrelid = a.attrelid AND a.attnum = ANY(con.conkey)
-    JOIN pg_class cl ON cl.oid = con.confrelid
-    JOIN pg_namespace n ON n.oid = cl.relnamespace
     JOIN pg_attribute peer ON peer.attrelid = a.attrelid AND peer.attnum = ANY(con.conkey) AND peer.attnum <> a.attnum
     WHERE con.contype = 'f' 
       AND array_length(con.conkey, 1) > 1
@@ -253,7 +249,6 @@ SELECT
     ) AS modifiers,
     cui.composite_unique_peers, 
     cfk.peers AS composite_fk_peers,
-    cfk.ref_tables AS composite_fk_references,
     cs.max_length,
     rt.relation_type,
     rt.referenced_table,
