@@ -22,14 +22,14 @@ public class ColumnMetadata {
     private final double ndistinct;
     private final boolean isArray;
     private final List<Object> histogramm;
-    public List<Set<String>> uniquePeers = new ArrayList<>();
+    public List<Set<String>> uniquePeers;
 
     @Builder
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
                           Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
-                          List<Object> histogramm
+                          List<Object> histogramm, List<Set<String>> uniquePeers
     ) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
@@ -59,6 +59,7 @@ public class ColumnMetadata {
             this.dataType = dataType;
         }
         this.histogramm = histogramm;
+        this.uniquePeers = uniquePeers;
     }
 
     @Override

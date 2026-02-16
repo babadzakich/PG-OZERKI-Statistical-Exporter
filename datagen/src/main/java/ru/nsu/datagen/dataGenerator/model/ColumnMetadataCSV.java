@@ -46,7 +46,7 @@ public class ColumnMetadataCSV {
     @CsvBindByName(column = "composite_peers")
     private String compositePeers;
 
-    public ColumnMetadata transformToColumnMetadata() {
+    public ColumnMetadata transformToColumnMetadata(List<Set<String>> compositePeersList) {
         log.debug("Start transforming column: {}.{}.{}", schemaName, tableName, columnName);
         boolean isFk = false, isPk = false, isUnique = false;
         if (modifiers != null) {
@@ -88,6 +88,7 @@ public class ColumnMetadataCSV {
                 .avgTupleSize(avgTupleSize)
                 .ndistinct(ndistinct)
                 .histogramm(parsePgArrayString(hbounds, dataType))
+                .uniquePeers(compositePeersList)
                 .build();
     }
 

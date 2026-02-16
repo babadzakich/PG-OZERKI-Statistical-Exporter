@@ -8,10 +8,7 @@ import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.graph.SimpleGraph;
 
 import java.io.Reader;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -40,9 +37,13 @@ public class TableMetadataMaker {
         });
         BronKerboschCliqueFinder<String, DefaultEdge> finder = new BronKerboschCliqueFinder<>(graph);
         finder.forEach(clique -> {
-            log.debug("Found clique: {}", clique);
+                log.debug("Found clique: {}", clique);
+                for (String vertex : clique) {
+                    compositePeersMap.computeIfAbsent(vertex, k -> new ArrayList<>()).add(clique);
                 }
+            }
         );
+
 
 
         return csvData.stream()
@@ -53,7 +54,7 @@ public class TableMetadataMaker {
                     List<ColumnMetadataCSV> tableCsvColumns = entry.getValue();
 
                     Map<String, ColumnMetadata> columnMetadataMap = tableCsvColumns.stream()
-                            .map(ColumnMetadataCSV::transformToColumnMetadata)
+                            .map(col -> col.transformToColumnMetadata(compositePeersMap.getOrDefault(col.getColumnName(), Collections.emptyList())))
                             .collect(Collectors.toMap(ColumnMetadata::getName, column -> column));
 
                     int recordCount = tableCsvColumns.isEmpty() ? 0 : tableCsvColumns.getFirst().getRecordCount();
