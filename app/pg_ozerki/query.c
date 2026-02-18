@@ -67,6 +67,7 @@ QueryDependencies* extract_tables_from_query_text(PGconn* conn, const char *quer
         pg_log_error("Explain query for dependencies has failed with error: ", PQresStatus(res_status));
         PQclear(res);
         destroyPQExpBuffer(explain_query);
+        return;
     }
     
     yaml_plan = (PQgetvalue(res, 0, 0));
