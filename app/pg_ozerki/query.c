@@ -61,13 +61,19 @@ QueryDependencies* extract_tables_from_query_text(PGconn* conn, const char *quer
     appendPQExpBufferStr(explain_query, query);
     res = PQexec(conn, explain_query->data);
 
+    ExecStatusType res_status = PQresultStatus(res);
+
+    if (res_status != PGRES_TUPLES_OK) {
+        pg_log_error("Explain query for dependencies has failed with error: ", PQresStatus(res_status));
+        PQclear(res);
+        destroyPQExpBuffer(explain_query);
+    }
     
     yaml_plan = (PQgetvalue(res, 0, 0));
 
 
     const char *p = yaml_plan;
 
-    //deps = palloc0(sizeof(QueryDependencies));
 
     while ((p = strstr(p, "Relation Name:")) != NULL)
     {
@@ -111,8 +117,16 @@ QueryDependencies* extract_tables_from_query_text(PGconn* conn, const char *quer
         fullname = psprintf("%s.%s", schemaname, relname);
         add_table(deps, fullname);
 
+        
         p = rel_end + 1;
+
+        pfree(fullname);
+        pfree(relname);
+        pfree(schemaname);
     }
+
+    destroyPQExpBuffer(explain_query);
+    PQclear(res);
 
     return deps;
 }

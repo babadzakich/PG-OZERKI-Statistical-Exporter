@@ -1673,9 +1673,7 @@ extern int	strict_names;
 QueryDependencies* InitQueryDependencies();
 void export_stats(PGconn* conn, const char* export_filename);
 
-void get_explain(PGconn* conn, const char *query, char* filename);
-
-void get_explain_analyze(PGconn* conn, const char *query, char* filename);
+void get_explain(PGconn* conn, const char *query, char* filename, bool analyze);
 
 typedef struct {
 	char* name;

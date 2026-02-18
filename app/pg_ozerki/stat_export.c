@@ -2,12 +2,17 @@
 
 #define COL_NUM 16
 
-
+#define BUF_SIZE 1024
 
 
 
 void export_stats(PGconn* conn, const char* export_filename) {
     FILE* fp = fopen(export_filename, "w");
+
+    if (!fp) {
+        pg_log_error("Could not open file for stats export");
+        return;
+    }
     PQExpBuffer statQuery;
     statQuery = createPQExpBuffer();
     
@@ -186,10 +191,13 @@ void export_stats(PGconn* conn, const char* export_filename) {
                 token = strtok(name, ".");
                 token = strtok(NULL, ".");
                 appendPQExpBuffer(statQuery, "'%s'", token);
+                free(name);
                 
         }
-        appendPQExpBuffer(statQuery, ")");
+        appendPQExpBuffer(statQuery, ")"); 
     }
+
+    
     
     appendPQExpBuffer(statQuery,
         ") "
@@ -241,7 +249,6 @@ void export_stats(PGconn* conn, const char* export_filename) {
 
     );
 
-    char* resQuery = statQuery->data;
 
     PQExpBuffer cop_buf = createPQExpBuffer();
     appendPQExpBuffer(cop_buf, "COPY ( ");
@@ -249,6 +256,17 @@ void export_stats(PGconn* conn, const char* export_filename) {
     appendPQExpBuffer(cop_buf," ) TO STDOUT WITH (FORMAT CSV, HEADER, NULL 'NULL')");
     PGresult* cop_res = PQexec(conn, cop_buf->data);
 
+    ExecStatusType cop_res_status = PQresultStatus(cop_res);
+
+    
+    if (cop_res_status != PGRES_COPY_OUT) {
+        pg_log_error("Stats query has failed with result: %s", PQresStatus(cop_res_status));
+        destroyPQExpBuffer(cop_buf);
+        destroyPQExpBuffer(statQuery);
+        PQclear(cop_res);
+        fclose(fp);
+        return;
+    }
     char* out_buf;
     int len;
 
@@ -257,6 +275,9 @@ void export_stats(PGconn* conn, const char* export_filename) {
         PQfreemem(out_buf);
     }
     fclose(fp);
+    PQclear(cop_res);
+    destroyPQExpBuffer(cop_buf);
+    destroyPQExpBuffer(statQuery);
 
 }
 

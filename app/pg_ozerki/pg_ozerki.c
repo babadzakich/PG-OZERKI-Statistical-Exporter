@@ -70,6 +70,19 @@ sanitize_line(const char *str, bool want_hyphen)
 
 char* planner_settings = NULL;
 
+typedef enum {
+	DBNAME,
+	USERNAME,
+	HOST,
+	PORT,
+	SCHEMA_FILE,
+	QUERY,
+	EXPLAINFILE,
+	EXPLAINFILE_ANALZYE,
+	STATS_FILE
+
+} getopt_params;
+
 int main(int argc, char** argv) {
     int			c;
 	const char *filename = NULL;
@@ -123,15 +136,15 @@ int main(int argc, char** argv) {
 		/*
 		 * the following options don't have an equivalent short option letter
 		 */
-		{"dbname", required_argument, NULL, 1},
-		{"username", required_argument, NULL, 2},
-		{"host", required_argument, NULL, 3},
-		{"port", required_argument, NULL, 4},
-		{"schema-file", required_argument, NULL, 5},
-		{"query", required_argument, NULL, 6},
-		{"explainfile", required_argument, NULL, 7},
-		{"explainfile-analyze", required_argument, NULL, 8},
-		{"stats-file", required_argument, NULL, 9},
+		{"dbname", required_argument, NULL, DBNAME},
+		{"username", required_argument, NULL, USERNAME},
+		{"host", required_argument, NULL, HOST},
+		{"port", required_argument, NULL, PORT},
+		{"schema-file", required_argument, NULL, SCHEMA_FILE},
+		{"query", required_argument, NULL, QUERY},
+		{"explainfile", required_argument, NULL, EXPLAINFILE},
+		{"explainfile-analyze", required_argument, NULL, EXPLAINFILE_ANALZYE},
+		{"stats-file", required_argument, NULL, STATS_FILE},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -141,35 +154,35 @@ int main(int argc, char** argv) {
 	{
 		switch (c)
 		{
-			case 1:
+			case DBNAME:
 				dopt.cparams.dbname = pg_strdup(optarg);
 				break;
-			case 2:
+			case USERNAME:
 				dopt.cparams.username = pg_strdup(optarg);
 				break;
-			case 3:
+			case HOST:
 				dopt.cparams.pghost = pg_strdup(optarg);
 				break;
-			case 4:
+			case PORT:
 				dopt.cparams.pgport = pg_strdup(optarg);
 				break;
-			case 5:
+			case SCHEMA_FILE:
 				dump_schema = true;
 				filename = pg_strdup(optarg);
 				break;
-			case 6:
+			case QUERY:
 				by_query = true;
 				dump_query = pg_strdup(optarg);
 				break;
-			case 7:
+			case EXPLAINFILE:
 				dump_explain = true;
 				explain_file = pg_strdup(optarg);
 				break;
-			case 8:
+			case EXPLAINFILE_ANALZYE:
 				dump_explain_analyze = true;
 				explain_file_analyze = pg_strdup(optarg);
 				break;
-			case 9:
+			case STATS_FILE:
 				dump_stat = true;
 				stats_file = pg_strdup(optarg);
 				break;
@@ -212,11 +225,11 @@ int main(int argc, char** argv) {
 							   &table_include_oids,
 							   strict_names, false);
 		if (dump_explain) {
-			get_explain(GetConnection(fout), dump_query, explain_file);
+			get_explain(GetConnection(fout), dump_query, explain_file, false);
 			pg_log_debug("EXPLAIN exported");
 		}
 		if (dump_explain_analyze) {
-			get_explain_analyze(GetConnection(fout), dump_query, explain_file_analyze);
+			get_explain(GetConnection(fout), dump_query, explain_file_analyze, true);
 			pg_log_debug("EXPLAIN ANALYZE exported");
 		}
 
