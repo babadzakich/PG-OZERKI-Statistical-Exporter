@@ -71,6 +71,8 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 AS $$
+SET datestyle TO 'ISO';
+SET intervalstyle to 'iso_8601';
 WITH table_counts AS (
     SELECT 
         n.nspname AS schemaname,
