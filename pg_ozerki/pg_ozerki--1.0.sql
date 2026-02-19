@@ -59,10 +59,10 @@ RETURNS TABLE (
     modifiers text,
     composite_unique_peers text,
     composite_fk_peers text,
+    incoming_references text,
     max_length integer,
     relation_type text,
-    referenced_table text,
-    referenced_column text,
+    outcoming_reference text,
     mcv text,
     mcv_frequencies float4[],
     avg_column_width_bytes int4,
@@ -71,6 +71,8 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 AS $$
+SET datestyle TO 'ISO';
+SET intervalstyle to 'iso_8601';
 WITH table_counts AS (
     SELECT 
         n.nspname AS schemaname,
@@ -151,6 +153,21 @@ composite_fk_info AS (
       AND a.attnum > 0 
       AND NOT a.attisdropped
     GROUP BY a.attrelid, a.attname
+),
+
+incoming_references_info AS (
+    SELECT
+        con.confrelid AS target_table_oid,
+        a_target.attname AS target_col_name,
+        string_agg(n_src.nspname || '.' || c_src.relname || '.' || a_src.attname, ', ') AS referring_columns
+    FROM pg_constraint con
+    JOIN pg_class c_src ON con.conrelid = c_src.oid
+    JOIN pg_namespace n_src ON c_src.relnamespace = n_src.oid
+    CROSS JOIN LATERAL unnest(con.conkey, con.confkey) AS refs(src_col_num, target_col_num)
+    JOIN pg_attribute a_src ON a_src.attrelid = con.conrelid AND a_src.attnum = refs.src_col_num
+    JOIN pg_attribute a_target ON a_target.attrelid = con.confrelid AND a_target.attnum = refs.target_col_num
+    WHERE con.contype = 'f'
+    GROUP BY con.confrelid, a_target.attname
 ),
 column_constraints AS (
     SELECT
@@ -249,10 +266,10 @@ SELECT
     ) AS modifiers,
     cui.composite_unique_peers, 
     cfk.peers AS composite_fk_peers,
+    inc.referring_columns AS incoming_references,
     cs.max_length,
     rt.relation_type,
-    rt.referenced_table,
-    rt.referenced_column,
+    (rt.referenced_schema || '.' || rt.referenced_table || '.' || rt.referenced_column) AS outcoming_reference,
     s.most_common_vals AS mcv,
     s.most_common_freqs AS mcv_frequencies,
     s.avg_width AS avg_column_width_bytes,
@@ -269,6 +286,7 @@ LEFT JOIN relation_types rt ON rt.table_schema = cs.table_schema
 LEFT JOIN composite_unique_info cui ON cui.attrelid = cs.table_oid 
                                    AND cui.attname = cs.column_name
 LEFT JOIN composite_fk_info cfk ON cfk.attrelid = cs.table_oid AND cfk.attname = cs.column_name
+LEFT JOIN incoming_references_info inc ON inc.target_table_oid = cs.table_oid AND inc.target_col_name = cs.column_name
 ORDER BY 
     cs.table_schema,
     cs.table_name,
