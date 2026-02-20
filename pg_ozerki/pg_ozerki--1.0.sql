@@ -18,6 +18,7 @@ RETURNS text
 AS 'MODULE_PATHNAME', 'dump_schema_by_query'
 LANGUAGE C STRICT;
 
+
 CREATE TYPE ozerki_statistic AS
 (
     table_schema    text,
