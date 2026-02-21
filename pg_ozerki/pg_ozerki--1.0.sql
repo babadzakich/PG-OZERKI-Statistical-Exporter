@@ -13,35 +13,36 @@ RETURNS text
 AS 'MODULE_PATHNAME', 'dump_schema'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION dump_schema_by_query(query text)
+CREATE FUNCTION dump_schema(query text)
 RETURNS text
-AS 'MODULE_PATHNAME', 'dump_schema_by_query'
+AS 'MODULE_PATHNAME', 'dump_schema'
 LANGUAGE C STRICT;
-
 
 CREATE TYPE ozerki_statistic AS
 (
-    table_schema    text,
-    table_name      text,
-    column_name     text,
-    data_type       text,
-    row_count       bigint,
-    null_percent    numeric,
-    modifiers       text,
-    max_length      integer,
-    relation_type   text,
-    referenced_table text,
-    referenced_column text,
-    mcv             text,
+    table_schema text,
+    table_name text,
+    column_name text,
+    data_type text,
+    row_count bigint,
+    null_percent numeric,
+    modifiers text,
+    composite_unique_peers text,
+    composite_fk_peers text,
+    incoming_references text,
+    max_length integer,
+    relation_types text,
+    outcoming_references text,
+    mcv text,
     mcv_frequencies float4[],
     avg_column_width_bytes int4,
-    ndistinct       float4,
-    hbounds         text
+	ndistinct float4,
+    hbounds text
 );
 
-CREATE OR REPLACE FUNCTION dump_statistic_by_query(query text) 
+CREATE OR REPLACE FUNCTION dump_statistic(query text) 
 RETURNS SETOF ozerki_statistic
-AS 'MODULE_PATHNAME', 'dump_statistic_by_query'
+AS 'MODULE_PATHNAME', 'dump_statistic'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION export_query_plan(query text, use_analyze boolean) 
@@ -221,6 +222,7 @@ column_stats AS (
         pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
         a.attnum AS column_number,
         a.attrelid as table_oid,
+        (t.typelem != 0 AND t.typlen = -1) AS is_array,
         CASE 
             WHEN a.atttypid IN (1042, 1043, 25) THEN
                 CASE 
@@ -243,6 +245,7 @@ column_stats AS (
     FROM pg_attribute a
     JOIN pg_class c ON a.attrelid = c.oid
     JOIN pg_namespace n ON c.relnamespace = n.oid
+    JOIN pg_type t ON a.atttypid = t.oid
     WHERE a.attnum > 0
       AND NOT a.attisdropped
       AND c.relkind = 'r'
@@ -270,8 +273,8 @@ SELECT
     cs.max_length,
     out_ref.outcoming_references,
     out_ref.relation_types,
-    s.most_common_vals AS mcv,
-    s.most_common_freqs AS mcv_frequencies,
+    CASE WHEN cs.is_array THEN s.most_common_elems ELSE s.most_common_vals END AS mcv,
+    CASE WHEN cs.is_array THEN s.most_common_elem_freqs ELSE s.most_common_freqs END AS mcv_frequencies,
     s.avg_width AS avg_column_width_bytes,
     s.n_distinct AS ndistinct,
     s.histogram_bounds as hbounds

@@ -26,10 +26,30 @@
 #include "executor/spi.h"
 #include "access/table.h"
 
+
+typedef struct {
+    char** tableNames;
+    int tableCount;
+    Oid *viewOids;
+    int viewCount;
+    Oid *functionOids;
+    int functionCount;
+    Oid *sequenceOids;
+    int sequenceCount;
+    Oid *indexOids;        
+    int indexCount;
+    Oid *constraintOids;   
+    int constraintCount;
+    char **schemas;
+    int schemaCount;
+    bool been_analyzed;
+} QueryDependencies;
+
+
 void generate_table_ddl(StringInfo buf, Oid tableOid);
 void generate_tables_ddl(StringInfo buf);
 void generate_views_ddl(StringInfo buf);
-void generate_indexes_ddl(StringInfo buf);
+void generate_indexes_ddl(StringInfo buf, QueryDependencies* deps);
 void generate_extensions_ddl(StringInfo buf);
 void generate_sequences_ddl(StringInfo buf);
 void generate_constraints_ddl(StringInfo buf);

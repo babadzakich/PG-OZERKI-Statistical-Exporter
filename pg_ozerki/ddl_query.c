@@ -1,14 +1,43 @@
-#include "ddl.h"
+
 #include "ozerki_utils.h"
 #include "ddl_query.h"
 #include "catalog/namespace.h"
-
+#include "parser/analyze.h"
+#include "parser/parser.h"
+#include "utils/lsyscache.h" 
+#include "catalog/pg_class.h"
+#include "tcop/tcopprot.h"
 void add_schema_to_deps(QueryDependencies *deps, const char *schema);
 
 void
 find_sequences_for_tables(QueryDependencies *deps);
 
-void find_views_for_tables(QueryDependencies *deps);
+void find_views_for_tables(QueryDependencies *deps, char* raw_query);
+
+
+QueryDependencies* init_deps() {
+    QueryDependencies *deps = (QueryDependencies*)palloc0(sizeof(QueryDependencies));
+    
+
+    deps->tableNames = NULL;
+    deps->viewOids = NULL;
+    deps->functionOids = NULL;
+    deps->sequenceOids = NULL;
+    deps->indexOids = NULL;
+    deps->constraintOids = NULL;
+    deps->schemas = NULL;
+    
+    deps->tableCount = 0;
+    deps->viewCount = 0;
+    deps->functionCount = 0;
+    deps->sequenceCount = 0;
+    deps->indexCount = 0;
+    deps->constraintCount = 0;
+    deps->schemaCount = 0;
+
+    deps->been_analyzed = false;
+    return deps;
+}
 
 static void
 add_table(QueryDependencies *deps, const char *name)
@@ -23,6 +52,147 @@ add_table(QueryDependencies *deps, const char *name)
     }
     deps->tableNames[deps->tableCount] = pstrdup(name);
     deps->tableCount++;
+}
+
+void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
+    for (int i = 0; i < deps->viewCount; i++) {
+        if (deps->viewOids[i] == viewOid) return;
+    }
+    
+    if (deps->viewCount == 0)
+        deps->viewOids = palloc(sizeof(Oid));
+    else
+        deps->viewOids = repalloc(deps->viewOids, sizeof(Oid) * (deps->viewCount + 1));
+        
+    deps->viewOids[deps->viewCount++] = viewOid;
+}
+
+
+void
+generate_table_ddl(StringInfo buf, Oid tableOid)
+{
+    Relation rel;
+    TupleDesc tupdesc;
+    char *relname;
+    char *nspname;
+    int i;
+    bool first_col = true;
+    
+    elog(LOG, "\n\nDDL CALLED\n\n");
+    if (!OidIsValid(tableOid)) {
+        return;
+    }
+    rel = table_open(tableOid, AccessShareLock);
+    
+    tupdesc = RelationGetDescr(rel);
+    nspname = get_namespace_name(RelationGetNamespace(rel));
+    if (!nspname)
+        nspname = pstrdup("public");
+    
+    relname = pstrdup(NameStr(rel->rd_rel->relname));
+    
+    appendStringInfo(buf, "CREATE TABLE %s.%s (\n", nspname, relname);
+    
+    for (i = 0; i < tupdesc->natts; i++)
+    {
+        Form_pg_attribute attr;
+        
+        attr = TupleDescAttr(tupdesc, i);
+
+        
+        if (attr->attisdropped)
+            continue;
+        
+        if (!first_col)
+            appendStringInfoString(buf, ",\n");
+        first_col = false;
+        
+        appendStringInfo(buf, "    %s ", NameStr(attr->attname));
+        
+        char *type_name = format_type_be(attr->atttypid);
+        appendStringInfoString(buf, type_name);
+        
+        if (attr->atttypmod != -1)
+        {
+            if (attr->atttypid == VARCHAROID || attr->atttypid == BPCHAROID)
+            {
+                appendStringInfo(buf, "(%d)", attr->atttypmod - VARHDRSZ);
+            }
+            else if (attr->atttypid == NUMERICOID)
+            {
+                
+                int32 precision = (attr->atttypmod >> 16) & 0xFFFF;
+                int32 scale = attr->atttypmod & 0xFFFF;
+                elog(LOG, "\n\nATTYPMOD = %x, PRECISION = %d, SCALE = %d\n\n", attr->atttypmod, precision, scale );
+                
+                if (scale - 4 > 0) {
+                    if (scale - 4 > 1000) {
+                        scale -= 2048;
+                    }
+                    appendStringInfo(buf, "(%d,%d)", precision, scale - 4);
+                }
+                else
+                    appendStringInfo(buf, "(%d)", precision);
+            }
+        }
+        
+         
+
+        if (attr->attnotnull)
+            appendStringInfoString(buf, " NOT NULL");
+        
+    }
+    
+    char *pk_constraint = get_primary_key_constraint(tableOid);
+    if (pk_constraint)
+    {
+        appendStringInfo(buf, ",\n    %s", pk_constraint);
+        pfree(pk_constraint);
+    }
+    
+    char *table_check_constraints = get_table_check_constraints(tableOid);
+    if (table_check_constraints)
+    {
+        appendStringInfoString(buf, table_check_constraints);
+        pfree(table_check_constraints);
+    }
+    
+    appendStringInfoString(buf, "\n);\n\n");
+
+
+    
+    char *table_comment = GetComment(tableOid, RelationRelationId, 0);
+    if (table_comment)
+    {
+        appendStringInfo(buf, "COMMENT ON TABLE %s.%s IS '%s';\n", 
+                       nspname, relname, table_comment);
+        pfree(table_comment);
+    }
+    
+    for (i = 0; i < tupdesc->natts; i++)
+    {
+        Form_pg_attribute attr;
+
+        attr = TupleDescAttr(tupdesc, i);
+
+        
+        if (attr->attisdropped)
+            continue;
+        
+        char *col_comment = GetComment(tableOid, RelationRelationId, attr->attnum);
+        if (col_comment)
+        {
+            appendStringInfo(buf, "COMMENT ON COLUMN %s.%s.%s IS '%s';\n", 
+                           nspname, relname, NameStr(attr->attname), col_comment);
+            pfree(col_comment);
+        }
+    }
+    
+
+    table_close(rel, AccessShareLock);
+    
+    pfree(relname);
+    pfree(nspname);
 }
 
 static void
@@ -76,6 +246,8 @@ extract_tables_from_yaml(const char *plan, QueryDependencies* deps)
         add_table(deps, fullname);
 
         p = rel_end + 1;
+
+        pfree(fullname);
     }
 
 
@@ -83,6 +255,7 @@ extract_tables_from_yaml(const char *plan, QueryDependencies* deps)
 
 void add_table_constraints_to_deps(QueryDependencies *deps) {
     if (!deps || deps->tableCount == 0) {
+        elog(LOG, "\n\nHUI  PIZDA\n\n");
         return;
     }
     
@@ -105,6 +278,7 @@ void add_table_constraints_to_deps(QueryDependencies *deps) {
     
     appendStringInfo(&constrQuery, ") AND c.contype IN ('p', 'f', 'c', 'u')");
     
+    elog(LOG, "\n\n CONstr query = %s\n\n", constrQuery.data);
     int ret = SPI_execute(constrQuery.data, true, 0);
     
     if (ret == SPI_OK_SELECT && SPI_processed > 0) {
@@ -236,8 +410,9 @@ void add_table_indexes_to_deps(QueryDependencies *deps) {
     
     pfree(idxQuery.data);
 }
-QueryDependencies* extract_tables_from_query_text(const char *query) {
-    QueryDependencies *deps = (QueryDependencies*)palloc0(sizeof(QueryDependencies));
+
+
+void extract_tables_from_query_text(const char *query, QueryDependencies* deps) {
     
 
     deps->tableNames = NULL;
@@ -283,128 +458,105 @@ QueryDependencies* extract_tables_from_query_text(const char *query) {
         elog(LOG, "\n table: %s, oid = %d\n", deps->tableNames[i], table_name_to_oid_internal(deps->tableNames[i]));
     }
     
+    pfree(explainQuery.data);
     return deps;
 }
 
-QueryDependencies* analyze_query_dependencies(const char *query) {
-    QueryDependencies *deps = (QueryDependencies*)palloc0(sizeof(QueryDependencies));
+void analyze_query_dependencies(const char *query, QueryDependencies* deps) {
+    
     int ret; 
-    deps = extract_tables_from_query_text(query);
+    
+    extract_tables_from_query_text(query, deps);
     find_sequences_for_tables(deps);
-    find_views_for_tables(deps);
+    find_views_for_tables(deps, query);
     add_table_constraints_to_deps(deps);
     add_table_indexes_to_deps(deps);
-    
-    return deps;
+    deps->been_analyzed = true;
+  
 }
 
-void find_views_for_tables(QueryDependencies *deps)
+void find_views_for_tables(QueryDependencies *deps, char* query_text)
 {
-    if (!deps || deps->tableCount == 0)
+    if (!deps || deps->tableCount == 0){
         return;
-
+    }
     StringInfoData sql;
     initStringInfo(&sql);
 
+    List* raw_parsetree_list;
+    List* query_tree_list;
+    ListCell *lc;
 
-    appendStringInfo(&sql,
-        "SELECT DISTINCT v.oid "
-        "FROM pg_class v "
-        "JOIN pg_rewrite r ON r.ev_class = v.oid "
-        "JOIN pg_depend d ON d.objid = r.oid "
-        "WHERE v.relkind = 'v' "
-        "AND d.refclassid = 'pg_class'::regclass "
-        "AND d.deptype = 'n' "
-        "AND d.refobjid IN (");
+    raw_parsetree_list = pg_parse_query(query_text);
+    
+    foreach(lc, raw_parsetree_list) {
+        
+        RawStmt *raw = (RawStmt *) lfirst(lc);
+       
+        Query *query;
 
-    for (int i = 0; i < deps->tableCount; i++) {
-        if (i > 0)
-            appendStringInfoString(&sql, ", ");
-        appendStringInfo(&sql, "%u", table_name_to_oid_internal(deps->tableNames[i]));
-    }
+        
+        query = parse_analyze_fixedparams(raw, query_text, NULL, 0,
+									  NULL);        
+        ListCell *rt_lc;
+        foreach(rt_lc, query->rtable) {
+            elog(LOG, "\n\n HUI MANDA \n\n");
+            RangeTblEntry *rte = (RangeTblEntry *) lfirst(rt_lc);
+            
+            if (rte->rtekind == RTE_RELATION) {
+                Oid relid = rte->relid;
+                char relkind = get_rel_relkind(relid);
 
-    appendStringInfoChar(&sql, ')');
-
-    elog(LOG, "\n\n VIEW QUERY = %s\n\n", sql.data);
-    int ret = SPI_execute(sql.data, true, 0);
-    if (ret != SPI_OK_SELECT)
-        elog(ERROR, "SPI_execute failed in find_views_for_tables");
-
-    if (SPI_processed == 0) {
-        pfree(sql.data);
-        return;
-    }
-
-    TupleDesc tupdesc = SPI_tuptable->tupdesc;
-
-    for (int i = 0; i < SPI_processed; i++) {
-        HeapTuple tuple = SPI_tuptable->vals[i];
-        bool isnull;
-
-        Datum d = SPI_getbinval(tuple, tupdesc, 1, &isnull);
-        if (isnull)
-            continue;
-
-        Oid viewOid = DatumGetObjectId(d);
-
-        bool exists = false;
-        for (int j = 0; j < deps->viewCount; j++) {
-            if (deps->viewOids[j] == viewOid) {
-                exists = true;
-                break;
+                if (relkind == RELKIND_VIEW) {
+                    elog(LOG, "\n\n FOUND VIEW \n\n");
+                    add_view_to_deps(deps, relid);
+                } 
             }
         }
-
-        if (exists)
-            continue;
-
-        deps->viewOids = (deps->viewCount == 0)
-            ? palloc(sizeof(Oid))
-            : repalloc(deps->viewOids,
-                       sizeof(Oid) * (deps->viewCount + 1));
-
-        deps->viewOids[deps->viewCount++] = viewOid;
     }
-
-    pfree(sql.data);
+    
 }
 
 
 void generate_constraints_ddl_query(StringInfo buf, QueryDependencies *deps) {
+    if (deps->constraintCount == 0 && deps->been_analyzed) {
+        return;
+    }
     int ret;
     char *query;
     elog(LOG, "\n\nCONSTR COUNT = %d\n\n", deps->constraintCount);
-    if (deps && deps->constraintCount > 0) {
 
-        StringInfoData constrQuery;
-        initStringInfo(&constrQuery);
-        
-        appendStringInfo(&constrQuery,
-            "SELECT n.nspname, t.relname as tablename, "
-            "c.conname, c.contype, "
-            "pg_catalog.pg_get_constraintdef(c.oid) as condef, "
-            "c.convalidated, c.conislocal, c.coninhcount, "
-            "c.oid as conoid "
-            "FROM pg_constraint c "
-            "JOIN pg_class t ON t.oid = c.conrelid "
-            "JOIN pg_namespace n ON n.oid = t.relnamespace "
-            "WHERE c.oid IN (");
-        
+    StringInfoData constrQuery;
+    initStringInfo(&constrQuery);
+    
+    appendStringInfo(&constrQuery,
+        "SELECT n.nspname, t.relname as tablename, "
+        "c.conname, c.contype, "
+        "pg_catalog.pg_get_constraintdef(c.oid) as condef, "
+        "c.convalidated, c.conislocal, c.coninhcount, "
+        "c.oid as conoid "
+        "FROM pg_constraint c "
+        "JOIN pg_class t ON t.oid = c.conrelid "
+        "JOIN pg_namespace n ON n.oid = t.relnamespace "
+        "WHERE ");
+    if (deps->constraintCount > 0) {
+        appendStringInfo(&constrQuery, "c.oid IN (");
+
         for (int i = 0; i < deps->constraintCount; i++) {
             if (i > 0) appendStringInfoString(&constrQuery, ", ");
             appendStringInfo(&constrQuery, "%u", deps->constraintOids[i]);
         }
-        
-        appendStringInfo(&constrQuery,
-            ") AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
-            "AND c.contype IN ('f', 'c', 'u') "
-            "ORDER BY n.nspname, t.relname, c.contype, c.conname");
-        
-        query = constrQuery.data;
-    } 
-    else {
-        return;
+
+        appendStringInfo(&constrQuery, ") AND ");
     }
+    appendStringInfo(&constrQuery,
+        " n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
+        "AND c.contype IN ('f', 'c', 'u') "
+        "ORDER BY n.nspname, t.relname, c.contype, c.conname");
+    
+    query = constrQuery.data;
+    
+    
     
     ret = SPI_execute(query, true, 0);
     if (ret == SPI_OK_SELECT && SPI_processed > 0) {
@@ -509,9 +661,10 @@ void generate_constraints_ddl_query(StringInfo buf, QueryDependencies *deps) {
 
 
 void generate_sequences_ddl_query(StringInfo buf, QueryDependencies* deps) {
-    if (!deps || deps->sequenceCount == 0)
+    
+    if (deps->sequenceCount == 0 && deps->been_analyzed) {
         return;
-
+    }
     StringInfoData seqQuery;
     initStringInfo(&seqQuery);
 
@@ -530,16 +683,21 @@ void generate_sequences_ddl_query(StringInfo buf, QueryDependencies* deps) {
         "JOIN pg_namespace n ON n.oid = c.relnamespace "
         "JOIN pg_sequence s ON s.seqrelid = c.oid "
         "JOIN pg_roles r ON r.oid = c.relowner "
-        "WHERE c.oid IN (");
+        "WHERE ");
 
-    for (int i = 0; i < deps->sequenceCount; i++) {
-        if (i > 0)
-            appendStringInfoString(&seqQuery, ", ");
-        appendStringInfo(&seqQuery, "%u", deps->sequenceOids[i]);
+    if (deps->sequenceCount > 0) {
+        appendStringInfo(&seqQuery, "c.oid IN (");
+        for (int i = 0; i < deps->sequenceCount; i++) {
+            if (i > 0)
+                appendStringInfoString(&seqQuery, ", ");
+            appendStringInfo(&seqQuery, "%u", deps->sequenceOids[i]);
+        }
+        appendStringInfo(&seqQuery, ") AND ");
     }
+    
 
     appendStringInfo(&seqQuery,
-        ") AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema') "
+        "n.nspname NOT IN ('pg_catalog','pg_toast','information_schema') "
         "ORDER BY n.nspname, c.relname");
 
     int ret = SPI_execute(seqQuery.data, true, 0);
@@ -726,7 +884,39 @@ void generate_tables_ddl_query(StringInfo buf, QueryDependencies* deps) {
             appendStringInfoString(buf, "\n\n");
             
         }
+    } else {
+        query = "SELECT c.oid "
+            "FROM pg_class c "
+            "JOIN pg_namespace n ON c.relnamespace = n.oid "
+            "WHERE c.relkind = 'r' "
+            "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
+            "ORDER BY n.nspname, c.relname";
+    
+        ret = SPI_execute(query, true, 0);
+        elog(LOG, "\n\nSPI PROCESSED %d\n\n", SPI_processed);
+        if (ret == SPI_OK_SELECT && SPI_processed > 0)
+        {
+            appendStringInfoString(buf, "--\n-- Tables\n--\n\n");
+            int tables_processed = SPI_processed;
+            SPITupleTable saved = *SPI_tuptable;
+            TupleDesc tupdesc = saved.tupdesc;
+            for (int i = 0; i < tables_processed; i++)
+            {
+                HeapTuple tuple = saved.vals[i];
+                bool isNull;
+                elog(LOG, "\n\nTABLES PROCESSED %d\n\n", tables_processed);
+
+                Datum oid_datum = SPI_getbinval(tuple, tupdesc, 1, &isNull);
+                if (!isNull)
+                {
+                    Oid tableOid = DatumGetObjectId(oid_datum);
+                    generate_table_ddl(buf, tableOid);
+                    appendStringInfoString(buf, "\n\n");
+                }
+            }
+        }
     }
+
     
 }
 
@@ -786,7 +976,7 @@ char* escape_string(char *str) {
 void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps) {
 
     elog(LOG, "\n\n VIEWS COUNT = %d\n\n", deps->viewCount);
-    if (!deps || deps->viewCount == 0) {
+    if (deps->been_analyzed && deps->viewCount == 0) {
         return;
     }
     
@@ -801,15 +991,19 @@ void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps) {
         "obj_description(c.oid, 'pg_class') as comment "
         "FROM pg_class c "
         "JOIN pg_namespace n ON c.relnamespace = n.oid "
-        "WHERE c.oid IN (");
-    
-    for (int i = 0; i < deps->viewCount; i++) {
-        if (i > 0) appendStringInfoString(&viewQuery, ", ");
-        appendStringInfo(&viewQuery, "%u", deps->viewOids[i]);
+        "WHERE ");
+
+    if (deps->viewCount > 0) {
+        appendStringInfo(&viewQuery, "c.oid IN (");
+        for (int i = 0; i < deps->viewCount; i++) {
+            if (i > 0) appendStringInfoString(&viewQuery, ", ");
+            appendStringInfo(&viewQuery, "%u", deps->viewOids[i]);
+        }
+        appendStringInfo(&viewQuery, ") AND ");
     }
     
     appendStringInfo(&viewQuery,
-        ") AND c.relkind = 'v' "
+        "c.relkind = 'v' "
         "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
         "ORDER BY "
         "CASE WHEN c.relname LIKE 'pg_%%' THEN 1 ELSE 0 END, "  
@@ -873,13 +1067,35 @@ void generate_views_ddl_query(StringInfo buf, QueryDependencies* deps) {
 
 
 void generate_indexes_ddl_query(StringInfo buf, QueryDependencies *deps) {
+    
+    if (deps->indexCount == 0 && deps->been_analyzed) {
+        return;
+    }
     int ret;
     char *query;
     Oid* tableOids = palloc(sizeof(Oid) * deps->tableCount);
     for (int i = 0; i < deps->tableCount; i++) {
         tableOids[i] = table_name_to_oid_internal(deps->tableNames[i]);
     }
-    if (deps && deps->indexCount > 0) {
+    if (!deps->been_analyzed) {
+        query = "SELECT n.nspname, c.relname as tablename, "
+            "i.relname as indexname, "
+            "pg_catalog.pg_get_indexdef(i.oid) as indexdef, "
+            "i.oid as index_oid, "
+            "x.indisunique, "
+            "con.oid as constraint_oid "
+            "FROM pg_index x "
+            "JOIN pg_class i ON i.oid = x.indexrelid "
+            "JOIN pg_class c ON c.oid = x.indrelid "
+            "JOIN pg_namespace n ON n.oid = i.relnamespace "
+            "LEFT JOIN pg_constraint con ON con.conindid = i.oid "  
+            "WHERE i.relkind = 'i' "
+            "AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
+            "AND NOT x.indisprimary "  
+            "AND (con.oid IS NULL OR NOT x.indisunique) "  
+            "ORDER BY n.nspname, c.relname, i.relname";
+    }
+    if (deps->been_analyzed && deps->indexCount > 0) {
 
         StringInfoData idxQuery;
         initStringInfo(&idxQuery);
@@ -911,7 +1127,7 @@ void generate_indexes_ddl_query(StringInfo buf, QueryDependencies *deps) {
             "ORDER BY n.nspname, c.relname, i.relname");
         
         query = idxQuery.data;
-    } else if (deps && deps->tableCount > 0) {
+    } else if (deps->been_analyzed && deps->tableCount > 0) {
 
         StringInfoData tableIdxQuery;
         initStringInfo(&tableIdxQuery);
@@ -943,9 +1159,7 @@ void generate_indexes_ddl_query(StringInfo buf, QueryDependencies *deps) {
             "ORDER BY n.nspname, c.relname, i.relname");
         
         query = tableIdxQuery.data;
-    } else {
-        return;
-    }
+    } 
     
     ret = SPI_execute(query, true, 0);
     
@@ -1037,6 +1251,7 @@ generate_schemas_ddl_query(StringInfo buf, QueryDependencies* deps) {
         
         query = schemaQuery.data;
     } else {
+        ereport(LOG, "\nPIZDAAA\n");
         query = "SELECT n.oid, n.nspname, pg_catalog.pg_get_userbyid(n.nspowner) as owner, "
                 "pg_catalog.obj_description(n.oid, 'pg_namespace') as description "
                 "FROM pg_catalog.pg_namespace n "
@@ -1168,8 +1383,11 @@ find_sequences_for_tables(QueryDependencies *deps)
     if (ret != SPI_OK_SELECT)
         elog(ERROR, "SPI_execute failed in find_sequences_for_tables");
 
-    if (SPI_processed == 0)
+    elog(LOG, "\nseq find query = %s\n", sql.data);
+    if (SPI_processed == 0) {
         pfree(sql.data);
+        return;
+    }
 
     TupleDesc tupdesc = SPI_tuptable->tupdesc;
 
@@ -1270,5 +1488,62 @@ void generate_functions_ddl_query(StringInfo buf, QueryDependencies* deps)
                 pfree(definition);
             }
         }
+    }
+}
+
+
+void generate_planner_settings_ddl(StringInfo buf) {
+    int ret;
+    const char *query;
+    
+    query = "SELECT name, setting, unit "
+            "FROM pg_settings "
+            "WHERE name IN ("
+            "'seq_page_cost', "
+            "'random_page_cost', "
+            "'cpu_tuple_cost', "
+            "'cpu_index_tuple_cost', "
+            "'effective_cache_size', "
+            "'work_mem', "
+            "'default_statistics_target'"
+            ") ORDER BY name";
+    
+    ret = SPI_execute(query, true, 0);
+    
+    if (ret == SPI_OK_SELECT && SPI_processed > 0)
+    {
+        TupleDesc tupdesc = SPI_tuptable->tupdesc;
+        
+        appendStringInfoString(buf, "--\n-- Planner Settings\n--\n\n");
+        
+        for (int i = 0; i < SPI_processed; i++)
+        {
+            HeapTuple tuple = SPI_tuptable->vals[i];
+            
+            char* name = SPI_getvalue(tuple, tupdesc, 1);
+            char* setting = SPI_getvalue(tuple, tupdesc, 2);
+            char* unit = SPI_getvalue(tuple, tupdesc, 3); 
+            
+            if (name && setting)
+            {
+                
+                if (unit && strcmp(unit, "") != 0)
+                {
+                    
+                    appendStringInfo(buf, "ALTER SYSTEM SET %s = '%s%s';\n", 
+                                   name, setting, unit);
+                }
+                else
+                {
+                    appendStringInfo(buf, "ALTER SYSTEM SET %s = %s;\n", 
+                                   name, setting);
+                }
+                
+                pfree(name);
+                pfree(setting);
+                if (unit) pfree(unit);
+            }
+        }
+        appendStringInfoString(buf, "\n");
     }
 }
