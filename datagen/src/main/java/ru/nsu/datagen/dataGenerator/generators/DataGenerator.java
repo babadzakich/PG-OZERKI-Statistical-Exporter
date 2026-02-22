@@ -3,7 +3,7 @@ package ru.nsu.datagen.dataGenerator.generators;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
-import ru.nsu.datagen.dataGenerator.generators.pk.PrimaryKeyGeneratorFactory;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
@@ -12,15 +12,8 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import java.util.*;
 
 public class DataGenerator {
-    private final PrimaryKeyGeneratorFactory pkGeneratorFactory;
-    private final ForeignKeyGeneratorFactory fkGeneratorFactory;
-    private final NormalValueGenerator normalValueGenerator;
-
-    public DataGenerator() {
-        this.pkGeneratorFactory = new PrimaryKeyGeneratorFactory();
-        this.fkGeneratorFactory = new ForeignKeyGeneratorFactory();
-        this.normalValueGenerator = new StatTypeBasedGenerator();
-    }
+    private final ForeignKeyGeneratorFactory fkGeneratorFactory = new ForeignKeyGeneratorFactory();
+    private final NormalValueGenerator normalValueGenerator = new StatTypeBasedGenerator();
 
     /**
      * Генерирует данные для таблицы
@@ -110,7 +103,7 @@ public class DataGenerator {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isPrimaryKey()) {
-                List<Object> primaryKeys = pkGeneratorFactory.getGenerator(column).generatePrimaryKeys(column);
+                List<Object> primaryKeys = ValueGeneratorFactory.createValueGenerator(column).generateValues(column.getRecordCount());
                 columnData.put(column.getName(), primaryKeys);
             }
         }
@@ -160,13 +153,5 @@ public class DataGenerator {
             }
             if (!uniqueList.isEmpty())
                 UniqueKeyGeneratorChooser.generate(uniqueList, columnData, uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE, table.getRecordCount());
-    }
-
-    public PrimaryKeyGeneratorFactory getPkGeneratorFactory() {
-        return pkGeneratorFactory;
-    }
-
-    public ForeignKeyGeneratorFactory getFkGeneratorFactory() {
-        return fkGeneratorFactory;
     }
 }

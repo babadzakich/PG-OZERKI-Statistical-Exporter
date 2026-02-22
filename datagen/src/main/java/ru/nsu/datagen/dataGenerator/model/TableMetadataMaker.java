@@ -3,17 +3,29 @@ package ru.nsu.datagen.dataGenerator.model;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.math.BigDecimal;
+import java.time.*;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
 public class TableMetadataMaker {
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .toFormatter();
+
+    private static final DateTimeFormatter TIMESTAMPTZ_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
+            .appendPattern("X")
+            .toFormatter();
+
     //private Map<String, List<String[]>> columnDataGroupedByTablename;
    //private Map<String, List<String>> tableToColumnNames;
 
@@ -39,7 +51,10 @@ public class TableMetadataMaker {
                     : null;
             
             int recordCountValue = Integer.parseInt(line[4]) == -1 ? 0 : Integer.parseInt(line[4]);
-            
+            if (!line[6].isEmpty() && line[6].contains("CHECK")) {
+                log.error("Column {} in table {} has CHECK constraint, which is currently not supported.", line[2], line[1]);
+                throw new UnsupportedOperationException("CHECK constraints are not supported for column " + line[2] + " in table " + line[1] + ".");
+            }
             double nullPercentageValue = (line[5] == null || line[5].isEmpty() || line[5].equals("NULL")) ? 0.0 : Double.parseDouble(line[5]);
             ColumnMetadata columnMetadata = ColumnMetadata.builder()
                 .name(line[2])
@@ -164,14 +179,14 @@ public class TableMetadataMaker {
                 case "bigint", "int8" -> Long.parseLong(value.trim());
                 case "real", "float4" -> Float.parseFloat(value.trim());
                 case "double precision", "float8" -> Double.parseDouble(value.trim());
-                case "varchar", "text", "char", "interval", "tstzrange", "point", "jsonb", "json" -> value;
                 case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
-                case "date" -> java.sql.Date.valueOf(value.trim());
-                case "timestamp", "timestamp with time zone", "timestamptz" -> value.trim();
-                case "time without time zone", "time" -> java.sql.Time.valueOf(value.trim());
+                case "date" -> LocalDate.parse(value.trim());
+                case "timestamp" -> LocalDateTime.parse(value.trim(), TIMESTAMP_FORMATTER);
+                case "timestamp with time zone", "timestamptz" -> OffsetDateTime.parse(value.trim(), TIMESTAMPTZ_FORMATTER).toInstant();
+                case "time without time zone", "time" -> LocalTime.parse(value.trim());
                 default -> {
                     if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
-                        yield Double.parseDouble(value.trim());
+                        yield BigDecimal.valueOf(Double.parseDouble(value.trim()));
                     }
                     yield value;
                 }
