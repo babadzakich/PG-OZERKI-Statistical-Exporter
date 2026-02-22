@@ -19,8 +19,7 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount,
                                  Map<String, List<ReferencingTreeNode>> referencingTrees) {
         this.column = uniqColumns.getFirst();
-        this.referencingTrees = referencingTrees.get(this.column.getName());
-
+        this.referencingTrees = referencingTrees == null ? null : referencingTrees.get(this.column.getName());
         this.recordCount = recordCount;
     }
 
@@ -35,11 +34,16 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 	public void generate(Map<String, List<Object>> columnData) {
         String columnName = column.getName();
         ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(column);
-        Set<Object> referencedValues = new HashSet<>();
-        for (ReferencingTreeNode node : referencingTrees) {
-            collectReferencedValues(referencedValues, node);
+        List<Object> res;
+        if (referencingTrees != null) {
+            Set<Object> referencedValues = new HashSet<>();
+            for (ReferencingTreeNode node : referencingTrees) {
+                collectReferencedValues(referencedValues, node);
+            }
+            res = new ArrayList<>(referencedValues);
+        } else {
+            res = new ArrayList<>();
         }
-        List<Object> res = new ArrayList<>(referencedValues);
 
         if (column.getHistogramm() != null) {
             generator.generateValues(res, recordCount, column.getHistogramm().getFirst(), column.getHistogramm().getLast());
