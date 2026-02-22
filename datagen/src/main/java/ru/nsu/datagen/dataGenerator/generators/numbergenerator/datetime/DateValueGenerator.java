@@ -16,7 +16,7 @@ public class DateValueGenerator implements ValueGenerator {
     @Override
     public Object generateValue() {
         return faker.timeAndDate().between(PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP)
-                .atZone(ZoneOffset.UTC).toLocalDate();
+                .atZone(ZoneOffset.UTC).toLocalDate().toString();
     }
 
     @Override
@@ -26,13 +26,13 @@ public class DateValueGenerator implements ValueGenerator {
 
         if (leftValue.isAfter(rightValue) || leftValue.isEqual(rightValue)) {
             log.warn("Left border {} >= right border {}, using left value", leftValue, rightValue);
-            return leftValue;
+            return leftValue.toString();
         }
 
         return faker.timeAndDate().between(
                 leftValue.atStartOfDay(ZoneOffset.UTC).toInstant(),
                 rightValue.atStartOfDay(ZoneOffset.UTC).toInstant()
-        ).atZone(ZoneOffset.UTC).toLocalDate();
+        ).atZone(ZoneOffset.UTC).toLocalDate().toString();
     }
 
     private LocalDate getLocalDate(Object value, LocalDate defaultValue) {
@@ -41,24 +41,14 @@ public class DateValueGenerator implements ValueGenerator {
             res = localDate;
         } else {
             res = defaultValue;
-            log.warn("Invalid date type for {} value generation: {}, using {}}", this.getClass(), value.getClass(), defaultValue.toString());
+            log.warn("Invalid date type for {} value generation: {}, using {}}", this.getClass(), value != null ? value.getClass() : "null", defaultValue.toString());
         }
         return res;
     }
 
     @Override
     public List<Object> generateValues(int count) {
-        Set<String> uniqueValues = new HashSet<>();
-        long maxAttempts = count * 100L;
-        long attempts = 0;
-
-        while (uniqueValues.size() < count && attempts < maxAttempts) {
-            uniqueValues.add(faker.timeAndDate().birthday().toString());
-            attempts++;
-        }
-
-        checkUniqueGeneration(count, uniqueValues.size(), maxAttempts);
-        return new ArrayList<>(uniqueValues);
+        return generateValues(count, PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP);
     }
 
     @Override

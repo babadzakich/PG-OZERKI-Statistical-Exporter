@@ -64,8 +64,10 @@ public class FloatValueGenerator implements ValueGenerator {
         }
 
         if (uniqueValues.size() < count) {
-            log.warn("Could not generate {} unique float values in range ({} to {}) after {} attempts. Generated only {} unique values.",
+            log.error("Could not generate {} unique float values in range ({} to {}) after {} attempts. Generated only {} unique values.",
                     count, left, right, maxAttempts, uniqueValues.size());
+            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
         }
 
         return new ArrayList<>(uniqueValues);

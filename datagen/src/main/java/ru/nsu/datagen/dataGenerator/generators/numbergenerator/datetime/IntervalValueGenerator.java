@@ -2,6 +2,7 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
+import org.jetbrains.annotations.NotNull;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 
 import java.time.Duration;
@@ -39,7 +40,7 @@ public class IntervalValueGenerator implements ValueGenerator {
                     log.error("Failed to parse interval borders: {}", e.getMessage());
                 }
             } else {
-                log.warn("Invalid border types for {} value generation: {} and {}, using default values", this.getClass().toString(), leftBorder.getClass(), rightBorder.getClass());
+                log.warn("Invalid border types for {} value generation: {} and {}, using default values", this.getClass(), leftBorder.getClass(), rightBorder.getClass());
             }
         return null;
     }
@@ -58,7 +59,12 @@ public class IntervalValueGenerator implements ValueGenerator {
                 values.add((String) generateValue(leftBorder, rightBorder));
                 attempts++;
             }
-
+            if (values.size() < count) {
+                log.error("Could not generate {} unique timestamps in range ({} to {}) after {} attempts. Generated only {} unique values.",
+                        count, leftBorder, rightBorder, maxAttempts, values.size());
+                throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                        + ". Done only " + values.size() + " out of " + count + " unique values.");
+            }
             return new ArrayList<>(values);
     }
 
@@ -69,12 +75,13 @@ public class IntervalValueGenerator implements ValueGenerator {
              throw new IllegalArgumentException("Invalid interval format, expected PnYnMnDTnHnMnS");
         }
         Period p = Period.parse(parts[0]);
-        Duration d = Duration.parse("P" + parts[1]);
+        Duration d = Duration.parse("PT" + parts[1]);
         return new Interval(p, d);
     }
 
     private record Interval(Period period, Duration duration) {
         @Override
+        @NotNull
         public String toString() {
             return period.toString() + " " + duration.toString().substring(1);
         }

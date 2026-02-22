@@ -52,8 +52,8 @@ public class TableMetadataMaker {
             
             int recordCountValue = Integer.parseInt(line[4]) == -1 ? 0 : Integer.parseInt(line[4]);
             if (!line[6].isEmpty() && line[6].contains("CHECK")) {
-                log.error("Column {} in table {} has CHECK constraint, which is currently not supported. .", line[2], line[1]);
-                throw new UnsupportedOperationException("CHECK constraints are not supported.");
+                log.error("Column {} in table {} has CHECK constraint, which is currently not supported.", line[2], line[1]);
+                throw new UnsupportedOperationException("CHECK constraints are not supported for column " + line[2] + " in table " + line[1] + ".");
             }
             double nullPercentageValue = (line[5] == null || line[5].isEmpty() || line[5].equals("NULL")) ? 0.0 : Double.parseDouble(line[5]);
             ColumnMetadata columnMetadata = ColumnMetadata.builder()

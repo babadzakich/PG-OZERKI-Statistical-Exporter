@@ -59,6 +59,12 @@ public class DoubleValueGenerator implements ValueGenerator {
             i += uniqueValues.add(value) ? 1 : 0;
             attempts++;
         }
+        if (uniqueValues.size() != count) {
+            log.error("Could not generate {} unique double values in range ({} to {}) after {} attempts. Generated only {} unique values.",
+                    count, left, right, maxAttempts, uniqueValues.size());
+            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
+        }
         return new ArrayList<>(uniqueValues);
     }
 }

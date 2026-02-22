@@ -19,7 +19,7 @@ public class TimestampTZValueGenerator implements ValueGenerator {
 
     @Override
     public Object generateValue() {
-        return faker.timeAndDate().between(PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP);
+        return faker.timeAndDate().between(PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP).toString();
     }
 
     @Override
@@ -32,7 +32,7 @@ public class TimestampTZValueGenerator implements ValueGenerator {
             return left;
         }
 
-        return faker.timeAndDate().between(left, right);
+        return faker.timeAndDate().between(left, right).toString();
     }
 
     @Override
@@ -50,18 +50,20 @@ public class TimestampTZValueGenerator implements ValueGenerator {
             return new ArrayList<>(Collections.nCopies(count, left));
         }
 
-        Set<Instant> uniqueValues = new HashSet<>();
+        Set<String> uniqueValues = new HashSet<>();
         long maxAttempts = count * 100L;
         long attempts = 0;
 
         while (uniqueValues.size() < count && attempts < maxAttempts) {
-            uniqueValues.add(faker.timeAndDate().between(left, right));
+            uniqueValues.add(faker.timeAndDate().between(left, right).toString());
             attempts++;
         }
 
         if (uniqueValues.size() < count) {
-            log.warn("Could not generate {} unique timestamps in range ({} to {}) after {} attempts. Generated only {} unique values.",
+            log.error("Could not generate {} unique timestamps in range ({} to {}) after {} attempts. Generated only {} unique values.",
                     count, left, right, maxAttempts, uniqueValues.size());
+            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
         }
 
         return new ArrayList<>(uniqueValues);

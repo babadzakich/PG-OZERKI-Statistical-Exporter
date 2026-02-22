@@ -4,7 +4,6 @@ import ru.nsu.datagen.dataGenerator.generators.numbergenerator.binary.ByteaValue
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime.*;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.geoma.PointValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric.*;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.range.TstzrangeValueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
 import java.util.regex.Matcher;
@@ -21,14 +20,14 @@ public class ValueGeneratorFactory {
             case "double precision", "float8" -> new DoubleValueGenerator();
             case "boolean" -> new BooleanValueGenerator();
             case "money" -> new MoneyValueGenerator();
-            case "bytea" -> new ByteaValueGenerator(columnMetadata.getAvgTupleSize());
+            case "bytea" -> new ByteaValueGenerator(Math.max(columnMetadata.getAvgTupleSize() > 0 ? columnMetadata.getAvgTupleSize() : columnMetadata.getMaxLength(), 1));
             case "date" -> new DateValueGenerator();
-            case "timestamp" -> new TimestampValueGenerator();
+            case "timestamp", "timestamp without time zone" -> new TimestampValueGenerator();
             case "timestamp with time zone", "timestamptz" -> new TimestampTZValueGenerator();
             case "time without time zone", "time" -> new TimeValueGenerator();
             case "time with time zone", "timetz" -> new TimeTZValueGenerator();
             case "interval" -> new IntervalValueGenerator();
-            case "tstzrange" -> new TstzrangeValueGenerator();
+//            case "tstzrange" -> new TstzrangeValueGenerator();
             case "point" -> new PointValueGenerator();
             case "jsonb", "json" -> new JSONValueGenerator();
             default -> {

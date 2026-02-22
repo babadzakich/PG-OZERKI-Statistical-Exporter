@@ -39,7 +39,7 @@ public class TimeValueGenerator implements ValueGenerator {
             right = LocalTime.MAX;
         }
 
-        return LocalTime.ofSecondOfDay(faker.time().between(left, right));
+        return LocalTime.ofSecondOfDay(faker.time().between(left, right)).toString();
     }
 
     @Override
@@ -68,17 +68,19 @@ public class TimeValueGenerator implements ValueGenerator {
             right = LocalTime.MAX;
         }
 
-        Set<LocalTime> uniqueValues = HashSet.newHashSet(count);
+        Set<String> uniqueValues = new HashSet<>();
         long maxAttempts = 100L * count;
         long attempts = 0;
 
         while (uniqueValues.size() < count && attempts < maxAttempts) {
-            uniqueValues.add(LocalTime.ofSecondOfDay(faker.time().between(left, right)));
+            uniqueValues.add(LocalTime.ofSecondOfDay(faker.time().between(left, right)).toString());
             attempts++;
         }
 
         if (uniqueValues.size() < count) {
-            log.warn("Couldn`t generate {} unique time values, having only {}", count, uniqueValues.size());
+            log.error("Couldn`t generate {} unique time values, having only {}", count, uniqueValues.size());
+            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
         }
         return new ArrayList<>(uniqueValues);
     }

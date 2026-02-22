@@ -14,7 +14,7 @@ public class SmallintValueGenerator implements ValueGenerator {
 
     @Override
     public Object generateValue() {
-        return generateValue(Integer.MIN_VALUE, Integer.MAX_VALUE);
+        return generateValue(Short.MIN_VALUE, Short.MAX_VALUE);
     }
 
     @Override
