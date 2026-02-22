@@ -29,10 +29,10 @@ public class ColumnMetadataCSV {
     private int maxLength;
     @CsvBindByName(column = "relation_type")
     private String relationshipType;
-    @CsvBindByName(column = "referenced_table")
-    private String referencedTable;
-    @CsvBindByName(column = "referenced_column")
-    private String referencedColumn;
+    @CsvBindByName(column = "incoming_reference")
+    private String incomingReferences;
+    @CsvBindByName(column = "outcoming_reference")
+    private String outcomingReferences;
     @CsvBindByName(column = "mcv")
     private String mcv;
     @CsvBindByName(column = "mcv_frequencies")
@@ -43,10 +43,12 @@ public class ColumnMetadataCSV {
     private double ndistinct;
     @CsvBindByName(column = "hbounds")
     private String hbounds;
-    @CsvBindByName(column = "composite_peers")
+    @CsvBindByName(column = "composite_unique_peers")
     private String compositePeers;
+    @CsvBindByName(column = "composite_fk_peers")
+    private String compositeFkPeers;
 
-    public ColumnMetadata transformToColumnMetadata(List<Set<String>> compositePeersList) {
+    public ColumnMetadata transformToColumnMetadata(List<Set<String>> compositePeersList, List<Set<String>> compositeFkPeersList) {
         log.debug("Start transforming column: {}.{}.{}", schemaName, tableName, columnName);
         boolean isFk = false, isPk = false, isUnique = false;
         if (modifiers != null) {
@@ -57,11 +59,22 @@ public class ColumnMetadataCSV {
             isUnique = modSet.contains("UNIQUE") && !isPk;
         }
 
-        String refTable = isFk ? referencedTable : null;
-        String refCol = isFk ? referencedColumn : null;
+        List<String> refSchemas = null, refTables= null, refCols = null;
+
+        if (isFk) {
+            refSchemas = new ArrayList<>();
+            refTables = new ArrayList<>();
+            refCols = new ArrayList<>();
+            for (String refs : outcomingReferences.split(",")) {
+                String[] refsArr = refs.split("\\.");
+                refSchemas.add(refsArr[0]);
+                refTables.add(refsArr[1]);
+                refCols.add(refsArr[2]);
+            }
+        }
 
         RelationshipType relType = null;
-        if (relationshipType != null && !relationshipType.isEmpty() && !relationshipType.equals("NULL")) {
+        if (relationshipType != null && !relationshipType.isEmpty() && !"NULL".equals(relationshipType)) {
             try {
                 relType = RelationshipType.valueOf(relationshipType);
             } catch (IllegalArgumentException e) {
@@ -69,10 +82,23 @@ public class ColumnMetadataCSV {
             }
         }
 
-        ForeignKeyMetadata fkMetadata = isFk
-                ? new ForeignKeyMetadata(refTable, refCol, relType)
-                : null;
+        List<ForeignKeyMetadata> fkMetadata = null;
+        if (isFk) {
+            fkMetadata = new ArrayList<>();
+            for (int i = 0; i < refSchemas.size(); i++) {
+                fkMetadata.add(new ForeignKeyMetadata(refSchemas.get(i), refTables.get(i), refCols.get(i), relType));
+            }
+        }
 
+        Map<String, Map<String, List<String>>> referencingColumns = null;
+        if (incomingReferences != null && !incomingReferences.isEmpty() && !"NULL".equals(incomingReferences)) {
+            referencingColumns = new HashMap<>();
+            for (String ref : incomingReferences.split(",")) {
+                String[] refParts = ref.split("\\.");
+                referencingColumns.computeIfAbsent(refParts[0], k -> new HashMap<>())
+                        .computeIfAbsent(refParts[1], k -> new ArrayList<>()).add(refParts[2]);
+            }
+        }
         return ColumnMetadata.builder()
                 .name(columnName)
                 .dataType(dataType)
@@ -88,7 +114,9 @@ public class ColumnMetadataCSV {
                 .avgTupleSize(avgTupleSize)
                 .ndistinct(ndistinct)
                 .histogramm(parsePgArrayString(hbounds, dataType))
-                .uniquePeers(compositePeersList)
+                .compositeUniquePeers(compositePeersList)
+                .compositeForeignPeers(compositeFkPeersList)
+                .referencingColumns(referencingColumns)
                 .build();
     }
 

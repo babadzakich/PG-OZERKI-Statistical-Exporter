@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import com.github.javafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
@@ -28,16 +29,19 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private final List<Integer> recordSize;
     private final List<Double> ndistincts;
     private final List<String> types;
+    private final Map<String, List<ReferencingTreeNode>> referencingTrees;
     private final Random random = new Random(System.currentTimeMillis());
     private final Faker faker = new Faker(random);
 
-    public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
+    public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
+                           Map<String, List<ReferencingTreeNode>> referencingTrees) {
             this.columns = new ArrayList<>();
             this.recordSize = new ArrayList<>();
             this.names = new ArrayList<>();
             this.ndistincts = new ArrayList<>();
             this.types = new ArrayList<>();
-            
+            this.referencingTrees = referencingTrees;
+
             for (ColumnMetadata col : columnsMetadata) {
                 this.columns.add(col.getMcv());
                 this.names.add(col.getName());

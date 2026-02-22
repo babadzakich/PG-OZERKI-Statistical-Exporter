@@ -16,20 +16,24 @@ public class ColumnMetadata {
     private final double nullPercentage;
     private final int recordCount;
     private final Integer maxLength;
-    private final ForeignKeyMetadata foreignKeyMetadata;
+    private final List<ForeignKeyMetadata> foreignKeyMetadata;
     private final Map<Object, Double> mcv;
     private final int avgTupleSize;
     private final double ndistinct;
     private final boolean isArray;
     private final List<Object> histogramm;
-    public List<Set<String>> uniquePeers;
+    private final List<Set<String>> compositeUniquePeers;
+    private final List<Set<String>> compositeForeignPeers;
+    private final Map<String, Map<String, List<String>>> referencingColumns;
+
 
     @Builder
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
-                          int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
+                          int recordCount, Integer maxLength, List<ForeignKeyMetadata> foreignKeyMetadata,
                           Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
-                          List<Object> histogramm, List<Set<String>> uniquePeers
+                          List<Object> histogramm, List<Set<String>> compositeUniquePeers, List<Set<String>> compositeForeignPeers,
+                          Map<String, Map<String, List<String>>> referencingColumns
     ) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
@@ -59,7 +63,9 @@ public class ColumnMetadata {
             this.dataType = dataType;
         }
         this.histogramm = histogramm;
-        this.uniquePeers = uniquePeers;
+        this.compositeUniquePeers = compositeUniquePeers;
+        this.compositeForeignPeers = compositeForeignPeers;
+        this.referencingColumns = referencingColumns;
     }
 
     @Override

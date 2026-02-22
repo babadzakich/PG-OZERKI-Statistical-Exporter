@@ -7,6 +7,7 @@ import ru.nsu.datagen.dataGenerator.generators.pk.PrimaryKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.util.*;
@@ -15,11 +16,13 @@ public class DataGenerator {
     private final PrimaryKeyGeneratorFactory pkGeneratorFactory;
     private final ForeignKeyGeneratorFactory fkGeneratorFactory;
     private final NormalValueGenerator normalValueGenerator;
+    private final Map<String, TableMetadata> allTablesMap;
 
-    public DataGenerator() {
+    public DataGenerator(Map<String, TableMetadata> allTablesMap) {
         this.pkGeneratorFactory = new PrimaryKeyGeneratorFactory();
         this.fkGeneratorFactory = new ForeignKeyGeneratorFactory();
         this.normalValueGenerator = new StatTypeBasedGenerator();
+        this.allTablesMap = allTablesMap;
     }
 
     /**
@@ -50,21 +53,24 @@ public class DataGenerator {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isForeignKey()) {
-                String refTable = column.getForeignKeyMetadata().getReferencedTable();
-                String refColumn = column.getForeignKeyMetadata().getReferencedColumn();
+                for (int i = 0; i < column.getForeignKeyMetadata().size(); i++) {
+                    String refSchema = column.getForeignKeyMetadata().get(i).getReferencedSchema();
+                    String refTable = column.getForeignKeyMetadata().get(i).getReferencedTable();
+                    String refColumn = column.getForeignKeyMetadata().get(i).getReferencedColumn();
 
-                if (existingData.containsKey(refTable)) {
-                    Map<String, List<Object>> refTableData = existingData.get(refTable);
-                    if (refTableData.containsKey(refColumn)) {
-                        // Формируем ключ в формате "table.column"
-                        String refKey = refTable + "." + refColumn;
-                        referencedData.put(refKey, refTableData.get(refColumn));
+                    if (existingData.containsKey(refTable)) {
+                        Map<String, List<Object>> refTableData = existingData.get(refTable);
+                        if (refTableData.containsKey(refColumn)) {
+                            // Формируем ключ в формате "table.column"
+                            String refKey = refTable + "." + refColumn;
+                            referencedData.put(refKey, refTableData.get(refColumn));
+                        } else {
+                            System.err.println("Warning: Referenced column '" + refColumn +
+                                    "' not found in table '" + refTable + "'");
+                        }
                     } else {
-                        System.err.println("Warning: Referenced column '" + refColumn +
-                                "' not found in table '" + refTable + "'");
+                        System.err.println("Warning: Referenced table '" + refTable + "' not found in generated data");
                     }
-                } else {
-                    System.err.println("Warning: Referenced table '" + refTable + "' not found in generated data");
                 }
             }
         }
@@ -94,10 +100,10 @@ public class DataGenerator {
         Set<String> generatedColumns = new HashSet<>();
 
         // Сначала генерируем FK, потом PK, потом обычные колонки потом уники
+        generateUniqueConstraint(table, columnData, generatedColumns);
         generateForeignKeys(table, columnData, existingData, referencedData, generatedColumns);
         generatePrimaryKeys(table, columnData, generatedColumns);
         generateNormalColumns(table, columnData, generatedColumns);
-        generateUniqueConstraint(table, columnData, generatedColumns);
 
         return columnData;
     }
@@ -163,11 +169,75 @@ public class DataGenerator {
             List<ColumnMetadata> uniqueList = new ArrayList<>();
             for (ColumnMetadata column : table.getColumns().values()) {
                 if (column.isUnique() && !generatedColumns.contains(column.getName())) {
-                    uniqueList.add(column);
+                    for (String col : column.getCompositeUniquePeers().getFirst()) {
+                        uniqueList.add(table.getColumns().get(col));
+                    }
+                    break;
                 }
             }
+
+            // Собираем дерево обратных зависимостей для каждой unique-колонки
+            Map<String, List<ReferencingTreeNode>> referencingTrees = new HashMap<>();
+            for (ColumnMetadata uniqueCol : uniqueList) {
+                List<ReferencingTreeNode> tree = collectReferencingTree(uniqueCol, new HashSet<>());
+                referencingTrees.put(uniqueCol.getName(), tree);
+            }
+
             if (!uniqueList.isEmpty())
-                UniqueKeyGeneratorChooser.generate(uniqueList, columnData, uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE, table.getRecordCount());
+                UniqueKeyGeneratorChooser.generate(uniqueList, columnData,
+                        uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
+                        table.getRecordCount(), referencingTrees);
             uniqueList.forEach(column -> generatedColumns.add(column.getName()));
+    }
+
+    /**
+     * Рекурсивно собирает дерево обратных зависимостей (incoming references) для колонки.
+     * Для каждой колонки, которая ссылается на текущую через FK, проверяет —
+     * ссылается ли кто-то на неё саму, и если да — рекурсивно добавляет в дерево.
+     *
+     * @param column  колонка, для которой собираем обратные зависимости
+     * @param visited множество посещённых ключей (schema.table.column) для защиты от циклов
+     * @return список корневых узлов дерева обратных зависимостей
+     */
+    private List<ReferencingTreeNode> collectReferencingTree(ColumnMetadata column, Set<String> visited) {
+        List<ReferencingTreeNode> nodes = new ArrayList<>();
+
+        Map<String, Map<String, List<String>>> refs = column.getReferencingColumns();
+        if (refs == null || refs.isEmpty()) {
+            return nodes;
+        }
+
+        for (Map.Entry<String, Map<String, List<String>>> schemaEntry : refs.entrySet()) {
+            String schema = schemaEntry.getKey();
+            for (Map.Entry<String, List<String>> tableEntry : schemaEntry.getValue().entrySet()) {
+                String tableName = tableEntry.getKey();
+                for (String colName : tableEntry.getValue()) {
+                    String key = schema + "." + tableName + "." + colName;
+                    if (visited.contains(key)) {
+                        continue;
+                    }
+                    visited.add(key);
+
+                    TableMetadata refTable = allTablesMap.get(tableName);
+                    if (refTable == null) {
+                        continue;
+                    }
+
+                    ReferencingTreeNode node = new ReferencingTreeNode(
+                            schema, tableName, colName, refTable.getRecordCount(), refTable.getColumns().get(colName).getMcv().keySet());
+
+                    // Рекурсивно ищем тех, кто ссылается на ссылающуюся колонку
+                    ColumnMetadata refColumn = refTable.getColumns().get(colName);
+                    if (refColumn != null) {
+                        List<ReferencingTreeNode> children = collectReferencingTree(refColumn, visited);
+                        children.forEach(node::addChild);
+                    }
+
+                    nodes.add(node);
+                }
+            }
+        }
+
+        return nodes;
     }
 }

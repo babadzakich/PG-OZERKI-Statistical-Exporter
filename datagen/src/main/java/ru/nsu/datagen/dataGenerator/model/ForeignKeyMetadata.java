@@ -1,22 +1,22 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import lombok.Getter;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
 import java.util.Objects;
 
+@Getter
 public class ForeignKeyMetadata {
+    private final String referencedSchema;
     private final String referencedTable;
     private final String referencedColumn;
     private final RelationshipType relationshipType;
 
-    public ForeignKeyMetadata(String referencedTable, String referencedColumn, RelationshipType relationshipType) {
+    public ForeignKeyMetadata(String referencedSchema, String referencedTable, String referencedColumn, RelationshipType relationshipType) {
+        this.referencedSchema = referencedSchema;
         this.referencedTable = referencedTable;
         this.referencedColumn = referencedColumn;
         this.relationshipType = relationshipType;
     }
-
-    public String getReferencedTable() { return referencedTable; }
-    public String getReferencedColumn() { return referencedColumn; }
-    public RelationshipType getRelationshipType() { return relationshipType; }
 
     @Override
     public boolean equals(Object o) {

@@ -36,7 +36,11 @@ public class DatabaseDataGenerator {
         // generate
         Map<String, Map<String, List<Object>>> generatedData = new HashMap<>();
         Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
-        DataGenerator dataGenerator = new DataGenerator();
+        Map<String, TableMetadata> allTablesMap = new HashMap<>();
+        for (TableMetadata t : tableMetadataList) {
+            allTablesMap.put(t.getTableName(), t);
+        }
+        DataGenerator dataGenerator = new DataGenerator(allTablesMap);
 
         for (TableMetadata table : generationOrder) {
             log.info("Generate table: {}", table.getTableName());

@@ -1,22 +1,24 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.sql.Date;
 import java.sql.Timestamp;
 
 import com.github.javafaker.Faker;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 
 public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     private final ColumnMetadata column;
     private final int recordCount;
+    private final List<ReferencingTreeNode> referencingTrees;
 
-    public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount) {
+    public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount,
+                                 Map<String, List<ReferencingTreeNode>> referencingTrees) {
         this.column = uniqColumns.get(0);
+        this.referencingTrees = referencingTrees.get(this.column.getName());
+
         this.recordCount = recordCount;
     }
 
@@ -32,6 +34,11 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 	public void generate(Map<String, List<Object>> columnData) {
         String columnName = column.getName();
         List<Object> values = columnData.get(columnName);
+        Set<Object> uniqueValues = new HashSet<>();
+        for (ReferencingTreeNode node : referencingTrees) {
+            uniqueValues.addAll(node.getToAdd());
+        }
+        values.addAll(uniqueValues);
 
         switch (column.getDataType()) {
             case "integer", "bigint", "smallint" -> generateIntegerValues(values);
@@ -44,20 +51,20 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     }
 
     private void generateIntegerValues(List<Object> values) {
-        for (int i = 1; i <= recordCount; i++) {
+        for (int i = values.size() + 1; i <= recordCount; i++) {
             values.add(i);
         }
     }
 
     private void generateDoubleValues(List<Object> values) {
-        for (int i = 1; i <= recordCount; i++) {
+        for (int i = values.size() + 1; i <= recordCount; i++) {
             values.add((double) i);
         }
     }
 
     private void generateTimestampValues(List<Object> values) {
         long start = Timestamp.valueOf("2000-01-01 00:00:00").getTime();
-        for (int i = 0; i < recordCount; i++) {
+        for (int i = values.size() + 1; i <= recordCount; i++) {
             Timestamp ts = new Timestamp(start + (long)i * 1000);
             values.add(ts.toString());
         }
@@ -65,16 +72,15 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 
     private void generateDateValues(List<Object> values) {
         long start = Faker.instance().date().birthday().getTime();
-        for (int i = 0; i < recordCount; i++) {
+        for (int i = values.size(); i < recordCount; i++) {
             Date date = new Date(start + (long)i * 24 * 60 * 60 * 1000);
             values.add(date.toString());
         }
     }
 
     private void generateByteValues(List<Object> values) {
-        for (int i = 1; i <= recordCount; i++) {
+        for (int i = values.size() + 1; i <= recordCount; i++) {
             values.add(java.nio.ByteBuffer.allocate(4).putInt(i).array());
         }
     }
-
 }

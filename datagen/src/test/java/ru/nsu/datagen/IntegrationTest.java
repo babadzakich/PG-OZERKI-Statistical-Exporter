@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Paths;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -15,6 +14,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -30,7 +31,20 @@ import ru.nsu.datagen.importer.Importer;
  * Перед запуском теста убедитесь что БД доступна
  */
 public class IntegrationTest {
+    private final HikariDataSource dataSource;
 
+     public IntegrationTest() {
+        Config config;
+        try {
+            config = loadConfig("config.yaml");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load config", e);
+        }
+        this.dataSource = new HikariDataSource();
+        this.dataSource.setJdbcUrl(config.getDB_URL());
+        this.dataSource.setUsername(config.getDB_USER());
+        this.dataSource.setPassword(config.getDB_PASSWORD());
+    }
     /**
      * Основной регрессионный тест, проверяющий работу всего pipeline:
      * 1. Создание схемы БД
@@ -45,7 +59,7 @@ public class IntegrationTest {
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
 
-        try (Connection conn = DriverManager.getConnection(config.getDB_URL(), config.getDB_USER(), config.getDB_PASSWORD())) {
+        try (Connection conn = dataSource.getConnection()) {
             // Очищаем БД перед тестом
             try (Statement stmt = conn.createStatement()) {
                 for (var dbHolder : config.getTables()) {
@@ -60,7 +74,7 @@ public class IntegrationTest {
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
 
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, conn);
+            DatabaseDataGenerator.generateData(importedData, dataSource);
             System.out.println("✓ Генерация данных завершена");
 
             // Проверка целостности данных и ограничений
