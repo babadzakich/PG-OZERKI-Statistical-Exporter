@@ -1,14 +1,32 @@
 package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
 
-import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
-public interface ValueGenerator {
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+@Slf4j
+public abstract class ValueGeneratorAC implements ValueGenerator {
+    Object minValue;
+    Object maxValue;
+
+    protected ValueGeneratorAC() {}
+
+    protected ValueGeneratorAC(Object minValue, Object maxValue) {
+        this.minValue = minValue;
+        this.maxValue = maxValue;
+    }
+
     /**
      * Генерирует одно случайное значение
      *
      * @return сгенерированное значение
-    */
-    Object generateValue();
+     */
+    public Object generateValue() {
+        return generateValue(minValue, maxValue);
+    }
 
     /**
      * Генерирует случайное значение в заданном диапазоне
@@ -17,7 +35,7 @@ public interface ValueGenerator {
      * @param rightBorder - правая граница диапазона исключительно
      * @return сгенерированное значение
      */
-    Object generateValue(Object leftBorder, Object rightBorder);
+    public abstract Object generateValue(Object leftBorder, Object rightBorder);
 
     /**
      * Генерирует список уникальных случайных значений
@@ -25,7 +43,9 @@ public interface ValueGenerator {
      * @param count - количество значений для генерации
      * @return список сгенерированных значений
      */
-    List<Object> generateValues(int count);
+    public List<Object> generateValues(int count) {
+        return generateValues(count, minValue, maxValue);
+    }
 
     /**
      * Генерирует список уникальных случайных значений в заданном диапазоне
@@ -35,7 +55,11 @@ public interface ValueGenerator {
      * @param rightBorder - правая граница диапазона исключительно
      * @return список сгенерированных значений
      */
-    List<Object> generateValues(int count, Object leftBorder, Object rightBorder);
+    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
+        List<Object> values = new ArrayList<>();
+        generateValues(values, count, leftBorder, rightBorder);
+        return values;
+    }
 
     /**
      * Генерирует список уникальных случайных значений и добавляет их в переданный список
@@ -43,7 +67,9 @@ public interface ValueGenerator {
      * @param values - список, в который будут добавлены сгенерированные значения
      * @param count - количество значений для генерации
      */
-    void generateValues(List<Object> values, int count);
+    public void generateValues(List<Object> values, int count) {
+        generateValues(values, count, minValue, maxValue);
+    }
 
     /**
      * Генерирует список уникальных случайных значений в заданном диапазоне и добавляет их в переданный список
@@ -53,5 +79,24 @@ public interface ValueGenerator {
      * @param leftBorder - левая граница диапазона включительно
      * @param rightBorder - правая граница диапазона исключительно
      */
-    void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder);
+    public void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder) {
+        Set<Object> uniqValues = new HashSet<>(values);
+        long maxAttempts = count * 100L;
+        long attempts = 0;
+        int i = 0;
+        while (i < count && attempts < maxAttempts) {
+            Object val = generateValue(leftBorder, rightBorder);
+            if (uniqValues.add(val)) {
+                values.add(val);
+                i++;
+            }
+            attempts++;
+        }
+        if (values.size() < count) {
+            log.error("Could not generate {} unique timestamps in range ({} to {}) after {} attempts. Generated only {} unique values.",
+                    count, leftBorder, rightBorder, maxAttempts, values.size());
+            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                    + ". Done only " + values.size() + " out of " + count + " unique values.");
+        }
+    }
 }

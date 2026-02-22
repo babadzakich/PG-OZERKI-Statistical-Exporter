@@ -2,43 +2,35 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 @Slf4j
-public class IntegerValueGenerator implements ValueGenerator {
+public class IntegerValueGenerator extends ValueGeneratorAC {
     private final Faker faker = new Faker();
 
-    @Override
-    public Object generateValue() {
-        return generateValue(Integer.MIN_VALUE, Integer.MAX_VALUE);
+    public IntegerValueGenerator() {
+        super(Integer.MIN_VALUE, Integer.MAX_VALUE);
     }
 
     @Override
     public Object generateValue(Object leftBorder, Object rightBorder) {
         int left, right;
         try {
-            left = (int)leftBorder;
-            right = (int)rightBorder;
+            left = (int) leftBorder;
+            right = (int) rightBorder;
         } catch (ClassCastException e) {
             log.warn("Invalid border types for {} value generation: {} and {}, using MAX and MIN values", this.getClass().toString(), leftBorder.getClass(), rightBorder.getClass());
             left = Integer.MIN_VALUE;
             right = Integer.MAX_VALUE;
         }
-        // Используем long для генерации, но приводим к int
-        return (int) faker.number().numberBetween((long)left, (long)right);
+        return (int) faker.number().numberBetween((long) left, (long) right);
     }
 
     @Override
-    public List<Object> generateValues(int count) {
-        return generateValues(count, Integer.MIN_VALUE, Integer.MAX_VALUE);
-    }
-
-    @Override
-    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
+    public void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder) {
         int left, right;
         try {
             left = (int) leftBorder;
@@ -49,8 +41,7 @@ public class IntegerValueGenerator implements ValueGenerator {
             right = Integer.MAX_VALUE;
         }
 
-        List<Object> values = new ArrayList<>();
-        long range = (long)right - (long)left;
+        long range = (long) right - (long) left;
         if (range >= count - 1) {
             for (int i = 0; i < count; i++) {
                 values.add(left + i);
@@ -62,6 +53,5 @@ public class IntegerValueGenerator implements ValueGenerator {
                 values.add(left + i);
             }
         }
-        return values;
     }
 }

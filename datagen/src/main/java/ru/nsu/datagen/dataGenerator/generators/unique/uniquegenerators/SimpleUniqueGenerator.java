@@ -4,8 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.*;
-import java.sql.Date;
-import java.sql.Timestamp;
 
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
@@ -20,7 +18,7 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 
     public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount,
                                  Map<String, List<ReferencingTreeNode>> referencingTrees) {
-        this.column = uniqColumns.get(0);
+        this.column = uniqColumns.getFirst();
         this.referencingTrees = referencingTrees.get(this.column.getName());
 
         this.recordCount = recordCount;
@@ -37,12 +35,24 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 	public void generate(Map<String, List<Object>> columnData) {
         String columnName = column.getName();
         ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(column);
-        columnData.put(columnName, generator.generateValues(recordCount));
-        List<Object> values = columnData.get(columnName);
-        Set<Object> uniqueValues = new HashSet<>();
+        Set<Object> referencedValues = new HashSet<>();
         for (ReferencingTreeNode node : referencingTrees) {
-            uniqueValues.addAll(node.getToAdd());
+            collectReferencedValues(referencedValues, node);
         }
-        values.addAll(uniqueValues);
+        List<Object> res = new ArrayList<>(referencedValues);
+
+        if (column.getHistogramm() != null) {
+            generator.generateValues(res, recordCount, column.getHistogramm().getFirst(), column.getHistogramm().getLast());
+        } else {
+            generator.generateValues(res, recordCount);
+        }
+        columnData.put(columnName, res);
+    }
+
+    private void collectReferencedValues(Set<Object> values, ReferencingTreeNode node) {
+        values.addAll(node.getToAdd());
+        for (ReferencingTreeNode child : node.getChildren()) {
+            collectReferencedValues(values, child);
+        }
     }
 }

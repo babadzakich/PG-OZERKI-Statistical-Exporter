@@ -3,14 +3,10 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
-public class StringValueGenerator implements ValueGenerator {
+public class StringValueGenerator extends ValueGeneratorAC {
     private final Faker faker;
     private final int avgSize;
     private final int maxSize;
@@ -98,26 +94,28 @@ public class StringValueGenerator implements ValueGenerator {
     }
 
     @Override
-    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
+    public void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder) {
         if (!(leftBorder instanceof String left) || !(rightBorder instanceof String right)) {
             throw new IllegalArgumentException("Borders must be of type String");
         }
 
-        Set<String> uniqueValues = new HashSet<>();
+        Set<Object> uniqueValues = new HashSet<>(values);
         int maxAttempts = count * 100;
         int attempts = 0;
+        int i = 0;
 
-        while (uniqueValues.size() < count && attempts < maxAttempts) {
+        while (i < count && attempts < maxAttempts) {
             String value = (String) generateValue(left, right);
-            uniqueValues.add(value);
+            if (uniqueValues.add(value)) {
+                values.add(value);
+                i++;
+            }
             attempts++;
         }
 
-        if (uniqueValues.size() < count) {
+        if (values.size() < count) {
             log.warn("Could not generate {} unique string values between '{}' and '{}' after {} attempts. Generated only {} unique values.",
-                    count, left, right, maxAttempts, uniqueValues.size());
+                    count, left, right, maxAttempts, values.size());
         }
-
-        return new ArrayList<>(uniqueValues);
     }
 }

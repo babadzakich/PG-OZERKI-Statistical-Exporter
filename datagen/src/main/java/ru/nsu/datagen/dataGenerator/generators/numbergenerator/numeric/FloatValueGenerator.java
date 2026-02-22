@@ -2,20 +2,18 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
 import net.datafaker.Faker;
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 @Slf4j
-public class FloatValueGenerator implements ValueGenerator {
+public class FloatValueGenerator extends ValueGeneratorAC {
     private final Faker faker = new Faker();
 
-    @Override
-    public Object generateValue() {
-        return generateValue(-Float.MAX_VALUE, Float.MAX_VALUE);
+    public FloatValueGenerator() {
+        super(-Float.MAX_VALUE, Float.MAX_VALUE);
     }
 
     @Override
@@ -30,18 +28,11 @@ public class FloatValueGenerator implements ValueGenerator {
             left = -Float.MAX_VALUE;
             right = Float.MAX_VALUE;
         }
-
-        double value = faker.number().randomDouble(6, (long)left, (long)right);
-        return (float) value;
+        return (float) faker.number().randomDouble(6, (long) left, (long) right);
     }
 
     @Override
-    public List<Object> generateValues(int count) {
-        return generateValues(count, -Float.MAX_VALUE, Float.MAX_VALUE);
-    }
-
-    @Override
-    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
+    public void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder) {
         float left, right;
         try {
             left = (float) leftBorder;
@@ -53,23 +44,25 @@ public class FloatValueGenerator implements ValueGenerator {
             right = Float.MAX_VALUE;
         }
 
-        Set<Float> uniqueValues = new HashSet<>();
+        Set<Object> uniqueValues = new HashSet<>(values);
         long maxAttempts = count * 100L;
-        long attempts = 0, i = 0;
+        long attempts = 0;
+        int i = 0;
 
         while (i < count && attempts < maxAttempts) {
-            double value = faker.number().randomDouble(6, (long)left, (long)right);
-            i += uniqueValues.add((float) value) ? 1 : 0;
+            Object val = generateValue(left, right);
+            if (uniqueValues.add(val)) {
+                values.add(val);
+                i++;
+            }
             attempts++;
         }
 
-        if (uniqueValues.size() < count) {
+        if (values.size() < count) {
             log.error("Could not generate {} unique float values in range ({} to {}) after {} attempts. Generated only {} unique values.",
-                    count, left, right, maxAttempts, uniqueValues.size());
+                    count, left, right, maxAttempts, values.size());
             throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
-                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
+                    + ". Done only " + values.size() + " out of " + count + " unique values.");
         }
-
-        return new ArrayList<>(uniqueValues);
     }
 }

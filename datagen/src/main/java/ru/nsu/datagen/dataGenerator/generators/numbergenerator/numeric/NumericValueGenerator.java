@@ -2,26 +2,23 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 @Slf4j
-public class NumericValueGenerator implements ValueGenerator {
+public class NumericValueGenerator extends ValueGeneratorAC {
     private final int scale;
-    private final double maxValue;
+    private final double maxNumericValue;
     private final Faker faker = new Faker();
+
     public NumericValueGenerator(int precision, int scale) {
+        super(0, Math.pow(10, precision - scale) - Math.pow(10, -scale));
         this.scale = scale;
-            this.maxValue = Math.pow(10, precision - scale) - Math.pow(10, -scale);
-    }
-    @Override
-    public Object generateValue() {
-        return generateValue(0, maxValue);
+        this.maxNumericValue = Math.pow(10, precision - scale) - Math.pow(10, -scale);
     }
 
     @Override
@@ -32,7 +29,7 @@ public class NumericValueGenerator implements ValueGenerator {
             right = ((Number) rightBorder).doubleValue();
         } else {
             left = 0;
-            right = maxValue;
+            right = maxNumericValue;
         }
 
         if (left > right) {
@@ -46,25 +43,26 @@ public class NumericValueGenerator implements ValueGenerator {
     }
 
     @Override
-    public List<Object> generateValues(int count) {
-        return generateValues(count, 0, maxValue);
-    }
-
-    @Override
-    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
-        Set<Object> uniqueValues = new HashSet<>();
+    public void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder) {
+        Set<Object> uniqueValues = new HashSet<>(values);
         long maxAttempts = count * 100L;
         long attempts = 0;
-        while (uniqueValues.size() < count && attempts < maxAttempts) {
-            uniqueValues.add(generateValue(leftBorder, rightBorder));
+        int i = 0;
+
+        while (i < count && attempts < maxAttempts) {
+            Object val = generateValue(leftBorder, rightBorder);
+            if (uniqueValues.add(val)) {
+                values.add(val);
+                i++;
+            }
             attempts++;
         }
-        if (uniqueValues.size() < count) {
+
+        if (values.size() < count) {
             log.error("Could only generate {} unique values out of requested {}, consider increasing the range or reducing the count",
-                    uniqueValues.size(), count);
-                throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
-                        + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
+                    values.size(), count);
+            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                    + ". Done only " + values.size() + " out of " + count + " unique values.");
         }
-        return new ArrayList<>(uniqueValues);
     }
 }

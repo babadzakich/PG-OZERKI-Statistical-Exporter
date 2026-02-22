@@ -2,36 +2,22 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 @Slf4j
-public class TimeValueGenerator implements ValueGenerator {
+public class TimeValueGenerator extends ValueGeneratorAC {
     private final Faker faker = new Faker();
-    @Override
-    public Object generateValue() {
-        return generateValue(LocalTime.MIN, LocalTime.MAX);
+
+    public TimeValueGenerator() {
+        super(LocalTime.MIN, LocalTime.MAX);
     }
 
     @Override
     public Object generateValue(Object leftBorder, Object rightBorder) {
-        LocalTime left, right;
-        if (leftBorder instanceof LocalTime) {
-            left = (LocalTime) leftBorder;
-        } else {
-            left = LocalTime.MIN;
-        }
-
-        if (rightBorder instanceof LocalTime) {
-            right = (LocalTime) rightBorder;
-        } else {
-            right = LocalTime.MAX;
-        }
+        LocalTime left = leftBorder instanceof LocalTime l ? l : LocalTime.MIN;
+        LocalTime right = rightBorder instanceof LocalTime r ? r : LocalTime.MAX;
 
         if (!left.isBefore(right)) {
             log.warn("Left time border is later than right time border, using default values");
@@ -40,48 +26,5 @@ public class TimeValueGenerator implements ValueGenerator {
         }
 
         return LocalTime.ofSecondOfDay(faker.time().between(left, right)).toString();
-    }
-
-    @Override
-    public List<Object> generateValues(int count) {
-        return generateValues(count, LocalTime.MIN, LocalTime.MAX);
-    }
-
-    @Override
-    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
-        LocalTime left, right;
-        if (leftBorder instanceof LocalTime) {
-            left = (LocalTime) leftBorder;
-        } else {
-            left = LocalTime.MIN;
-        }
-
-        if (rightBorder instanceof LocalTime) {
-            right = (LocalTime) rightBorder;
-        } else {
-            right = LocalTime.MAX;
-        }
-
-        if (!left.isBefore(right)) {
-            log.warn("Left time border is later than right time border, using default values");
-            left = LocalTime.MIN;
-            right = LocalTime.MAX;
-        }
-
-        Set<String> uniqueValues = new HashSet<>();
-        long maxAttempts = 100L * count;
-        long attempts = 0;
-
-        while (uniqueValues.size() < count && attempts < maxAttempts) {
-            uniqueValues.add(LocalTime.ofSecondOfDay(faker.time().between(left, right)).toString());
-            attempts++;
-        }
-
-        if (uniqueValues.size() < count) {
-            log.error("Couldn`t generate {} unique time values, having only {}", count, uniqueValues.size());
-            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
-                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
-        }
-        return new ArrayList<>(uniqueValues);
     }
 }

@@ -4,15 +4,15 @@ import ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric.NumericVa
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
 
-public class MoneyValueGenerator implements ValueGenerator {
+public class MoneyValueGenerator extends ValueGeneratorAC {
+    private static final BigDecimal MIN_MONEY = new BigDecimal("-92233720368547758.08");
+    private static final BigDecimal MAX_MONEY = new BigDecimal("92233720368547758.07");
+
     private final NumericValueGenerator numericValueGenerator = new NumericValueGenerator(17, 2);
-    private final BigDecimal maxValue = new BigDecimal("92233720368547758.07");
-    private final BigDecimal minValue = new BigDecimal("-92233720368547758.08");
-    @Override
-    public Object generateValue() {
-        return numericValueGenerator.generateValue(minValue, maxValue);
+
+    public MoneyValueGenerator() {
+        super(MIN_MONEY, MAX_MONEY);
     }
 
     @Override
@@ -22,28 +22,9 @@ public class MoneyValueGenerator implements ValueGenerator {
             left = new BigDecimal(leftBorder.toString()).setScale(2, RoundingMode.HALF_UP);
             right = new BigDecimal(rightBorder.toString()).setScale(2, RoundingMode.HALF_UP);
         } else {
-            left = minValue;
-            right = maxValue;
+            left = MIN_MONEY;
+            right = MAX_MONEY;
         }
-
         return numericValueGenerator.generateValue(left, right);
-    }
-
-    @Override
-    public List<Object> generateValues(int count) {
-        return numericValueGenerator.generateValues(count, minValue, maxValue);
-    }
-
-    @Override
-    public List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
-        BigDecimal left, right;
-        if (leftBorder instanceof Number && rightBorder instanceof Number) {
-            left = new BigDecimal(leftBorder.toString()).setScale(2, RoundingMode.HALF_UP);
-            right = new BigDecimal(rightBorder.toString()).setScale(2, RoundingMode.HALF_UP);
-        } else {
-            left = minValue;
-            right = maxValue;
-        }
-        return numericValueGenerator.generateValues(count, left, right);
     }
 }
