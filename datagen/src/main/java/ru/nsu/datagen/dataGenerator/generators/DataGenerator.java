@@ -3,7 +3,7 @@ package ru.nsu.datagen.dataGenerator.generators;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
-import ru.nsu.datagen.dataGenerator.generators.pk.PrimaryKeyGeneratorFactory;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
@@ -13,13 +13,11 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import java.util.*;
 
 public class DataGenerator {
-    private final PrimaryKeyGeneratorFactory pkGeneratorFactory;
     private final ForeignKeyGeneratorFactory fkGeneratorFactory;
     private final NormalValueGenerator normalValueGenerator;
     private final Map<String, TableMetadata> allTablesMap;
 
     public DataGenerator(Map<String, TableMetadata> allTablesMap) {
-        this.pkGeneratorFactory = new PrimaryKeyGeneratorFactory();
         this.fkGeneratorFactory = new ForeignKeyGeneratorFactory();
         this.normalValueGenerator = new StatTypeBasedGenerator();
         this.allTablesMap = allTablesMap;
@@ -118,7 +116,7 @@ public class DataGenerator {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isPrimaryKey() && !generatedColumns.contains(column.getName())) {
-                List<Object> primaryKeys = pkGeneratorFactory.getGenerator(column).generatePrimaryKeys(column);
+                List<Object> primaryKeys = ValueGeneratorFactory.createValueGenerator(column).generateValues(column.getRecordCount());
                 columnData.put(column.getName(), primaryKeys);
                 generatedColumns.add(column.getName());
             }

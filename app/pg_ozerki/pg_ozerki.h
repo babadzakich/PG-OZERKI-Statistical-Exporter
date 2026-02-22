@@ -1653,6 +1653,8 @@ typedef struct {
     int tableCount;
     char **schemas;
     int schemaCount;
+	Oid* viewOids;
+	int viewCount
 } QueryDependencies;
 
 QueryDependencies* analyze_query_dependencies(const char *query);
@@ -1682,3 +1684,9 @@ typedef struct {
 } PlannerSetting;
 
 char* get_planner_settings(Archive* AH);
+
+void find_views_for_tables(PGconn* conn, QueryDependencies *deps, char* query_text);
+
+bool is_in_view_oids(Oid oid);
+
+void mark_views_for_dump(TableInfo *tblinfo, int numTables, QueryDependencies *deps);

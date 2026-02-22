@@ -4,7 +4,8 @@
 #include "libpq-fe.h"
 #include "fe_utils/option_utils.h"
 #include "fe_utils/string_utils.h"
-#include "getopt_long.h"
+#include "getopt_long.h" 
+#include "catalog/pg_class.h"
 
 
 SimpleStringList table_include_patterns = {NULL, NULL};
@@ -83,6 +84,76 @@ typedef enum {
 
 } getopt_params;
 
+void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
+    for (int i = 0; i < deps->viewCount; i++) {
+        if (deps->viewOids[i] == viewOid) return;
+    }
+    
+    if (deps->viewCount == 0)
+        deps->viewOids = palloc(sizeof(Oid));
+    else
+        deps->viewOids = repalloc(deps->viewOids, sizeof(Oid) * (deps->viewCount + 1));
+        
+    deps->viewOids[deps->viewCount++] = viewOid;
+}
+
+void find_views_for_tables(PGconn* conn,QueryDependencies *deps, char* query_text)
+{
+    if (!deps || deps->tableCount == 0){
+        return;
+    }
+
+
+    PQExpBuffer sql = createPQExpBuffer();
+    PGresult *res;
+
+    appendPQExpBuffer(sql, "CREATE TEMPORARY VIEW pg_ozerki_tmp_deps AS %s", query_text);
+    res = PQexec(conn, sql->data);
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        pg_log_error("Failed to exec query for parsing views: %s", PQresultErrorMessage(res));
+        PQclear(res);
+        destroyPQExpBuffer(sql);
+        return;
+    }
+    PQclear(res);
+
+
+    const char *dep_query = 
+        "SELECT c.oid, c.relname, c.relkind "
+        "FROM pg_depend d "
+        "JOIN pg_class c ON c.oid = d.refobjid "
+        "WHERE d.objid = ("
+        "    SELECT oid FROM pg_rewrite WHERE ev_class = 'pg_ozerki_tmp_deps'::regclass"
+        ") "
+        "AND d.refclassid = 'pg_class'::regclass "
+        "AND c.oid != 'pg_ozerki_tmp_deps'::regclass"; 
+
+    res = PQexec(conn, dep_query);
+    
+    if (PQresultStatus(res) == PGRES_TUPLES_OK) {
+        int ntups = PQntuples(res);
+        for (int i = 0; i < ntups; i++) {
+            Oid relid = atooid(PQgetvalue(res, i, 0));
+            char *relname = PQgetvalue(res, i, 1);
+            char relkind = PQgetvalue(res, i, 2)[0];
+
+
+            if (relkind == 'v' || relkind == 'm') { // 'v' - view, 'm' - matview
+                add_view_to_deps(deps, relid);
+            }
+        }
+    }
+    PQclear(res);
+
+    PQexec(conn, "DROP VIEW pg_ozerki_tmp_deps;");
+    destroyPQExpBuffer(sql);
+
+	if (deps->viewCount > 0) {
+		pg_log_debug("FOUND VIEWS FOR TABLES");
+	}
+}
+
 int main(int argc, char** argv) {
     int			c;
 	const char *filename = NULL;
@@ -128,7 +199,7 @@ int main(int argc, char** argv) {
     
 	
 	dopt.schemaOnly = true;
-	dopt.include_everything = false;
+	dopt.include_everything = true;
 
 	static struct option long_options[] = {
 		
@@ -216,7 +287,10 @@ int main(int argc, char** argv) {
 	deps = InitQueryDependencies();
 	planner_settings = get_planner_settings(fout);
 	if (by_query) {
+		
 		extract_tables_from_query_text(GetConnection(fout), dump_query, deps);
+
+		find_views_for_tables(GetConnection(fout), deps, dump_query);
 		for (int i = 0; i < deps->tableCount; i++) {
 			simple_string_list_append(&table_include_patterns, deps->tableNames[i]);
 		}
@@ -269,7 +343,6 @@ int main(int argc, char** argv) {
 	sortDumpableObjects(dobjs, numObjs,
 						boundaryObjs[0].dumpId, boundaryObjs[1].dumpId);
 	    
-
 
 	for (i = 0; i < numObjs; i++)
 		dumpDumpableObject(fout, dobjs[i]);
@@ -1110,7 +1183,14 @@ getDependencies(Archive *fout)
 }
 
 
-
+bool is_in_view_oids(Oid oid) {
+	for (int i = 0; i < deps->viewCount; i++) {
+		if (oid == deps->viewOids[i]){ 
+			return true;
+		}
+	}
+	return false;
+}
 
 
 static void
@@ -1228,7 +1308,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 * access to foreign tables during the pg_dump process. This restriction
 	 * is adjusted when dumping foreign table data.
 	 */
-	set_restrict_relation_kind(AH, "view, foreign-table");
+	set_restrict_relation_kind(AH, "foreign-table");
 
 	/*
 	 * Initialize prepared-query state to "nothing prepared".  We do this here
@@ -1256,7 +1336,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	else
 		ExecuteSqlStatement(AH,
 							"SET TRANSACTION ISOLATION LEVEL "
-							"REPEATABLE READ, READ ONLY");
+							"REPEATABLE READ, READ WRITE");
 
 	/*
 	 * If user specified a snapshot to use, select that.  In a parallel dump
@@ -3026,7 +3106,8 @@ char* get_planner_settings(Archive* AH){
             "'cpu_tuple_cost', "
             "'cpu_index_tuple_cost', "
             "'effective_cache_size', "
-            "'work_mem'"
+            "'work_mem', "
+			"'default_statistics_target'"
             ") ORDER BY name";
 
 	PGresult* res = ExecuteSqlQuery(
