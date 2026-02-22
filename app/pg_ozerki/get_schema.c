@@ -330,6 +330,9 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	pg_log_info("reading subscription membership of tables");
 	getSubscriptionTables(fout);
 
+	pg_log_info("marking views for dump by query");
+	mark_views_for_dump(tblinfo, numTables, deps);
+
 	free(inhinfo);				/* not needed any longer */
 
 	*numTablesPtr = numTables;
@@ -2878,6 +2881,29 @@ getRules(Archive *fout, int *numRules)
  * Note: trigger data is not returned directly to the caller, but it
  * does get entered into the DumpableObject tables.
  */
+
+void mark_views_for_dump(TableInfo *tblinfo, int numTables, QueryDependencies *deps)
+{
+    if (!tblinfo || !deps || deps->viewCount == 0) return;
+	
+    for (int i = 0; i < numTables; i++) {
+        TableInfo *tbinfo = &tblinfo[i];
+		
+        if (tbinfo->relkind == 'v' || tbinfo->relkind == 'm') {
+			
+            if (is_in_view_oids(tbinfo->dobj.catId.oid)) {
+				
+               
+                tbinfo->dobj.dump |= DUMP_COMPONENT_DEFINITION;
+                
+                
+
+                
+            }
+        }
+    }
+}
+
 void
 getTriggers(Archive *fout, TableInfo tblinfo[], int numTables)
 {
@@ -6248,8 +6274,8 @@ selectDumpableTable(TableInfo *tbinfo, Archive *fout)
 	 * according to the parent namespace's dump flag.
 	 */
 		if (table_include_oids.head != NULL)
-			tbinfo->dobj.dump = simple_oid_list_member(&table_include_oids,
-													tbinfo->dobj.catId.oid) ?
+			tbinfo->dobj.dump = (simple_oid_list_member(&table_include_oids,
+													tbinfo->dobj.catId.oid) || is_in_view_oids(tbinfo->dobj.catId.oid)) ?
 				DUMP_COMPONENT_ALL : DUMP_COMPONENT_NONE;
 		else	
 			tbinfo->dobj.dump = tbinfo->dobj.namespace->dobj.dump_contains;
