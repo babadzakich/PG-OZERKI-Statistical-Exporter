@@ -136,7 +136,7 @@ composite_unique_info AS (
         a.attrelid,
         a.attname,
         (
-            SELECT string_agg(DISTINCT a_other.attname, ', ')
+            SELECT string_agg(DISTINCT n.nspname || '.' || c.relname || '.' || a_other.attname, ', ')
             FROM (
                 
                 SELECT unnest(conkey) as col_num, conrelid as rel_id
@@ -149,6 +149,8 @@ composite_unique_info AS (
                 WHERE indisunique = true AND array_length(indkey, 1) > 1
             ) sub
             JOIN pg_attribute a_other ON a_other.attrelid = sub.rel_id AND a_other.attnum = sub.col_num
+            JOIN pg_class c ON c.oid = sub.rel_id
+            JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE sub.rel_id = a.attrelid 
               AND a_other.attname <> a.attname
               AND EXISTS (
@@ -168,8 +170,10 @@ composite_fk_info AS (
     SELECT 
         a.attrelid,
         a.attname,
-        string_agg(DISTINCT peer.attname, ', ') as peers
+        string_agg(DISTINCT n.nspname || '.' || c.relname || '.' || peer.attname, ', ') as peers
     FROM pg_attribute a
+    JOIN pg_class c ON c.oid = a.attrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_constraint con ON con.conrelid = a.attrelid AND a.attnum = ANY(con.conkey)
     JOIN pg_attribute peer ON peer.attrelid = a.attrelid AND peer.attnum = ANY(con.conkey) AND peer.attnum <> a.attnum
     WHERE con.contype = 'f' 
