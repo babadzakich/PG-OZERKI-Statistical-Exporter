@@ -60,8 +60,10 @@ public class NumericValueGenerator implements ValueGenerator {
             attempts++;
         }
         if (uniqueValues.size() < count) {
-            log.warn("Could only generate {} unique values out of requested {}, consider increasing the range or reducing the count",
+            log.error("Could only generate {} unique values out of requested {}, consider increasing the range or reducing the count",
                     uniqueValues.size(), count);
+                throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
+                        + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
         }
         return new ArrayList<>(uniqueValues);
     }

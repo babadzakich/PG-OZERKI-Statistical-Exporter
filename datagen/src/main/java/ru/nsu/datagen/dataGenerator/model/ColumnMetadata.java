@@ -45,15 +45,12 @@ public class ColumnMetadata {
         this.ndistinct = ndistinct;
 
         if (isArray) {
-            char dataTypeCharArray[] = dataType.toCharArray();
-            StringBuilder dataTypeBuilder = new StringBuilder();
-            for (int i = 0; i < dataTypeCharArray.length; i++) {
-                if (dataTypeCharArray[i] == '[') {
-                    break;
-                }
-                dataTypeBuilder.append(dataTypeCharArray[i]);
+            int pos = dataType.indexOf('[');
+            if (pos != -1) {
+                this.dataType = dataType.substring(0, pos);
+            } else {
+                this.dataType = dataType;
             }
-            this.dataType = dataTypeBuilder.toString();
         } else {
             this.dataType = dataType;
         }
