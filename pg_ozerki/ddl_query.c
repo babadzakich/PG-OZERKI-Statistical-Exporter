@@ -255,7 +255,6 @@ extract_tables_from_yaml(const char *plan, QueryDependencies* deps)
 
 void add_table_constraints_to_deps(QueryDependencies *deps) {
     if (!deps || deps->tableCount == 0) {
-        elog(LOG, "\n\nHUI  PIZDA\n\n");
         return;
     }
     
@@ -500,7 +499,6 @@ void find_views_for_tables(QueryDependencies *deps, char* query_text)
 									  NULL);        
         ListCell *rt_lc;
         foreach(rt_lc, query->rtable) {
-            elog(LOG, "\n\n HUI MANDA \n\n");
             RangeTblEntry *rte = (RangeTblEntry *) lfirst(rt_lc);
             
             if (rte->rtekind == RTE_RELATION) {
