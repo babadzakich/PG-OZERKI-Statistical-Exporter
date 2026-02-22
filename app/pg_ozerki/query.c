@@ -44,6 +44,8 @@ QueryDependencies* InitQueryDependencies() {
     deps->schemas = NULL;
     deps->tableCount = 0;
     deps->tableNames = NULL;
+    deps->viewOids = NULL;
+    deps->viewCount = 0;
     return deps;
 }
 
@@ -60,14 +62,14 @@ QueryDependencies* extract_tables_from_query_text(PGconn* conn, const char *quer
     appendPQExpBufferStr(explain_query, "EXPLAIN (FORMAT YAML, VERBOSE) ");
     appendPQExpBufferStr(explain_query, query);
     res = PQexec(conn, explain_query->data);
-
+    pg_log_debug("\n%s",  explain_query->data);
     ExecStatusType res_status = PQresultStatus(res);
 
     if (res_status != PGRES_TUPLES_OK) {
-        pg_log_error("Explain query for dependencies has failed with error: ", PQresStatus(res_status));
+        pg_log_error("Explain query for dependencies has failed with error: %s", PQresultErrorMessage(res));
         PQclear(res);
         destroyPQExpBuffer(explain_query);
-        return;
+        exit(1);
     }
     
     yaml_plan = (PQgetvalue(res, 0, 0));

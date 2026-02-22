@@ -5774,7 +5774,6 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 	DumpOptions *dopt = fout->dopt;
 	DumpId		tableAclDumpId = InvalidDumpId;
 	char	   *namecopy;
-
 	/* Do nothing in data-only dump */
 	if (dopt->dataOnly)
 		return;
