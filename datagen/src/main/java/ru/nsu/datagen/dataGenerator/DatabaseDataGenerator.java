@@ -34,7 +34,7 @@ public class DatabaseDataGenerator {
         // Init table store
         TableStore tableStore = new TableStore(dataSource);
         // generate
-        Map<String, Map<String, List<Object>>> generatedData = new HashMap<>();
+        Map<String, List<Object>> generatedData = new HashMap<>();
         Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
         Map<String, TableMetadata> allTablesMap = new HashMap<>();
         for (TableMetadata t : tableMetadataList) {
@@ -64,13 +64,16 @@ public class DatabaseDataGenerator {
                     return null;
                 }));
             }
-//            tableStore.storeTable(table, generatedTableData);
-            generatedData.put(table.getTableName(), generatedTableData);
+            for (String columnName : generatedTableData.keySet()) {
+                if (!table.getColumns().get(columnName).getReferencingColumns().isEmpty()) {
+                    generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
+                }
+            }
+//            generatedData.put(table.getNamespace() + '.' + table.getTableName(), generatedTableData);
         }
         CompletableFuture.allOf(storeFutures.values().toArray(new CompletableFuture[0])).join();
         log.info("Data generation and storage completed.");
-        debugPrintData(generatedData);
-
+//        debugPrintData(generatedData);
     }
 
     private static void storeAsync(TableMetadata table, TableStore tableStore, Map<String, List<Object>> generatedTableData) {

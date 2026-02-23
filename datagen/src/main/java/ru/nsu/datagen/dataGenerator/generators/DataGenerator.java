@@ -1,5 +1,6 @@
 package ru.nsu.datagen.dataGenerator.generators;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
@@ -12,6 +13,7 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.util.*;
 
+@Slf4j
 public class DataGenerator {
     private final ForeignKeyGeneratorFactory fkGeneratorFactory;
     private final NormalValueGenerator normalValueGenerator;
@@ -26,12 +28,12 @@ public class DataGenerator {
     /**
      * Генерирует данные для таблицы
      * @param table метаданные таблицы
-     * @param existingData уже сгенерированные данные в формате: tableName -> columnName -> List<значений>
+     * @param existingData уже сгенерированные данные в формате: namespace.tableName.columnName -> List<значений>
      * @return сгенерированные данные для таблицы в формате: columnName -> List<значений>
      */
     public Map<String, List<Object>> generateTableData(
             TableMetadata table,
-            Map<String, Map<String, List<Object>>> existingData) {
+            Map<String, List<Object>> existingData) {
 
         // Собираем referenced данные для FK
         Map<String, List<Object>> referencedData = collectReferencedData(table, existingData);
@@ -45,7 +47,7 @@ public class DataGenerator {
      */
     private Map<String, List<Object>> collectReferencedData(
             TableMetadata table,
-            Map<String, Map<String, List<Object>>> existingData) {
+            Map<String, List<Object>> existingData) {
 
         Map<String, List<Object>> referencedData = new HashMap<>();
 
@@ -56,18 +58,14 @@ public class DataGenerator {
                     String refTable = column.getForeignKeyMetadata().get(i).getReferencedTable();
                     String refColumn = column.getForeignKeyMetadata().get(i).getReferencedColumn();
 
-                    if (existingData.containsKey(refTable)) {
-                        Map<String, List<Object>> refTableData = existingData.get(refTable);
-                        if (refTableData.containsKey(refColumn)) {
-                            // Формируем ключ в формате "table.column"
-                            String refKey = refTable + "." + refColumn;
-                            referencedData.put(refKey, refTableData.get(refColumn));
-                        } else {
-                            System.err.println("Warning: Referenced column '" + refColumn +
-                                    "' not found in table '" + refTable + "'");
-                        }
+                    String refKey = refSchema + "." + refTable + "." + refColumn;
+
+                    if (existingData.containsKey(refKey)) {
+                        List<Object> refTableData = existingData.get(refKey);
+                        referencedData.put(refKey, refTableData);
                     } else {
-                        System.err.println("Warning: Referenced table '" + refTable + "' not found in generated data");
+                        log.error("Referenced column '{}' not found in existing data for table '{}'", refKey, table.getTableName());
+                        throw new RuntimeException("Referenced column not found in existing data for column '" + refKey + "'");
                     }
                 }
             }
@@ -91,7 +89,7 @@ public class DataGenerator {
      */
     private Map<String, List<Object>> generateColumnData(
             TableMetadata table,
-            Map<String, Map<String, List<Object>>> existingData,
+            Map<String, List<Object>> existingData,
             Map<String, List<Object>> referencedData) {
 
         Map<String, List<Object>> columnData = new HashMap<>();
@@ -146,7 +144,7 @@ public class DataGenerator {
     private void generateForeignKeys(
             TableMetadata table,
             Map<String, List<Object>> columnData,
-            Map<String, Map<String, List<Object>>> existingData,
+            Map<String, List<Object>> existingData,
             Map<String, List<Object>> referencedData,
             Set<String> generatedColumns) {
 
