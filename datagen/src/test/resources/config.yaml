@@ -11,3 +11,5 @@ tables:
       - [product_id, user_id]
     pk:
       - id
+query_path: test_query.sql
+source_plan_path: source_plan.json

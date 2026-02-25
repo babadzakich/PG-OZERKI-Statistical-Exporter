@@ -22,6 +22,11 @@ import lombok.Getter;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.importer.Importer;
 
+import java.util.Collections;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * Интеграционный тест для проверки всего pipeline генерации
  * данных.
@@ -36,6 +41,8 @@ public class IntegrationTest {
      * 2. Импорт статистики
      * 3. Генерация данных
      * 4. Проверка целостности данных и ограничений
+     * (5.) Запуск запроса
+     * (6.) Проверка соответствия планов
      */
     @Test
     void testFullPipelineIntegration() throws Exception {
@@ -48,29 +55,98 @@ public class IntegrationTest {
             // Очищаем БД перед тестом
             try (Statement stmt = conn.createStatement()) {
                 for (var dbHolder : config.getTables()) {
-                    stmt.execute("DROP TABLE IF EXISTS " + dbHolder.getName());
+                    stmt.execute("DROP TABLE IF EXISTS " + dbHolder.getSchema() + "." + dbHolder.getName());
                 }
             }
 
             // Импорт схемы и статистики
             List<String[]> rawImportedData = Importer.startImport(schemaPath, statsPath, conn);
-            assertNotNull(rawImportedData, "Импортированные данные не должны быть null");
-            assertFalse(rawImportedData.isEmpty(), "Импортированные данные не должны быть пустыми");
-            System.out.println("✓ Импорт схемы и статистики выполнен успешно");
+            assertNotNull(rawImportedData, "Импортированные данные не должны быть null ");
+            assertFalse(rawImportedData.isEmpty(), "Импортированные данные не должны быть пустыми ");
+            System.out.println("✓ Импорт схемы и статистики выполнен успешно ");
 
             // Генерация данных
             DatabaseDataGenerator.generateData(rawImportedData, conn);
-            System.out.println("✓ Генерация данных завершена");
+            System.out.println("✓ Генерация данных завершена ");
 
             // Проверка целостности данных и ограничений
             for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);
             }
 
-            System.out.println("\n========================================");
-            System.out.println("✓✓✓ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО ✓✓✓");
-            System.out.println("========================================");
+            // (5.) Запуск запроса и получение плана выполнения
+            System.out.println("\n======================================== ");
+            System.out.println("Проверка планов выполнения... ");
+            String query = readQueryFromFile(classLoader, config.getQUERY_PATH());
+            PlanNode actualPlan = executeExplainAnalyze(conn, query);
+            assertNotNull(actualPlan, "План выполнения не должен быть null");
+            System.out.println("✓ План выполнения получен ");
+
+            // (6.) Загрузка исходного плана и сравнение
+            PlanNode expectedPlan = loadPlanFromFile(classLoader, config.getSOURCE_PLAN_PATH());
+            assertNotNull(expectedPlan, "Исходный план не должен быть null");
+
+            int distance = TreeEditDistance.compute(expectedPlan, actualPlan);
+            System.out.println("✓ Исходный план загружен ");
+
+            System.out.println("\n======================================== ");
+            System.out.println("Результат TreeEditDistance: " + distance);
+            if (distance == 0) {
+                System.out.println("✓ Планы ПОЛСНОСТЬЮ идентичны ");
+            } else {
+                System.out.println("⚠ Планы отличаются (расстояние = " + distance + ") ");
+            }
+
+            System.out.println("\n======================================== ");
+            System.out.println("✓✓✓ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО ✓✓✓ ");
+            System.out.println("======================================== ");
         }
+    }
+
+    /**
+     *     Читает SQL запрос из файла
+     */
+    private String readQueryFromFile(ClassLoader classLoader, String queryPath) throws IOException {
+        if (queryPath == null || queryPath.isEmpty()) {
+            throw new IllegalArgumentException("Query path cannot be null or empty");
+        }
+        InputStream queryStream = classLoader.getResourceAsStream(queryPath);
+        if (queryStream == null) {
+            throw new RuntimeException("Query file not found: " + queryPath);
+        }
+        return new String(queryStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+    }
+
+    /**
+     * Выполняет EXPLAIN ANALYZE и возвращает корневой узел плана
+     */
+    private PlanNode executeExplainAnalyze(Connection conn, String query) throws SQLException {
+        String explainQuery = "EXPLAIN (ANALYZE, FORMAT JSON) " + query;
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(explainQuery)) {
+            if (rs.next()) {
+                String jsonResult = rs.getString(1);
+                ObjectMapper mapper = new ObjectMapper();
+                ExplainRoot root = mapper.readValue(jsonResult, ExplainRoot.class);
+                return root.plan;
+            }
+        }
+        return null;
+    }
+    /**
+    * Загружает план из JSON файла
+     */
+    private PlanNode loadPlanFromFile(ClassLoader classLoader, String planPath) throws IOException {
+        if (planPath == null || planPath.isEmpty()) {
+            throw new IllegalArgumentException("Plan path cannot be null or empty");
+        }
+        InputStream planStream = classLoader.getResourceAsStream(planPath);
+        if (planStream == null) {
+            throw new RuntimeException("Plan file not found: " + planPath);
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ExplainRoot root = mapper.readValue(planStream, ExplainRoot.class);
+        return root.plan;
     }
 
     /**
@@ -154,7 +230,116 @@ public class IntegrationTest {
         }
     }
 
-    
+    class TreeEditDistance {
+        float deleteCost = 1f;
+        float relable = 1f;
+        float insert = 1f;
+
+        public static int compute(PlanNode tree1, PlanNode tree2) {
+            if (tree1 == null && tree2 == null) return 0;
+            if (tree1 == null) return costInsertTree(tree2);
+            if (tree2 == null) return costDeleteTree(tree1);
+            return forestDistance(Collections.singletonList(tree1), Collections.singletonList(tree2));
+        }
+
+
+        private static int costDeleteTree(PlanNode node) {
+            int cost = 1;
+            for (PlanNode child : safeGetPlans(node)) {
+                cost += costDeleteTree(child);
+            }
+            return cost;
+        }
+
+        private static int costInsertTree(PlanNode node) {
+            int cost = 1;
+            for (PlanNode child : safeGetPlans(node)) {
+                cost += costInsertTree(child);
+            }
+            return cost;
+        }
+
+        private static int costReplace(PlanNode a, PlanNode b) {
+            return a.nodeType.equals(b.nodeType) ? 0 : 1;
+        }
+
+        private static int forestDistance(List<PlanNode> forest1, List<PlanNode> forest2) {
+            int n = forest1.size();
+            int m = forest2.size();
+            int[][] dp = new int[n + 1][m + 1];
+
+            // Заполняем таблицу снизу вверх
+            for (int i = n; i >= 0; i--) {
+                for (int j = m; j >= 0; j--) {
+                    if (i == n && j == m) {
+                        dp[i][j] = 0;
+                    } else if (i == n) {
+                        // Вставка оставшихся из forest2
+                        int cost = 0;
+                        for (int k = j; k < m; k++) {
+                            cost += costInsertTree(forest2.get(k));
+                        }
+                        dp[i][j] = cost;
+                    } else if (j == m) {
+                        // Удаление оставшихся из forest1
+                        int cost = 0;
+                        for (int k = i; k < n; k++) {
+                            cost += costDeleteTree(forest1.get(k));
+                        }
+                        dp[i][j] = cost;
+                    } else {
+                        int deleteOption = dp[i + 1][j] + costDeleteTree(forest1.get(i));
+                        int insertOption = dp[i][j + 1] + costInsertTree(forest2.get(j));
+                        int childrenDist = forestDistance(
+                                safeGetPlans(forest1.get(i)),
+                                safeGetPlans(forest2.get(j))
+                        );
+                        int replaceOption = childrenDist
+                                + costReplace(forest1.get(i), forest2.get(j))
+                                + dp[i + 1][j + 1];
+
+                        dp[i][j] = Math.min(deleteOption, Math.min(insertOption, replaceOption));
+                    }
+                }
+            }
+            return dp[0][0];
+        }
+
+        private static List<PlanNode> safeGetPlans(PlanNode node) {
+            if (node == null || node.plans == null) {
+                return Collections.emptyList();
+            }
+            return node.plans;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    class ExplainRoot {
+        @JsonProperty("Plan")
+        public PlanNode plan;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    class PlanNode {
+        @JsonProperty("Node Type")
+        public String nodeType;
+
+        @JsonProperty("Plans")
+        public List<PlanNode> plans;
+
+        public List<PlanNode> getPlans() {
+            if (plans == null) {
+                plans = new ArrayList<>();
+            }
+            return plans;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    class ExplainRoot {
+        @JsonProperty("Plan")
+        public PlanNode plan;
+    }
     /**
      * Конфигурация базы данных и таблиц для теста
      * 
@@ -169,14 +354,18 @@ public class IntegrationTest {
         private final String SCHEMA_PATH;
         private final String STATS_PATH;
         private final List<TableHolder> tables;
+        private final String QUERY_PATH;
+        private final String SOURCE_PLAN_PATH;
 
-        public Config(String db_url, String db_user, String db_password, String schema_path, String stats_path, List<TableHolder> tables) {
+        public Config(String db_url, String db_user, String db_password, String schema_path, String stats_path, String query_path, String source_plan_path, List<TableHolder> tables) {
             this.DB_URL = db_url;
             this.DB_USER = db_user;
             this.DB_PASSWORD = db_password;
             this.SCHEMA_PATH = schema_path;
             this.STATS_PATH = stats_path;
             this.tables = tables;
+            this.QUERY_PATH = query_path;
+            this.SOURCE_PLAN_PATH = source_plan_path;
         }
     }
     /**
@@ -243,6 +432,8 @@ public class IntegrationTest {
                 (String) configMap.get("password"),
                 (String) configMap.get("schema"),
                 (String) configMap.get("statistic"),
+                (String) configMap.get("query_path"),
+                (String) configMap.get("source_plan_path"),
                 databases
             );
         } 
