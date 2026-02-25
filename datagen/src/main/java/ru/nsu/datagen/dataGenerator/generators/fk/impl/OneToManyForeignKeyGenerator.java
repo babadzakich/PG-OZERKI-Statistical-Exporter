@@ -1,61 +1,57 @@
 package ru.nsu.datagen.dataGenerator.generators.fk.impl;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import java.util.*;
-
+@Slf4j
 public class OneToManyForeignKeyGenerator implements ForeignKeyGenerator {
     private final Random random = new Random();
     
     public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
                                             Map<String, List<Object>> referencedData,
-                                            Map<String, Map<String, List<Object>>> allGeneratedData) {
+                                            Map<String, List<Object>> allGeneratedData) {
+        log.info("Generating database foreign keys for column {}", columnMetadata.getName());
+        String refSchema = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedSchema();
+        String refTable = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedTable();
+        String refColumn = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedColumn();
+        String refKey = refSchema + '.' + refTable + '.' + refColumn;
+        Set<Object> usefulData = new HashSet<>(allGeneratedData.get(refKey));
 
-        String refTable = columnMetadata.getForeignKeyMetadata().getReferencedTable();
-        String refColumn = columnMetadata.getForeignKeyMetadata().getReferencedColumn();
-        String refKey = refTable + "." + refColumn;
-
-        System.out.println("tryna find refKey: " + refKey);
-        if (!referencedData.containsKey(refKey)) {
-            throw new IllegalStateException("Referenced data not found: " + refKey);
+        for (int i = 1; i < columnMetadata.getForeignKeyMetadata().size(); i++) {
+            refSchema = columnMetadata.getForeignKeyMetadata().get(i).getReferencedSchema();
+            refTable = columnMetadata.getForeignKeyMetadata().get(i).getReferencedTable();
+            refColumn = columnMetadata.getForeignKeyMetadata().get(i).getReferencedColumn();
+            usefulData.retainAll(allGeneratedData.get(refSchema + '.' + refTable + '.' + refColumn));
         }
 
-        List<Object> refValues = referencedData.get(refKey);
-        List<Object> foreignKeys = new ArrayList<>();
         int recordCount = columnMetadata.getRecordCount();
-        double nullPercentage = columnMetadata.getNullPercentage();
+        List<Object> foreignKeys = new ArrayList<>();
 
-        // Для ONE_TO_MANY выбираем случайные родительские значения с предпочтением некоторых
-        Map<Object, Integer> usageCount = new HashMap<>();
-
-        for (int i = 0; i < recordCount; i++) {
-            if (random.nextDouble() < nullPercentage) {
-                foreignKeys.add(null);
-            } else if (!refValues.isEmpty()) {
-                Object selectedValue = selectValueWithDistribution(refValues, usageCount);
-                foreignKeys.add(selectedValue);
-                usageCount.merge(selectedValue, 1, Integer::sum);
-            } else {
-                foreignKeys.add(null);
+        columnMetadata.getMcv().forEach((mcv, freq) -> {
+            usefulData.remove(mcv);
+            long mvcCount = Math.round(freq * columnMetadata.getRecordCount());
+            for (long j = 0; j < mvcCount; j++) {
+                foreignKeys.add(mcv);
             }
+            log.trace("Adding MVC value: {} with frequency: {} resulting in count: {}", mcv, freq, mvcCount);
+        });
+
+        double nullPercentage = columnMetadata.getNullPercentage();
+        for (int i = 0; i < recordCount * (nullPercentage/100.0); i++) {
+            foreignKeys.add(null);
+        }
+
+        if (nullPercentage > 0) {
+            usefulData.remove(null);
+        }
+
+        List<Object> refValues = new ArrayList<>(usefulData);
+
+        for (int i = foreignKeys.size(); i < recordCount; i++) {
+            foreignKeys.add(refValues.get(random.nextInt(refValues.size())));
         }
 
         return foreignKeys;
-    }
-
-    private Object selectValueWithDistribution(List<Object> refValues, Map<Object, Integer> usageCount) {
-        // Предпочтение отдаем значениям, которые еще не использовались или использовались мало
-        List<Object> candidates = new ArrayList<>();
-
-        for (Object value : refValues) {
-            int used = usageCount.getOrDefault(value, 0);
-            // Чем меньше использовалось значение, тем больше шансов его выбрать
-            int weight = Math.max(1, 10 - used);
-            for (int i = 0; i < weight; i++) {
-                candidates.add(value);
-            }
-        }
-
-        return candidates.get(new Random().nextInt(candidates.size()));
     }
 }

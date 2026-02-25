@@ -10,10 +10,10 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator {
     @Override
     public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
                                             Map<String, List<Object>> referencedData,
-                                            Map<String, Map<String, List<Object>>> allGeneratedData) {
+                                            Map<String, List<Object>> allGeneratedData) {
 
-        String refTable = columnMetadata.getForeignKeyMetadata().getReferencedTable();
-        String refColumn = columnMetadata.getForeignKeyMetadata().getReferencedColumn();
+        String refTable = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedTable();
+        String refColumn = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedColumn();
         String refKey = refTable + "." + refColumn;
 
         if (!referencedData.containsKey(refKey)) {
