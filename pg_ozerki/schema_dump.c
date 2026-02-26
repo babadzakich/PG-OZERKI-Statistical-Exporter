@@ -472,10 +472,10 @@ export_query_plan(PG_FUNCTION_ARGS) {
                 
                 if (analyze) {
                 appendStringInfoString(&explainQuery,
-                    "EXPLAIN (FORMAT YAML, VERBOSE, ANALYZE) ");
+                    "EXPLAIN (FORMAT JSON, VERBOSE, ANALYZE) ");
                 } else {
                     appendStringInfoString(&explainQuery,
-                    "EXPLAIN (FORMAT YAML, VERBOSE) ");
+                    "EXPLAIN (FORMAT JSON, VERBOSE) ");
                 }
                 appendStringInfo(&explainQuery, query);
                     
