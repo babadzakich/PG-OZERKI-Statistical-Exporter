@@ -169,7 +169,7 @@ typedef enum
 extern const char *progname;
 
 
-static Oid	g_last_builtin_oid;
+Oid	g_last_builtin_oid;
 
 typedef uint32_t DumpComponents;
 typedef int DumpId;
@@ -1654,7 +1654,7 @@ typedef struct {
     char **schemas;
     int schemaCount;
 	Oid* viewOids;
-	int viewCount
+	int viewCount;
 } QueryDependencies;
 
 QueryDependencies* analyze_query_dependencies(const char *query);
@@ -1690,3 +1690,58 @@ void find_views_for_tables(PGconn* conn, QueryDependencies *deps, char* query_te
 bool is_in_view_oids(Oid oid);
 
 void mark_views_for_dump(TableInfo *tblinfo, int numTables, QueryDependencies *deps);
+
+TableInfo *
+getSchemaData(Archive *fout, int *numTablesPtr);
+
+void
+RestoreArchive(Archive *AHX);
+
+void
+CloseArchive(Archive *AHX);
+
+TocEntry *
+ArchiveEntry(Archive *AHX, CatalogId catalogId, DumpId dumpId,
+			 ArchiveOpts *opts);
+
+DumpId
+getMaxDumpId(void);
+
+ void
+selectDumpableObject(DumpableObject *dobj, Archive *fout);
+
+void
+selectDumpableStatisticsObject(StatsExtInfo *sobj, Archive *fout);
+
+void
+selectDumpableNamespace(NamespaceInfo *nsinfo, Archive *fout);
+
+ void
+selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt);
+
+void
+selectDumpableType(TypeInfo *tyinfo, Archive *fout);
+
+ void
+selectDumpableAccessMethod(AccessMethodInfo *method, Archive *fout);
+
+ void
+selectDumpableTable(TableInfo *tbinfo, Archive *fout);
+
+ void
+selectDumpableProcLang(ProcLangInfo *plang, Archive *fout);
+
+ void
+selectDumpableCast(CastInfo *cast, Archive *fout);
+
+void
+selectDumpableDefaultACL(DefaultACLInfo *dinfo, DumpOptions *dopt);
+
+void
+recordExtensionMembership(CatalogId catId, ExtensionInfo *ext);
+
+ void
+selectDumpablePublicationObject(DumpableObject *dobj, Archive *fout);
+
+DumpId
+createDumpId(void);

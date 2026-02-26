@@ -4622,122 +4622,7 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 
 
 
-/*
- * getAdditionalACLs
- *
- * We have now created all the DumpableObjects, and collected the ACL data
- * that appears in the directly-associated catalog entries.  However, there's
- * more ACL-related info to collect.  If any of a table's columns have ACLs,
- * we must set the TableInfo's DUMP_COMPONENT_ACL components flag, as well as
- * its hascolumnACLs flag (we won't store the ACLs themselves here, though).
- * Also, in versions having the pg_init_privs catalog, read that and load the
- * information into the relevant DumpableObjects.
- */
-static void
-getAdditionalACLs(Archive *fout)
-{
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult   *res;
-	int			ntups,
-				i;
 
-	/* Check for per-column ACLs */
-	appendPQExpBufferStr(query,
-						 "SELECT DISTINCT attrelid FROM pg_attribute "
-						 "WHERE attacl IS NOT NULL");
-
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-	ntups = PQntuples(res);
-	for (i = 0; i < ntups; i++)
-	{
-		Oid			relid = atooid(PQgetvalue(res, i, 0));
-		TableInfo  *tblinfo;
-
-		tblinfo = findTableByOid(relid);
-		/* OK to ignore tables we haven't got a DumpableObject for */
-		if (tblinfo)
-		{
-			tblinfo->dobj.components |= DUMP_COMPONENT_ACL;
-			tblinfo->hascolumnACLs = true;
-		}
-	}
-	PQclear(res);
-
-	/* Fetch initial-privileges data */
-	if (fout->remoteVersion >= 90600)
-	{
-		printfPQExpBuffer(query,
-						  "SELECT objoid, classoid, objsubid, privtype, initprivs "
-						  "FROM pg_init_privs");
-
-		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-		ntups = PQntuples(res);
-		for (i = 0; i < ntups; i++)
-		{
-			Oid			objoid = atooid(PQgetvalue(res, i, 0));
-			Oid			classoid = atooid(PQgetvalue(res, i, 1));
-			int			objsubid = atoi(PQgetvalue(res, i, 2));
-			char		privtype = *(PQgetvalue(res, i, 3));
-			char	   *initprivs = PQgetvalue(res, i, 4);
-			CatalogId	objId;
-			DumpableObject *dobj;
-
-			objId.tableoid = classoid;
-			objId.oid = objoid;
-			dobj = findObjectByCatalogId(objId);
-			/* OK to ignore entries we haven't got a DumpableObject for */
-			if (dobj)
-			{
-				/* Cope with sub-object initprivs */
-				if (objsubid != 0)
-				{
-					if (dobj->objType == DO_TABLE)
-					{
-						/* For a column initprivs, set the table's ACL flags */
-						dobj->components |= DUMP_COMPONENT_ACL;
-						((TableInfo *) dobj)->hascolumnACLs = true;
-					}
-					else
-						pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
-									   classoid, objoid, objsubid);
-					continue;
-				}
-
-				/*
-				 * We ignore any pg_init_privs.initprivs entry for the public
-				 * schema, as explained in getNamespaces().
-				 */
-				if (dobj->objType == DO_NAMESPACE &&
-					strcmp(dobj->name, "public") == 0)
-					continue;
-
-				/* Else it had better be of a type we think has ACLs */
-				if (dobj->objType == DO_NAMESPACE ||
-					dobj->objType == DO_TYPE ||
-					dobj->objType == DO_FUNC ||
-					dobj->objType == DO_AGG ||
-					dobj->objType == DO_TABLE ||
-					dobj->objType == DO_PROCLANG ||
-					dobj->objType == DO_FDW ||
-					dobj->objType == DO_FOREIGN_SERVER)
-				{
-					DumpableObjectWithAcl *daobj = (DumpableObjectWithAcl *) dobj;
-
-					daobj->dacl.privtype = privtype;
-					daobj->dacl.initprivs = pstrdup(initprivs);
-				}
-				else
-					pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
-								   classoid, objoid, objsubid);
-			}
-		}
-		PQclear(res);
-	}
-
-	destroyPQExpBuffer(query);
-}
 
 
 void
@@ -6379,8 +6264,7 @@ selectDumpableCast(CastInfo *cast, Archive *fout)
 	if (cast->dobj.catId.oid <= (Oid) g_last_builtin_oid)
 		cast->dobj.dump = DUMP_COMPONENT_NONE;
 	else
-		cast->dobj.dump = fout->dopt->include_everything ?
-			DUMP_COMPONENT_ALL : DUMP_COMPONENT_NONE;
+		cast->dobj.dump = DUMP_COMPONENT_NONE;
 }
 
 /*
@@ -6843,6 +6727,8 @@ createDumpId(void)
 {
 	return ++lastDumpId;
 }
+
+
 
 
 TocEntry *
