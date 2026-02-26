@@ -169,7 +169,7 @@ typedef enum
 extern const char *progname;
 
 
-Oid	g_last_builtin_oid;
+//extern Oid g_last_builtin_oid;
 
 typedef uint32_t DumpComponents;
 typedef int DumpId;

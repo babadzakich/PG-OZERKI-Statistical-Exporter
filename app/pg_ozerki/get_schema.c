@@ -14,7 +14,7 @@
 #include "catalog/pg_subscription_d.h"
 #include "catalog/pg_type_d.h"
 #include "common/hashfn.h"
-
+#include "access/transam.h"
 
 #define SH_PREFIX		catalogid
 #define SH_ELEMENT_TYPE	CatalogIdMapEntry
@@ -45,6 +45,7 @@ static int	allocedDumpIds = 0;
 static DumpId lastDumpId = 0;	/* Note: 0 is InvalidDumpId */
 
 
+static Oid	g_last_builtin_oid = FirstNormalObjectId - 1; 
 
 
 static RoleNameItem *rolenames = NULL;

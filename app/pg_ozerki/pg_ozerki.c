@@ -6,7 +6,7 @@
 #include "fe_utils/string_utils.h"
 #include "getopt_long.h" 
 #include "catalog/pg_class.h"
-#include "access/transam.h"
+
 
 
 SimpleStringList table_include_patterns = {NULL, NULL};
@@ -288,7 +288,6 @@ int main(int argc, char** argv) {
 	ConnectDatabase(fout, &dopt.cparams, false);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
 
-	g_last_builtin_oid = FirstNormalObjectId - 1;
 
 	pg_log_debug("Connected to database");
 	deps = InitQueryDependencies();
@@ -301,7 +300,8 @@ int main(int argc, char** argv) {
 		for (int i = 0; i < deps->tableCount; i++) {
 			simple_string_list_append(&table_include_patterns, deps->tableNames[i]);
 		}
-		dopt.include_everything = false;
+		
+		if (deps->tableCount > 0) dopt.include_everything = true;
 		expand_table_name_patterns(fout, &table_include_patterns,
 							   &table_include_oids,
 							   strict_names, false);
@@ -1104,7 +1104,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	PGconn	   *conn = GetConnection(AH);
 	const char *std_strings;
 	
-	PQclear(ExecuteSqlQueryForSingleRow(AH, ALWAYS_SECURE_SEARCH_PATH_SQL));
+	//PQclear(ExecuteSqlQueryForSingleRow(AH, ALWAYS_SECURE_SEARCH_PATH_SQL));
 	/*
 	 * Set the client encoding if requested.
 	 */

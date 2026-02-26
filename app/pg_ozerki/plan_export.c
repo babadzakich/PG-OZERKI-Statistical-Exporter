@@ -12,12 +12,12 @@ void get_explain(PGconn* conn, const char *query, char* filename, bool analyze) 
     PQExpBuffer explain_query;
     PGresult* res;
 
-    char* yaml_plan;
+    char* json_plan;
 
     explain_query = createPQExpBuffer();
 
 
-    appendPQExpBufferStr(explain_query, "EXPLAIN (FORMAT YAML, VERBOSE");
+    appendPQExpBufferStr(explain_query, "EXPLAIN (FORMAT JSON, VERBOSE");
     if (analyze) {
         appendPQExpBuffer(explain_query, ", ANALYZE");
     }
@@ -33,11 +33,11 @@ void get_explain(PGconn* conn, const char *query, char* filename, bool analyze) 
         return;
     }
 
-    yaml_plan = (PQgetvalue(res, 0, 0));
+    json_plan = (PQgetvalue(res, 0, 0));
 
-    int length = strlen(yaml_plan);
+    int length = strlen(json_plan);
 
-    fwrite(yaml_plan, 1, length, fout);
+    fwrite(json_plan, 1, length, fout);
     fclose(fout);
 
     PQclear(res);
