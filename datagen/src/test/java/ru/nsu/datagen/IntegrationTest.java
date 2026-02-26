@@ -41,9 +41,9 @@ public class IntegrationTest {
             throw new RuntimeException("Failed to load config", e);
         }
         this.dataSource = new HikariDataSource();
-        this.dataSource.setJdbcUrl(config.getDB_URL());
-        this.dataSource.setUsername(config.getDB_USER());
-        this.dataSource.setPassword(config.getDB_PASSWORD());
+        this.dataSource.setJdbcUrl(config.DB_URL());
+        this.dataSource.setUsername(config.DB_USER());
+        this.dataSource.setPassword(config.DB_PASSWORD());
     }
     /**
      * Основной регрессионный тест, проверяющий работу всего pipeline:
@@ -56,14 +56,14 @@ public class IntegrationTest {
     void testFullPipelineIntegration() throws Exception {
         Config config = loadConfig("config.yaml");
         ClassLoader classLoader = getClass().getClassLoader();
-        String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
-        String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
+        String schemaPath = Paths.get(classLoader.getResource(config.SCHEMA_PATH()).toURI()).toString();
+        String statsPath = Paths.get(classLoader.getResource(config.STATS_PATH()).toURI()).toString();
 
         try (Connection conn = dataSource.getConnection()) {
             // Очищаем БД перед тестом
             try (Statement stmt = conn.createStatement()) {
-                for (var dbHolder : config.getTables()) {
-                    stmt.execute("DROP TABLE IF EXISTS " + dbHolder.getName());
+                for (var dbHolder : config.tables()) {
+                    stmt.execute("DROP TABLE IF EXISTS " + dbHolder.getName() + " CASCADE");
                 }
             }
 
@@ -78,7 +78,7 @@ public class IntegrationTest {
             System.out.println("✓ Генерация данных завершена");
 
             // Проверка целостности данных и ограничений
-            for (var dbHolder : config.getTables()) {
+            for (var dbHolder : config.tables()) {
                 checkTableIntegrity(conn, dbHolder);
             }
 
@@ -106,6 +106,9 @@ public class IntegrationTest {
      * Проверяет что все первичные ключи уникальны и положительны
      */
     private void validatePrimaryKeys(Connection conn, TableHolder dbHolder) throws SQLException {
+        if (dbHolder.getPks() == null || dbHolder.getPks().isEmpty()) {
+            return; // Нет PK для проверки
+        }
         for (var pkCol : dbHolder.getPks()) {
             try (Statement stmt = conn.createStatement()) {
                 ResultSet rs = stmt.executeQuery(
@@ -135,6 +138,9 @@ public class IntegrationTest {
      * Проверяет что все уникальные ограничения соблюдены
      */
     private void validateUniqueConstraints(Connection conn, TableHolder dbHolder) throws SQLException {
+        if (dbHolder.getUniques() == null || dbHolder.getUniques().isEmpty()) {
+            return; // Нет уникальных ограничений для проверки
+        }
         for (var uniqueCols : dbHolder.getUniques()) {
             String colsJoined = String.join(", ", uniqueCols);
             try (Statement stmt = conn.createStatement()) {
@@ -169,30 +175,15 @@ public class IntegrationTest {
         }
     }
 
-    
+
     /**
      * Конфигурация базы данных и таблиц для теста
-     * 
+     * <p>
      * Хранит информацию о подключении к БД и ожидаемых таблицах
      * которые должны быть сгенерированы и проверены в тесте
      */
-    @Getter
-    public static class Config {
-        private final String DB_URL;
-        private final String DB_USER;
-        private final String DB_PASSWORD;
-        private final String SCHEMA_PATH;
-        private final String STATS_PATH;
-        private final List<TableHolder> tables;
-
-        public Config(String db_url, String db_user, String db_password, String schema_path, String stats_path, List<TableHolder> tables) {
-            this.DB_URL = db_url;
-            this.DB_USER = db_user;
-            this.DB_PASSWORD = db_password;
-            this.SCHEMA_PATH = schema_path;
-            this.STATS_PATH = stats_path;
-            this.tables = tables;
-        }
+        public record Config(String DB_URL, String DB_USER, String DB_PASSWORD, String SCHEMA_PATH, String STATS_PATH,
+                             List<TableHolder> tables) {
     }
     /**
      * Хранит информацию о таблице для теста

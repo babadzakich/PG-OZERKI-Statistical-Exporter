@@ -38,10 +38,10 @@ public class TableMetadataMaker {
                             .map(col ->
                                     col.transformToColumnMetadata(
                                             compositeUniquePeersMap.getOrDefault(
-                                                col.getColumnName(), Collections.emptyList()
+                                                col.getSchemaName() + "." + col.getTableName() + "." + col.getColumnName(), Collections.emptyList()
                                             ),
                                             compositeFkPeersMap.getOrDefault(
-                                                col.getColumnName(), Collections.emptyList()
+                                                    col.getSchemaName() + "." + col.getTableName() + "." + col.getColumnName(), Collections.emptyList()
                                             )
                                     ))
                             .collect(Collectors.toMap(ColumnMetadata::getName, column -> column));
@@ -62,23 +62,25 @@ public class TableMetadataMaker {
 
         csvData.forEach(csv -> {
             if (csv.getCompositePeers() != null && !csv.getCompositePeers().isEmpty() && !"NULL".equalsIgnoreCase(csv.getCompositePeers().trim())) {
-                uniqueGraph.addVertex(csv.getColumnName().trim());
-                log.debug("Added unique vertex: {}", csv.getColumnName().trim());
+                String vertexName = csv.getSchemaName().trim() + "." + csv.getTableName().trim() + "." + csv.getColumnName().trim();
+                uniqueGraph.addVertex(vertexName);
+                log.debug("Added unique vertex: {}", vertexName);
                 log.debug("Composite unique peers for {}: {}", csv.getColumnName(), csv.getCompositePeers());
                 for (String peer : csv.getCompositePeers().split(",")) {
                     if (!uniqueGraph.containsVertex(peer.trim())) uniqueGraph.addVertex(peer.trim());
-                    uniqueGraph.addEdge(csv.getColumnName().trim(), peer.trim());
-                    log.debug("Added unique edge: {} to {}", csv.getColumnName(), peer.trim());
+                    uniqueGraph.addEdge(vertexName, peer.trim());
+                    log.debug("Added unique edge: {} to {}", vertexName, peer.trim());
                 }
             }
-            if (csv.getCompositePeers() != null && !csv.getCompositePeers().isEmpty() && !"NULL".equalsIgnoreCase(csv.getCompositePeers().trim())) {
-                fkGraph.addVertex(csv.getColumnName().trim());
-                log.debug("Added FK vertex: {}", csv.getColumnName().trim());
+            if (csv.getCompositeFkPeers() != null && !csv.getCompositeFkPeers().isEmpty() && !"NULL".equalsIgnoreCase(csv.getCompositeFkPeers().trim())) {
+                String vertexName = csv.getSchemaName().trim() + "." + csv.getTableName().trim() + "." + csv.getColumnName().trim();
+                fkGraph.addVertex(vertexName);
+                log.debug("Added FK vertex: {}", vertexName);
                 log.debug("Composite FK peers for {}: {}", csv.getColumnName(), csv.getCompositeFkPeers());
                 for (String peer : csv.getCompositeFkPeers().split(",")) {
                     if (!fkGraph.containsVertex(peer.trim())) fkGraph.addVertex(peer.trim());
-                    fkGraph.addEdge(csv.getColumnName().trim(), peer.trim());
-                    log.debug("Added FK edge: {} to {}", csv.getColumnName(), peer.trim());
+                    fkGraph.addEdge(vertexName, peer.trim());
+                    log.debug("Added FK edge: {} to {}", vertexName, peer.trim());
                 }
             }
         });

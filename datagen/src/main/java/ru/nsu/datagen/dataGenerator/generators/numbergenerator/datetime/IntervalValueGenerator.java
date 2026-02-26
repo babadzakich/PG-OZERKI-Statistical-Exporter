@@ -2,7 +2,6 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
-import org.jetbrains.annotations.NotNull;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
 import java.time.Duration;
@@ -56,7 +55,6 @@ public class IntervalValueGenerator extends ValueGeneratorAC {
 
     private record Interval(Period period, Duration duration) {
         @Override
-        @NotNull
         public String toString() {
             return period.toString() + " " + duration.toString().substring(1);
         }

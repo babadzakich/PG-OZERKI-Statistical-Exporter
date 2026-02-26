@@ -27,11 +27,11 @@ public class ColumnMetadataCSV {
     private int recordCount;
     @CsvBindByName(column = "max_length")
     private int maxLength;
-    @CsvBindByName(column = "relation_type")
+    @CsvBindByName(column = "relation_types")
     private String relationshipType;
-    @CsvBindByName(column = "incoming_reference")
+    @CsvBindByName(column = "incoming_references")
     private String incomingReferences;
-    @CsvBindByName(column = "outcoming_reference")
+    @CsvBindByName(column = "outcoming_references")
     private String outcomingReferences;
     @CsvBindByName(column = "mcv")
     private String mcv;
@@ -108,7 +108,7 @@ public class ColumnMetadataCSV {
                 .isUnique(isUnique)
                 .nullPercentage(nullPercentage)
                 .recordCount(recordCount)
-                .maxLength(maxLength == -1 ? null : maxLength)
+                .maxLength(maxLength == -1 ? avgTupleSize : maxLength)
                 .foreignKeyMetadata(fkMetadata)
                 .mcv(processMCV(mcv, mcvFrequencies, dataType))
                 .avgTupleSize(avgTupleSize)

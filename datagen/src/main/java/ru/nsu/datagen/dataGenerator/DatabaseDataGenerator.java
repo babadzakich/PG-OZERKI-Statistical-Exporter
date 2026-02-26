@@ -65,7 +65,7 @@ public class DatabaseDataGenerator {
                 }));
             }
             for (String columnName : generatedTableData.keySet()) {
-                if (!table.getColumns().get(columnName).getReferencingColumns().isEmpty()) {
+                if (table.getColumns().get(columnName).getReferencingColumns() != null) {
                     generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
                 }
             }

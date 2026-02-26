@@ -11,3 +11,9 @@ tables:
       - [product_id, user_id]
     pk:
       - id
+
+  - name: meta
+    schema: public
+    expectedCount: 500000
+    pk:
+      - id

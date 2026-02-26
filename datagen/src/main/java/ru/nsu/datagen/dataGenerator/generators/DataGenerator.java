@@ -114,7 +114,12 @@ public class DataGenerator {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isPrimaryKey() && !generatedColumns.contains(column.getName())) {
-                List<Object> primaryKeys = ValueGeneratorFactory.createValueGenerator(column).generateValues(column.getRecordCount());
+                List<Object> primaryKeys;
+                if (!column.getHistogramm().isEmpty()) {
+                    primaryKeys = ValueGeneratorFactory.createValueGenerator(column).generateValues(column.getRecordCount(), column.getHistogramm().getFirst(), column.getHistogramm().getLast());
+                } else {
+                    primaryKeys = ValueGeneratorFactory.createValueGenerator(column).generateValues(column.getRecordCount());
+                }
                 columnData.put(column.getName(), primaryKeys);
                 generatedColumns.add(column.getName());
             }
@@ -166,7 +171,7 @@ public class DataGenerator {
             for (ColumnMetadata column : table.getColumns().values()) {
                 if (column.isUnique() && !generatedColumns.contains(column.getName())) {
                     for (String col : column.getCompositeUniquePeers().getFirst()) {
-                        uniqueList.add(table.getColumns().get(col));
+                        uniqueList.add(table.getColumns().get(col.split("\\.")[2]));
                     }
                     break;
                 }
