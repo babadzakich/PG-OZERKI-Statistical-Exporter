@@ -458,7 +458,6 @@ void extract_tables_from_query_text(const char *query, QueryDependencies* deps) 
     }
     
     pfree(explainQuery.data);
-    return deps;
 }
 
 void analyze_query_dependencies(const char *query, QueryDependencies* deps) {

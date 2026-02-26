@@ -703,8 +703,8 @@ ConnectDatabase(Archive *AHX,
 
 	//PGresult* res = 
 	/* Start strict; later phases may override this. */
-	PQclear(ExecuteSqlQueryForSingleRow((Archive *) AH,
-										ALWAYS_SECURE_SEARCH_PATH_SQL));
+	//PQclear(ExecuteSqlQueryForSingleRow((Archive *) AH,
+	//									ALWAYS_SECURE_SEARCH_PATH_SQL));
 
 	if (password && password != AH->savedPassword)
 		free(password);
