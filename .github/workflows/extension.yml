@@ -1,0 +1,30 @@
+name: Extension-CI
+
+on:
+  pull_request:
+    branches: [ "main-dev" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install PostgreSQL dev headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-server-dev-17
+
+      - name: Build extension (warnings as errors)
+        working-directory: ./pg_ozerki
+        run: |
+          set -o pipefail
+          make USE_PGXS=1 PG_CFLAGS="-Wall -Werror" 2>&1 | tee build.log || {
+            echo ""
+            echo "=== Compiler warnings / errors ==="
+            grep -E "warning:|error:" build.log || true
+            echo "==================================="
+            exit 1
+          }
