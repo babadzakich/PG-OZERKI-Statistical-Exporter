@@ -11,9 +11,10 @@ void get_explain(PGconn* conn, const char *query, char* filename, bool analyze) 
     }
     PQExpBuffer explain_query;
     PGresult* res;
-
+    PGresult* sp;
     char* json_plan;
-
+    sp = PQexec(conn, "SHOW search_path");
+    pg_log_debug("explain search path = %s", PQgetvalue(sp, 0, 0));
     explain_query = createPQExpBuffer();
 
 
@@ -26,7 +27,7 @@ void get_explain(PGconn* conn, const char *query, char* filename, bool analyze) 
     res = PQexec(conn, explain_query->data);
     ExecStatusType res_status = PQresultStatus(res); 
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        pg_log_error("Explain query has been executed with status: %s" ,PQresStatus(res_status));
+        pg_log_error("Explain query has been executed with status: %s" ,PQresultErrorMessage(res));
         destroyPQExpBuffer(explain_query);
         PQclear(res);
         fclose(fout);

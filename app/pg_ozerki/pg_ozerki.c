@@ -285,6 +285,8 @@ int main(int argc, char** argv) {
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
 	 */
+
+	//use_role = dopt.cparams.username;
 	ConnectDatabase(fout, &dopt.cparams, false);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
 
@@ -1103,6 +1105,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	DumpOptions *dopt = AH->dopt;
 	PGconn	   *conn = GetConnection(AH);
 	const char *std_strings;
+
 	
 	//PQclear(ExecuteSqlQueryForSingleRow(AH, ALWAYS_SECURE_SEARCH_PATH_SQL));
 	/*
@@ -1149,6 +1152,9 @@ setup_connection(Archive *AH, const char *dumpencoding,
 			AH->use_role = pg_strdup(use_role);
 	}
 
+	PGresult* search_path_res = ExecuteSqlQueryForSingleRow(AH, "SHOW search_path");
+	
+	pg_log_debug("current search_path %s", PQgetvalue(search_path_res, 0, 0));
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	ExecuteSqlStatement(AH, "SET DATESTYLE = ISO");
 
@@ -2960,8 +2966,8 @@ expand_table_name_patterns(Archive *fout,
 
 		ExecuteSqlStatement(fout, "RESET search_path");
 		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-		PQclear(ExecuteSqlQueryForSingleRow(fout,
-											ALWAYS_SECURE_SEARCH_PATH_SQL));
+		//PQclear(ExecuteSqlQueryForSingleRow(fout,
+											//ALWAYS_SECURE_SEARCH_PATH_SQL));
 		if (strict_names && PQntuples(res) == 0)
 			pg_fatal("no matching tables were found for pattern \"%s\"", cell->val);
 
