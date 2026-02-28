@@ -1655,6 +1655,7 @@ typedef struct {
     int schemaCount;
 	Oid* viewOids;
 	int viewCount;
+	bool been_analyzed;
 } QueryDependencies;
 
 QueryDependencies* analyze_query_dependencies(const char *query);
@@ -1692,7 +1693,7 @@ bool is_in_view_oids(Oid oid);
 void mark_views_for_dump(TableInfo *tblinfo, int numTables, QueryDependencies *deps);
 
 TableInfo *
-getSchemaData(Archive *fout, int *numTablesPtr);
+getSchemaData(Archive *fout, int *numTablesPtr, QueryDependencies* deps);
 
 void
 RestoreArchive(Archive *AHX);

@@ -46,6 +46,7 @@ QueryDependencies* InitQueryDependencies() {
     deps->tableNames = NULL;
     deps->viewOids = NULL;
     deps->viewCount = 0;
+    deps->been_analyzed = false;
     return deps;
 }
 

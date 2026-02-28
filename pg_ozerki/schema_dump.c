@@ -88,16 +88,17 @@ dump_schema(PG_FUNCTION_ARGS)
 
     generate_extensions_ddl_query(&buf, deps);
 
-    generate_tables_ddl_query(&buf, deps);
+    if (!(deps->been_analyzed && deps->tableCount == 0)) {
+        generate_tables_ddl_query(&buf, deps);
 
-    generate_sequences_ddl_query(&buf, deps);
-    
-    generate_views_ddl_query(&buf, deps);
-    
-    generate_indexes_ddl_query(&buf, deps);
+        generate_sequences_ddl_query(&buf, deps);
 
-    generate_constraints_ddl_query(&buf, deps);
+        generate_views_ddl_query(&buf, deps);
 
+        generate_indexes_ddl_query(&buf, deps);
+
+        generate_constraints_ddl_query(&buf, deps);
+    }
     SPI_execute("RESET search_path", false, 0);
 
         

@@ -153,7 +153,7 @@ static const int dbObjectTypePriority[] =
 
 
 TableInfo *
-getSchemaData(Archive *fout, int *numTablesPtr)
+getSchemaData(Archive *fout, int *numTablesPtr, QueryDependencies* deps)
 {
 	TableInfo  *tblinfo;
 	ExtensionInfo *extinfo;
@@ -206,136 +206,140 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	 * However, we have to do getNamespaces first because the tables get
 	 * linked to their containing namespaces during getTables.
 	 */
-	pg_log_info("reading user-defined tables");
-	tblinfo = getTables(fout, &numTables);
-	
-	getOwnedSeqs(fout, tblinfo, numTables);
 
-	pg_log_info("reading user-defined functions");
-	(void) getFuncs(fout, &numFuncs);
+	if (!(deps->been_analyzed && deps->tableCount == 0)) {
+		pg_log_info("reading user-defined tables");
+		tblinfo = getTables(fout, &numTables);
+		
+		getOwnedSeqs(fout, tblinfo, numTables);
 
-	/* this must be after getTables and getFuncs */
-	pg_log_info("reading user-defined types");
-	(void) getTypes(fout, &numTypes);
+		pg_log_info("reading user-defined functions");
+		(void) getFuncs(fout, &numFuncs);
 
-	/* this must be after getFuncs, too */
-	pg_log_info("reading procedural languages");
-	getProcLangs(fout, &numProcLangs);
+		/* this must be after getTables and getFuncs */
+		pg_log_info("reading user-defined types");
+		(void) getTypes(fout, &numTypes);
 
-	pg_log_info("reading user-defined aggregate functions");
-	getAggregates(fout, &numAggregates);
+		/* this must be after getFuncs, too */
+		pg_log_info("reading procedural languages");
+		getProcLangs(fout, &numProcLangs);
 
-	pg_log_info("reading user-defined operators");
-	(void) getOperators(fout, &numOperators);
+		pg_log_info("reading user-defined aggregate functions");
+		getAggregates(fout, &numAggregates);
 
-	pg_log_info("reading user-defined access methods");
-	getAccessMethods(fout, &numAccessMethods);
+		pg_log_info("reading user-defined operators");
+		(void) getOperators(fout, &numOperators);
 
-	pg_log_info("reading user-defined operator classes");
-	getOpclasses(fout, &numOpclasses);
-	
-	pg_log_info("reading user-defined operator families");
-	getOpfamilies(fout, &numOpfamilies);
+		pg_log_info("reading user-defined access methods");
+		getAccessMethods(fout, &numAccessMethods);
 
-	pg_log_info("reading user-defined text search parsers");
-	getTSParsers(fout, &numTSParsers);
+		pg_log_info("reading user-defined operator classes");
+		getOpclasses(fout, &numOpclasses);
+		
+		pg_log_info("reading user-defined operator families");
+		getOpfamilies(fout, &numOpfamilies);
 
-	pg_log_info("reading user-defined text search templates");
-	getTSTemplates(fout, &numTSTemplates);
+		pg_log_info("reading user-defined text search parsers");
+		getTSParsers(fout, &numTSParsers);
 
-	pg_log_info("reading user-defined text search dictionaries");
-	getTSDictionaries(fout, &numTSDicts);
+		pg_log_info("reading user-defined text search templates");
+		getTSTemplates(fout, &numTSTemplates);
 
-	pg_log_info("reading user-defined text search configurations");
-	getTSConfigurations(fout, &numTSConfigs);
+		pg_log_info("reading user-defined text search dictionaries");
+		getTSDictionaries(fout, &numTSDicts);
 
-	pg_log_info("reading user-defined foreign-data wrappers");
-	getForeignDataWrappers(fout, &numForeignDataWrappers);
+		pg_log_info("reading user-defined text search configurations");
+		getTSConfigurations(fout, &numTSConfigs);
 
-	pg_log_info("reading user-defined foreign servers");
-	getForeignServers(fout, &numForeignServers);
+		pg_log_info("reading user-defined foreign-data wrappers");
+		getForeignDataWrappers(fout, &numForeignDataWrappers);
 
-	pg_log_info("reading default privileges");
-	getDefaultACLs(fout, &numDefaultACLs);
+		pg_log_info("reading user-defined foreign servers");
+		getForeignServers(fout, &numForeignServers);
 
-	pg_log_info("reading user-defined collations");
-	(void) getCollations(fout, &numCollations);
+		pg_log_info("reading default privileges");
+		getDefaultACLs(fout, &numDefaultACLs);
 
-	pg_log_info("reading user-defined conversions");
-	getConversions(fout, &numConversions);
+		pg_log_info("reading user-defined collations");
+		(void) getCollations(fout, &numCollations);
 
-	pg_log_info("reading type casts");
-	getCasts(fout, &numCasts);
+		pg_log_info("reading user-defined conversions");
+		getConversions(fout, &numConversions);
 
-	pg_log_info("reading transforms");
-	getTransforms(fout, &numTransforms);
+		pg_log_info("reading type casts");
+		getCasts(fout, &numCasts);
 
-	
+		pg_log_info("reading transforms");
+		getTransforms(fout, &numTransforms);
 
-	pg_log_info("reading table inheritance information");
-	inhinfo = getInherits(fout, &numInherits);
+		
 
-	pg_log_info("reading event triggers");
-	getEventTriggers(fout, &numEventTriggers);
+		pg_log_info("reading table inheritance information");
+		inhinfo = getInherits(fout, &numInherits);
 
-	/* Identify extension configuration tables that should be dumped */
-	pg_log_info("finding extension tables");
-	processExtensionTables(fout, extinfo, numExtensions);
+		pg_log_info("reading event triggers");
+		getEventTriggers(fout, &numEventTriggers);
 
-	/* Link tables to parents, mark parents of target tables interesting */
-	pg_log_info("finding inheritance relationships");
-	flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
+		/* Identify extension configuration tables that should be dumped */
+		pg_log_info("finding extension tables");
+		processExtensionTables(fout, extinfo, numExtensions);
 
-	pg_log_info("reading column info for interesting tables");
-	getTableAttrs(fout, tblinfo, numTables);
+		/* Link tables to parents, mark parents of target tables interesting */
+		pg_log_info("finding inheritance relationships");
+		flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
 
-	pg_log_info("flagging inherited columns in subtables");
-	flagInhAttrs(fout, tblinfo, numTables);
+		pg_log_info("reading column info for interesting tables");
+		getTableAttrs(fout, tblinfo, numTables);
 
-	pg_log_info("reading partitioning data");
-	getPartitioningInfo(fout);
+		pg_log_info("flagging inherited columns in subtables");
+		flagInhAttrs(fout, tblinfo, numTables);
 
-	pg_log_info("reading indexes");
-	getIndexes(fout, tblinfo, numTables);
+		pg_log_info("reading partitioning data");
+		getPartitioningInfo(fout);
 
-	pg_log_info("flagging indexes in partitioned tables");
-	flagInhIndexes(fout, tblinfo, numTables);
+		pg_log_info("reading indexes");
+		getIndexes(fout, tblinfo, numTables);
 
-	pg_log_info("reading extended statistics");
-	getExtendedStatistics(fout);
+		pg_log_info("flagging indexes in partitioned tables");
+		flagInhIndexes(fout, tblinfo, numTables);
 
-	pg_log_info("reading constraints");
-	getConstraints(fout, tblinfo, numTables);
+		pg_log_info("reading extended statistics");
+		getExtendedStatistics(fout);
 
-	pg_log_info("reading triggers");
-	getTriggers(fout, tblinfo, numTables);
+		pg_log_info("reading constraints");
+		getConstraints(fout, tblinfo, numTables);
 
-	pg_log_info("reading rewrite rules");
-	getRules(fout, &numRules);
+		pg_log_info("reading triggers");
+		getTriggers(fout, tblinfo, numTables);
 
-	pg_log_info("reading policies");
-	getPolicies(fout, tblinfo, numTables);
+		pg_log_info("reading rewrite rules");
+		getRules(fout, &numRules);
 
-	pg_log_info("reading publications");
-	(void) getPublications(fout, &numPublications);
+		pg_log_info("reading policies");
+		getPolicies(fout, tblinfo, numTables);
 
-	pg_log_info("reading publication membership of tables");
-	getPublicationTables(fout, tblinfo, numTables);
+		pg_log_info("reading publications");
+		(void) getPublications(fout, &numPublications);
 
-	pg_log_info("reading publication membership of schemas");
-	getPublicationNamespaces(fout);
+		pg_log_info("reading publication membership of tables");
+		getPublicationTables(fout, tblinfo, numTables);
 
-	pg_log_info("reading subscriptions");
-	getSubscriptions(fout);
+		pg_log_info("reading publication membership of schemas");
+		getPublicationNamespaces(fout);
 
-	pg_log_info("reading subscription membership of tables");
-	getSubscriptionTables(fout);
+		pg_log_info("reading subscriptions");
+		getSubscriptions(fout);
 
-	pg_log_info("marking views for dump by query");
-	mark_views_for_dump(tblinfo, numTables, deps);
+		pg_log_info("reading subscription membership of tables");
+		getSubscriptionTables(fout);
 
-	free(inhinfo);				/* not needed any longer */
+		pg_log_info("marking views for dump by query");
+		mark_views_for_dump(tblinfo, numTables, deps);
 
+		free(inhinfo);				/* not needed any longer */
+	} else {
+		numTables = 0;
+	}
 	*numTablesPtr = numTables;
 	return tblinfo;
 }

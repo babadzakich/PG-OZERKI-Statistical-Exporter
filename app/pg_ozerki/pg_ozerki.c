@@ -295,7 +295,7 @@ int main(int argc, char** argv) {
 	deps = InitQueryDependencies();
 	planner_settings = get_planner_settings(fout);
 	if (by_query) {
-		
+		deps->been_analyzed = true;
 		extract_tables_from_query_text(GetConnection(fout), dump_query, deps);
 
 		find_views_for_tables(GetConnection(fout), deps, dump_query);
@@ -326,7 +326,7 @@ int main(int argc, char** argv) {
 		exit(0);
 	}
 	collectRoleNames(fout);
-	tblinfo = getSchemaData(fout, &numTables);
+	tblinfo = getSchemaData(fout, &numTables, deps);
 	getDependencies(fout);
 
 	boundaryObjs = createBoundaryObjects();
