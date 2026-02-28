@@ -13,10 +13,20 @@ public class PlanNode {
     @JsonProperty("Plans")
     public List<PlanNode> plans;
 
+    @JsonProperty(value = "Relation Name", defaultValue = "-")
+    public String relName;
+
+    @JsonProperty(value = "Index", defaultValue = "-")
+    public String index;
+
     public List<PlanNode> getPlans() {
         if (plans == null) {
             plans = new ArrayList<>();
         }
         return plans;
+    }
+
+    public String getFieldSum() {
+        return nodeType + relName + index;
     }
 }

@@ -42,7 +42,7 @@ public class TreeEditDistance {
     }
 
     private static int costReplace(PlanNode a, PlanNode b) {
-        return a.nodeType.equals(b.nodeType) ? 0 : 1;
+        return a.getFieldSum().equals(b.getFieldSum()) ? 0 : 1;
     }
 
     private static int forestDistance(List<PlanNode> forest1, List<PlanNode> forest2) {
