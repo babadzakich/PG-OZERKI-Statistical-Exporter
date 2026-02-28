@@ -3,18 +3,23 @@ package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.*;
 
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 
 public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     private final ColumnMetadata column;
     private final int recordCount;
+    private final List<ReferencingTreeNode> referencingTrees;
 
-    public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount) {
-        this.column = uniqColumns.get(0);
+    public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount,
+                                 Map<String, List<ReferencingTreeNode>> referencingTrees) {
+        this.column = uniqColumns.getFirst();
+        this.referencingTrees = referencingTrees == null ? null : referencingTrees.get(this.column.getName());
         this.recordCount = recordCount;
     }
 
@@ -28,7 +33,33 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 	@Override
 	public void generate(Map<String, List<Object>> columnData) {
         String columnName = column.getName();
+
+        Set<Object> referencedValues = new HashSet<>(column.getMcv().entrySet());
+        if (referencingTrees != null) {
+            for (ReferencingTreeNode node : referencingTrees) {
+                collectReferencedValues(referencedValues, node);
+            }
+        }
+
+        if (column.getNullPercentage() > 0) {
+            referencedValues.add(null);
+        }
+
+        List<Object> res = new ArrayList<>(referencedValues);
+
         ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(column);
-        columnData.put(columnName, generator.generateValues(recordCount));
+        if (column.getHistogramm() != null) {
+            generator.generateValues(res, recordCount, column.getHistogramm().getFirst(), column.getHistogramm().getLast());
+        } else {
+            generator.generateValues(res, recordCount);
+        }
+        columnData.put(columnName, res);
+    }
+
+    private void collectReferencedValues(Set<Object> values, ReferencingTreeNode node) {
+        values.addAll(node.getToAdd());
+        for (ReferencingTreeNode child : node.getChildren()) {
+            collectReferencedValues(values, child);
+        }
     }
 }

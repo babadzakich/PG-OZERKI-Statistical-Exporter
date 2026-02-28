@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
@@ -20,20 +21,24 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private final List<String> names;
     private final int recordCount;
     private final List<Double> ndistincts;
+    private final Map<String, List<ReferencingTreeNode>> referencingTrees;
     private final Random random = new Random(System.currentTimeMillis());
 
-    public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount) {
+    public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
+                           Map<String, List<ReferencingTreeNode>> referencingTrees) {
             this.columnsMetadata = columnsMetadata;
             this.columns = new ArrayList<>();
             this.names = new ArrayList<>();
             this.ndistincts = new ArrayList<>();
+
+            this.referencingTrees = referencingTrees;
 
             for (ColumnMetadata col : columnsMetadata) {
                 this.columns.add(col.getMcv());
                 this.names.add(col.getName());
                 this.ndistincts.add(col.getNdistinct());
             }
-            
+
             this.recordCount = recordCount;
         }
 
@@ -178,7 +183,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             Map<Object, Double> col = columns.get(i);
             double ndistinctVal = ndistincts.get(i);
             ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(columnsMetadata.get(i));
-            
+
             if (ndistinctVal < 0) {
                 ndistinctVal = -ndistinctVal * recordCount;
             }

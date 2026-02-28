@@ -1,13 +1,10 @@
 package ru.nsu.datagen.dataGenerator.model;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.Map;
+import java.util.*;
 
 import lombok.Builder;
 import lombok.Getter;
 
-@Builder
 @Getter
 public class ColumnMetadata {
     private final String name;
@@ -19,17 +16,25 @@ public class ColumnMetadata {
     private final double nullPercentage;
     private final int recordCount;
     private final Integer maxLength;
-    private final ForeignKeyMetadata foreignKeyMetadata;
+    private final List<ForeignKeyMetadata> foreignKeyMetadata;
     private final Map<Object, Double> mcv;
     private final int avgTupleSize;
     private final double ndistinct;
     private final boolean isArray;
     private final List<Object> histogramm;
+    private final List<Set<String>> compositeUniquePeers;
+    private final List<Set<String>> compositeForeignPeers;
+    private final Map<String, Map<String, List<String>>> referencingColumns;
 
+
+    @Builder
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
-                          int recordCount, Integer maxLength, ForeignKeyMetadata foreignKeyMetadata,
-                          Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray, List<Object> histogramm) {
+                          int recordCount, Integer maxLength, List<ForeignKeyMetadata> foreignKeyMetadata,
+                          Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
+                          List<Object> histogramm, List<Set<String>> compositeUniquePeers, List<Set<String>> compositeForeignPeers,
+                          Map<String, Map<String, List<String>>> referencingColumns
+    ) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
         this.sourceDataType = dataType;
@@ -55,6 +60,9 @@ public class ColumnMetadata {
             this.dataType = dataType;
         }
         this.histogramm = histogramm;
+        this.compositeUniquePeers = compositeUniquePeers;
+        this.compositeForeignPeers = compositeForeignPeers;
+        this.referencingColumns = referencingColumns;
     }
 
     @Override

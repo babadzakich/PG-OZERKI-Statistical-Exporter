@@ -37,6 +37,16 @@ CREATE <имя_БД>;
  ./psql -P 'null=NULL' --csv -c "SELECT * from dump_statistic();" <имя_БД> > stats.csv
 ``` 
 
+ ***Экспорт плана:***
+
+Экспорт плана в формате JSON
+
+```bash
+ ./psql -XAtq -c "select export_query_plan('select * from bookings.tickets', <true/false>)" <имя_БД> > exp_file.json
+```
+Первый аргумент - текст запроса
+
+Второй аргумент - флаг, обозначающий, нужен ли ANALYZE
 
 ## Приложение
 

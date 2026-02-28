@@ -10,7 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ValueGeneratorFactory {
-    public static ValueGenerator createValueGenerator(ColumnMetadata columnMetadata) {
+    public static ValueGeneratorAC createValueGenerator(ColumnMetadata columnMetadata) {
         String type = columnMetadata.getDataType();
         return switch (type.toLowerCase()) {
             case "smallint", "int2" -> new SmallintValueGenerator();

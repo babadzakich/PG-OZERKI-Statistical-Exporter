@@ -1,9 +1,8 @@
 package ru.nsu.datagen.importer;
 
-import com.opencsv.CSVReader;
-import com.opencsv.CSVReaderBuilder;
-import com.opencsv.exceptions.CsvException;
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.model.TableMetadata;
+import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 
 import java.io.*;
 import java.sql.Connection;
@@ -14,13 +13,11 @@ import java.util.List;
 
 @Slf4j
 public class Importer {
-    static public List<String[]> startImport(
-            String schemasScriptPath, String statisticDataPath, Connection conn
-    ) throws ImporterException {
+    static public List<TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, Connection conn) {
         try {
             Statement statement = conn.createStatement();
             importSchemas(schemasScriptPath, statement);
-            return importStatistic(statisticDataPath, conn, statement);
+            return importStatistic(statisticDataPath);
         } catch (ImporterException e) {
             log.error("Importer exception occurred.", e);
             throw e;
@@ -30,25 +27,16 @@ public class Importer {
         }
     }
 
-    static private List<String[]> importStatistic(String path, Connection conn, Statement statement) {
+    static private List<TableMetadata> importStatistic(String path) {
         if (!new File(path).exists()) {
             throw new ImporterException("There is no import statistic file " + path );
         }
         try {
-//            System.out.println(new File(path).exists());
             FileReader filereader = new FileReader(path);
-            // CSVParser parser = new CSVParserBuilder().withSeparator('|').build();
-            CSVReader csvReader = new CSVReaderBuilder(filereader)
-                    .withSkipLines(1)
-                    // .withCSVParser(parser)
-                    .build();
-
-            return csvReader.readAll();
+            return TableMetadataMaker.processTableMetadata(filereader);
         } catch (RuntimeException | IOException e) {
             log.error("Cannot import statistic from CSV file.", e);
             throw new ImporterException("Cannot import statistic from CSV file.");
-        } catch (CsvException e) {
-            throw new RuntimeException(e);
         }
     }
 

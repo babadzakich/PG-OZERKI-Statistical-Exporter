@@ -1,6 +1,7 @@
 package ru.nsu.datagen.dataGenerator.graph;
 
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.ForeignKeyMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import java.util.*;
 
@@ -24,7 +25,9 @@ public class DependencyGraph {
 
             table.getColumns().values().stream()
                     .filter(ColumnMetadata::isForeignKey)
-                    .map(col -> col.getForeignKeyMetadata().getReferencedTable())
+                    .filter(col -> col.getForeignKeyMetadata() != null)
+                    .flatMap(col -> col.getForeignKeyMetadata().stream())
+                    .map(ForeignKeyMetadata::getReferencedTable)
                     .filter(allTables::containsKey)
                     .map(tableNodes::get)
                     .forEach(current::addDependency);

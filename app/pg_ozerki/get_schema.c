@@ -14,7 +14,7 @@
 #include "catalog/pg_subscription_d.h"
 #include "catalog/pg_type_d.h"
 #include "common/hashfn.h"
-
+#include "access/transam.h"
 
 #define SH_PREFIX		catalogid
 #define SH_ELEMENT_TYPE	CatalogIdMapEntry
@@ -45,6 +45,7 @@ static int	allocedDumpIds = 0;
 static DumpId lastDumpId = 0;	/* Note: 0 is InvalidDumpId */
 
 
+static Oid	g_last_builtin_oid = FirstNormalObjectId - 1; 
 
 
 static RoleNameItem *rolenames = NULL;
@@ -152,7 +153,7 @@ static const int dbObjectTypePriority[] =
 
 
 TableInfo *
-getSchemaData(Archive *fout, int *numTablesPtr)
+getSchemaData(Archive *fout, int *numTablesPtr, QueryDependencies* deps)
 {
 	TableInfo  *tblinfo;
 	ExtensionInfo *extinfo;
@@ -205,136 +206,140 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	 * However, we have to do getNamespaces first because the tables get
 	 * linked to their containing namespaces during getTables.
 	 */
-	pg_log_info("reading user-defined tables");
-	tblinfo = getTables(fout, &numTables);
-	
-	getOwnedSeqs(fout, tblinfo, numTables);
 
-	pg_log_info("reading user-defined functions");
-	(void) getFuncs(fout, &numFuncs);
+	if (!(deps->been_analyzed && deps->tableCount == 0)) {
+		pg_log_info("reading user-defined tables");
+		tblinfo = getTables(fout, &numTables);
+		
+		getOwnedSeqs(fout, tblinfo, numTables);
 
-	/* this must be after getTables and getFuncs */
-	pg_log_info("reading user-defined types");
-	(void) getTypes(fout, &numTypes);
+		pg_log_info("reading user-defined functions");
+		(void) getFuncs(fout, &numFuncs);
 
-	/* this must be after getFuncs, too */
-	pg_log_info("reading procedural languages");
-	getProcLangs(fout, &numProcLangs);
+		/* this must be after getTables and getFuncs */
+		pg_log_info("reading user-defined types");
+		(void) getTypes(fout, &numTypes);
 
-	pg_log_info("reading user-defined aggregate functions");
-	getAggregates(fout, &numAggregates);
+		/* this must be after getFuncs, too */
+		pg_log_info("reading procedural languages");
+		getProcLangs(fout, &numProcLangs);
 
-	pg_log_info("reading user-defined operators");
-	(void) getOperators(fout, &numOperators);
+		pg_log_info("reading user-defined aggregate functions");
+		getAggregates(fout, &numAggregates);
 
-	pg_log_info("reading user-defined access methods");
-	getAccessMethods(fout, &numAccessMethods);
+		pg_log_info("reading user-defined operators");
+		(void) getOperators(fout, &numOperators);
 
-	pg_log_info("reading user-defined operator classes");
-	getOpclasses(fout, &numOpclasses);
-	
-	pg_log_info("reading user-defined operator families");
-	getOpfamilies(fout, &numOpfamilies);
+		pg_log_info("reading user-defined access methods");
+		getAccessMethods(fout, &numAccessMethods);
 
-	pg_log_info("reading user-defined text search parsers");
-	getTSParsers(fout, &numTSParsers);
+		pg_log_info("reading user-defined operator classes");
+		getOpclasses(fout, &numOpclasses);
+		
+		pg_log_info("reading user-defined operator families");
+		getOpfamilies(fout, &numOpfamilies);
 
-	pg_log_info("reading user-defined text search templates");
-	getTSTemplates(fout, &numTSTemplates);
+		pg_log_info("reading user-defined text search parsers");
+		getTSParsers(fout, &numTSParsers);
 
-	pg_log_info("reading user-defined text search dictionaries");
-	getTSDictionaries(fout, &numTSDicts);
+		pg_log_info("reading user-defined text search templates");
+		getTSTemplates(fout, &numTSTemplates);
 
-	pg_log_info("reading user-defined text search configurations");
-	getTSConfigurations(fout, &numTSConfigs);
+		pg_log_info("reading user-defined text search dictionaries");
+		getTSDictionaries(fout, &numTSDicts);
 
-	pg_log_info("reading user-defined foreign-data wrappers");
-	getForeignDataWrappers(fout, &numForeignDataWrappers);
+		pg_log_info("reading user-defined text search configurations");
+		getTSConfigurations(fout, &numTSConfigs);
 
-	pg_log_info("reading user-defined foreign servers");
-	getForeignServers(fout, &numForeignServers);
+		pg_log_info("reading user-defined foreign-data wrappers");
+		getForeignDataWrappers(fout, &numForeignDataWrappers);
 
-	pg_log_info("reading default privileges");
-	getDefaultACLs(fout, &numDefaultACLs);
+		pg_log_info("reading user-defined foreign servers");
+		getForeignServers(fout, &numForeignServers);
 
-	pg_log_info("reading user-defined collations");
-	(void) getCollations(fout, &numCollations);
+		pg_log_info("reading default privileges");
+		getDefaultACLs(fout, &numDefaultACLs);
 
-	pg_log_info("reading user-defined conversions");
-	getConversions(fout, &numConversions);
+		pg_log_info("reading user-defined collations");
+		(void) getCollations(fout, &numCollations);
 
-	pg_log_info("reading type casts");
-	getCasts(fout, &numCasts);
+		pg_log_info("reading user-defined conversions");
+		getConversions(fout, &numConversions);
 
-	pg_log_info("reading transforms");
-	getTransforms(fout, &numTransforms);
+		pg_log_info("reading type casts");
+		getCasts(fout, &numCasts);
 
-	
+		pg_log_info("reading transforms");
+		getTransforms(fout, &numTransforms);
 
-	pg_log_info("reading table inheritance information");
-	inhinfo = getInherits(fout, &numInherits);
+		
 
-	pg_log_info("reading event triggers");
-	getEventTriggers(fout, &numEventTriggers);
+		pg_log_info("reading table inheritance information");
+		inhinfo = getInherits(fout, &numInherits);
 
-	/* Identify extension configuration tables that should be dumped */
-	pg_log_info("finding extension tables");
-	processExtensionTables(fout, extinfo, numExtensions);
+		pg_log_info("reading event triggers");
+		getEventTriggers(fout, &numEventTriggers);
 
-	/* Link tables to parents, mark parents of target tables interesting */
-	pg_log_info("finding inheritance relationships");
-	flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
+		/* Identify extension configuration tables that should be dumped */
+		pg_log_info("finding extension tables");
+		processExtensionTables(fout, extinfo, numExtensions);
 
-	pg_log_info("reading column info for interesting tables");
-	getTableAttrs(fout, tblinfo, numTables);
+		/* Link tables to parents, mark parents of target tables interesting */
+		pg_log_info("finding inheritance relationships");
+		flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
 
-	pg_log_info("flagging inherited columns in subtables");
-	flagInhAttrs(fout, tblinfo, numTables);
+		pg_log_info("reading column info for interesting tables");
+		getTableAttrs(fout, tblinfo, numTables);
 
-	pg_log_info("reading partitioning data");
-	getPartitioningInfo(fout);
+		pg_log_info("flagging inherited columns in subtables");
+		flagInhAttrs(fout, tblinfo, numTables);
 
-	pg_log_info("reading indexes");
-	getIndexes(fout, tblinfo, numTables);
+		pg_log_info("reading partitioning data");
+		getPartitioningInfo(fout);
 
-	pg_log_info("flagging indexes in partitioned tables");
-	flagInhIndexes(fout, tblinfo, numTables);
+		pg_log_info("reading indexes");
+		getIndexes(fout, tblinfo, numTables);
 
-	pg_log_info("reading extended statistics");
-	getExtendedStatistics(fout);
+		pg_log_info("flagging indexes in partitioned tables");
+		flagInhIndexes(fout, tblinfo, numTables);
 
-	pg_log_info("reading constraints");
-	getConstraints(fout, tblinfo, numTables);
+		pg_log_info("reading extended statistics");
+		getExtendedStatistics(fout);
 
-	pg_log_info("reading triggers");
-	getTriggers(fout, tblinfo, numTables);
+		pg_log_info("reading constraints");
+		getConstraints(fout, tblinfo, numTables);
 
-	pg_log_info("reading rewrite rules");
-	getRules(fout, &numRules);
+		pg_log_info("reading triggers");
+		getTriggers(fout, tblinfo, numTables);
 
-	pg_log_info("reading policies");
-	getPolicies(fout, tblinfo, numTables);
+		pg_log_info("reading rewrite rules");
+		getRules(fout, &numRules);
 
-	pg_log_info("reading publications");
-	(void) getPublications(fout, &numPublications);
+		pg_log_info("reading policies");
+		getPolicies(fout, tblinfo, numTables);
 
-	pg_log_info("reading publication membership of tables");
-	getPublicationTables(fout, tblinfo, numTables);
+		pg_log_info("reading publications");
+		(void) getPublications(fout, &numPublications);
 
-	pg_log_info("reading publication membership of schemas");
-	getPublicationNamespaces(fout);
+		pg_log_info("reading publication membership of tables");
+		getPublicationTables(fout, tblinfo, numTables);
 
-	pg_log_info("reading subscriptions");
-	getSubscriptions(fout);
+		pg_log_info("reading publication membership of schemas");
+		getPublicationNamespaces(fout);
 
-	pg_log_info("reading subscription membership of tables");
-	getSubscriptionTables(fout);
+		pg_log_info("reading subscriptions");
+		getSubscriptions(fout);
 
-	pg_log_info("marking views for dump by query");
-	mark_views_for_dump(tblinfo, numTables, deps);
+		pg_log_info("reading subscription membership of tables");
+		getSubscriptionTables(fout);
 
-	free(inhinfo);				/* not needed any longer */
+		pg_log_info("marking views for dump by query");
+		mark_views_for_dump(tblinfo, numTables, deps);
 
+		free(inhinfo);				/* not needed any longer */
+	} else {
+		numTables = 0;
+	}
 	*numTablesPtr = numTables;
 	return tblinfo;
 }
@@ -4622,122 +4627,7 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 
 
 
-/*
- * getAdditionalACLs
- *
- * We have now created all the DumpableObjects, and collected the ACL data
- * that appears in the directly-associated catalog entries.  However, there's
- * more ACL-related info to collect.  If any of a table's columns have ACLs,
- * we must set the TableInfo's DUMP_COMPONENT_ACL components flag, as well as
- * its hascolumnACLs flag (we won't store the ACLs themselves here, though).
- * Also, in versions having the pg_init_privs catalog, read that and load the
- * information into the relevant DumpableObjects.
- */
-static void
-getAdditionalACLs(Archive *fout)
-{
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult   *res;
-	int			ntups,
-				i;
 
-	/* Check for per-column ACLs */
-	appendPQExpBufferStr(query,
-						 "SELECT DISTINCT attrelid FROM pg_attribute "
-						 "WHERE attacl IS NOT NULL");
-
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-	ntups = PQntuples(res);
-	for (i = 0; i < ntups; i++)
-	{
-		Oid			relid = atooid(PQgetvalue(res, i, 0));
-		TableInfo  *tblinfo;
-
-		tblinfo = findTableByOid(relid);
-		/* OK to ignore tables we haven't got a DumpableObject for */
-		if (tblinfo)
-		{
-			tblinfo->dobj.components |= DUMP_COMPONENT_ACL;
-			tblinfo->hascolumnACLs = true;
-		}
-	}
-	PQclear(res);
-
-	/* Fetch initial-privileges data */
-	if (fout->remoteVersion >= 90600)
-	{
-		printfPQExpBuffer(query,
-						  "SELECT objoid, classoid, objsubid, privtype, initprivs "
-						  "FROM pg_init_privs");
-
-		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-		ntups = PQntuples(res);
-		for (i = 0; i < ntups; i++)
-		{
-			Oid			objoid = atooid(PQgetvalue(res, i, 0));
-			Oid			classoid = atooid(PQgetvalue(res, i, 1));
-			int			objsubid = atoi(PQgetvalue(res, i, 2));
-			char		privtype = *(PQgetvalue(res, i, 3));
-			char	   *initprivs = PQgetvalue(res, i, 4);
-			CatalogId	objId;
-			DumpableObject *dobj;
-
-			objId.tableoid = classoid;
-			objId.oid = objoid;
-			dobj = findObjectByCatalogId(objId);
-			/* OK to ignore entries we haven't got a DumpableObject for */
-			if (dobj)
-			{
-				/* Cope with sub-object initprivs */
-				if (objsubid != 0)
-				{
-					if (dobj->objType == DO_TABLE)
-					{
-						/* For a column initprivs, set the table's ACL flags */
-						dobj->components |= DUMP_COMPONENT_ACL;
-						((TableInfo *) dobj)->hascolumnACLs = true;
-					}
-					else
-						pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
-									   classoid, objoid, objsubid);
-					continue;
-				}
-
-				/*
-				 * We ignore any pg_init_privs.initprivs entry for the public
-				 * schema, as explained in getNamespaces().
-				 */
-				if (dobj->objType == DO_NAMESPACE &&
-					strcmp(dobj->name, "public") == 0)
-					continue;
-
-				/* Else it had better be of a type we think has ACLs */
-				if (dobj->objType == DO_NAMESPACE ||
-					dobj->objType == DO_TYPE ||
-					dobj->objType == DO_FUNC ||
-					dobj->objType == DO_AGG ||
-					dobj->objType == DO_TABLE ||
-					dobj->objType == DO_PROCLANG ||
-					dobj->objType == DO_FDW ||
-					dobj->objType == DO_FOREIGN_SERVER)
-				{
-					DumpableObjectWithAcl *daobj = (DumpableObjectWithAcl *) dobj;
-
-					daobj->dacl.privtype = privtype;
-					daobj->dacl.initprivs = pstrdup(initprivs);
-				}
-				else
-					pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
-								   classoid, objoid, objsubid);
-			}
-		}
-		PQclear(res);
-	}
-
-	destroyPQExpBuffer(query);
-}
 
 
 void
@@ -6379,8 +6269,7 @@ selectDumpableCast(CastInfo *cast, Archive *fout)
 	if (cast->dobj.catId.oid <= (Oid) g_last_builtin_oid)
 		cast->dobj.dump = DUMP_COMPONENT_NONE;
 	else
-		cast->dobj.dump = fout->dopt->include_everything ?
-			DUMP_COMPONENT_ALL : DUMP_COMPONENT_NONE;
+		cast->dobj.dump = DUMP_COMPONENT_NONE;
 }
 
 /*
@@ -6843,6 +6732,8 @@ createDumpId(void)
 {
 	return ++lastDumpId;
 }
+
+
 
 
 TocEntry *

@@ -1,221 +1,107 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import com.opencsv.bean.CsvToBeanBuilder;
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
+import org.jgrapht.Graph;
+import org.jgrapht.alg.clique.BronKerboschCliqueFinder;
+import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.graph.SimpleGraph;
 
-import java.math.BigDecimal;
-import java.time.*;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.time.temporal.ChronoField;
+import java.io.Reader;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
 public class TableMetadataMaker {
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
-            .appendPattern("yyyy-MM-dd HH:mm:ss")
-            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
-            .toFormatter();
+    public static List<TableMetadata> processTableMetadata(Reader reader) {
+        // Читаем CSV и превращаем его в список объектов ColumnMetadataCSV
+        List<ColumnMetadataCSV> csvData = new CsvToBeanBuilder<ColumnMetadataCSV>(reader)
+                .withType(ColumnMetadataCSV.class)
+                .withSeparator(',')
+                .withIgnoreLeadingWhiteSpace(true)
+                .withEscapeChar('\0')
+                .build()
+                .parse();
 
-    private static final DateTimeFormatter TIMESTAMPTZ_FORMATTER = new DateTimeFormatterBuilder()
-            .appendPattern("yyyy-MM-dd HH:mm:ss")
-            .appendFraction(ChronoField.MICRO_OF_SECOND, 0, 6, true)
-            .appendPattern("X")
-            .toFormatter();
+        // Строим графы для составных уникальных индексов и составных внешних ключей
+        Map<String, List<Set<String>>> compositeUniquePeersMap = new HashMap<>(), compositeFkPeersMap = new HashMap<>();
+        computeCompositePeers(csvData, compositeUniquePeersMap, compositeFkPeersMap);
 
-    //private Map<String, List<String[]>> columnDataGroupedByTablename;
-   //private Map<String, List<String>> tableToColumnNames;
+        return csvData.stream()
+                .collect(Collectors.groupingBy(ColumnMetadataCSV::getTableName)) // Группируем по имени таблицы наши колонки из CSV
+                .entrySet().stream() // Тут мы получаем поток, где каждый энтри - это имя таблицы и список цсв колонок, относящихся к этой таблице
+                .map(entry -> { // Тут мы мапаем каждую группу колонок в объект TableMetadata
+                    String tableName = entry.getKey();
+                    List<ColumnMetadataCSV> tableCsvColumns = entry.getValue();
 
-//    public void TableMetadataMaker(List<String[]> rawData) {
-//        columnDataGroupedByTablename = new HashMap<>();
-//
-//        for(String[] line : rawData) {
-//            if (!columnDataGroupedByTablename.containsKey(line[1])) {
-//                columnDataGroupedByTablename.put(line[1], new ArrayList<>());
-//            }
-//            columnDataGroupedByTablename.get(line[1]).add(line);
-//        }
-//        processRawTableMetadata();
-//    }
+                    Map<String, ColumnMetadata> columnMetadataMap = tableCsvColumns.stream() // Тут мы превращаем список колонок из CSV в мапу, где ключ - имя колонки, а значение - объект ColumnMetadata
+                            .map(col ->
+                                    col.transformToColumnMetadata(
+                                            compositeUniquePeersMap.getOrDefault(
+                                                col.getSchemaName() + "." + col.getTableName() + "." + col.getColumnName(), Collections.emptyList()
+                                            ),
+                                            compositeFkPeersMap.getOrDefault(
+                                                    col.getSchemaName() + "." + col.getTableName() + "." + col.getColumnName(), Collections.emptyList()
+                                            )
+                                    ))
+                            .collect(Collectors.toMap(ColumnMetadata::getName, column -> column));
 
-    public static List<TableMetadata> processRawTableMetadata(List<String[]> rawData) {
-        Map<String, List<ColumnMetadata>> columnDataGroupedByTablename = new HashMap<>();
-
-        for (String[] line : rawData) {
-            
-            ForeignKeyMetadata fkMetadata = line[6].contains("FK")
-                    ? new ForeignKeyMetadata(line[9], line[10], line[9].equals("NULL") ? null : RelationshipType.valueOf(line[8]))
-                    : null;
-            
-            int recordCountValue = Integer.parseInt(line[4]) == -1 ? 0 : Integer.parseInt(line[4]);
-            if (!line[6].isEmpty() && line[6].contains("CHECK")) {
-                log.error("Column {} in table {} has CHECK constraint, which is currently not supported.", line[2], line[1]);
-                throw new UnsupportedOperationException("CHECK constraints are not supported for column " + line[2] + " in table " + line[1] + ".");
-            }
-            double nullPercentageValue = (line[5] == null || line[5].isEmpty() || line[5].equals("NULL")) ? 0.0 : Double.parseDouble(line[5]);
-            ColumnMetadata columnMetadata = ColumnMetadata.builder()
-                .name(line[2])
-                .dataType(line[3])
-                
-                .isPrimaryKey(line[6].contains("PK"))
-                .isForeignKey(line[6].contains("FK"))
-                .isUnique(line[6].contains("UNIQUE"))
-                
-                .nullPercentage(nullPercentageValue)
-                .recordCount(recordCountValue)
-                .maxLength(line[7].equals("-1") ? -1 : Integer.parseInt(line[7])) // Обработка -1 для длины
-                .avgTupleSize((line[13].isEmpty() || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
-                
-                .foreignKeyMetadata(fkMetadata)
-                .mcv(processMCV(line[11], line[12], line[3]))
-                .ndistinct(Double.parseDouble(line[14]))
-                .histogramm(parsePgArrayString(line[15], line[3]))
-                .build();
-            log.trace("Processed column metadata: {}", columnMetadata);
-            if (!columnDataGroupedByTablename.containsKey(line[1])) {
-                columnDataGroupedByTablename.put(line[1], new ArrayList<>());
-            }
-            columnDataGroupedByTablename.get(line[1]).add(columnMetadata);
-        }
-
-        List<TableMetadata> tableMetadataList = new ArrayList<>();
-        for (String tableName : columnDataGroupedByTablename.keySet()) {
-            Map<String, ColumnMetadata> columnMetadataMap = new HashMap<>();
-            columnDataGroupedByTablename.get(tableName).forEach(
-                    columnMetadata -> columnMetadataMap.put(columnMetadata.getName(), columnMetadata)
-            );
-            tableMetadataList.add(
-                    new TableMetadata(
-                            tableName,
-                            columnMetadataMap,
-                            columnDataGroupedByTablename.get(tableName).getFirst().getRecordCount()
-                    )
-            );
-        }
-
-        return tableMetadataList;
-    }
-
-    private static Map<Object, Double> processMCV(String rawMCVArray, String rawMCFArray, String dataType) {
-        List<Object> processedMCV = parsePgArrayString(rawMCVArray, dataType);
-        List<Double> processedMCF = parseMCFArray(rawMCFArray);
-
-        Map<Object, Double> resultDistribution = new HashMap<>();
-
-        for (int i = 0; i < processedMCV.size(); i++) {
-            resultDistribution.put(processedMCV.get(i), processedMCF.get(i));
-        }
-
-        return resultDistribution;
-    }
-
-    /**
-     * Парсит массив частот PostgreSQL (например, "{0.5,0.3,0.2}") в список Double.
-     */
-    private static List<Double> parseMCFArray(String arrayString) {
-        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
-            return List.of();
-        }
-
-        String cleanedString = arrayString.substring(1, arrayString.length() - 1);
-        if (cleanedString.isEmpty()) {
-            return List.of();
-        }
-
-        return Arrays.stream(cleanedString.split(","))
-                .map(String::trim)
-                .map(Double::parseDouble)
+                    int recordCount = tableCsvColumns.isEmpty() ? 0 : tableCsvColumns.getFirst().getRecordCount();
+                    String namespace = tableCsvColumns.isEmpty() ? "public" : tableCsvColumns.getFirst().getSchemaName();
+                    Set<String> refTables = columnMetadataMap.keySet().stream()
+                            .filter(colName -> columnMetadataMap.get(colName).isForeignKey())
+                            .map(colName -> columnMetadataMap.get(colName).getForeignKeyMetadata().getFirst().getReferencedTable())
+                            .collect(Collectors.toSet());
+                    return new TableMetadata(tableName, columnMetadataMap, recordCount, namespace, refTables);
+                })
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список объектов Java.
-     */
-    public static List<Object> parsePgArrayString(String arrayString, String datatype) {
-        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
-            return List.of();
-        }
+    private static void computeCompositePeers(List<ColumnMetadataCSV> csvData, Map<String, List<Set<String>>> compositeUniquePeersMap, Map<String, List<Set<String>>> compositeFkPeersMap) {
+        Graph<String, DefaultEdge> uniqueGraph = new SimpleGraph<>(DefaultEdge.class), fkGraph = new SimpleGraph<>(DefaultEdge.class);
 
-        String cleanedString = arrayString.substring(1, arrayString.length() - 1);
-        if (cleanedString.isEmpty()) {
-            return List.of();
-        }
-        
-        List<String> stringValues = new ArrayList<>();
-        if (cleanedString.startsWith("\"")) {
-            Pattern pattern = Pattern.compile("\"(.*?)\"");
-            Matcher matcher = pattern.matcher(cleanedString);
-
-            while (matcher.find()) {
-                stringValues.add(matcher.group(1));
-            }
-        } else {
-            stringValues = getStrings(cleanedString);
-        }
-        
-        // Парсим строковые значения в соответствующий тип данных
-        return stringValues.stream()
-                .map(str -> parseValueByType(str, datatype))
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * Парсит строковое значение в соответствующий тип данных
-     */
-    private static Object parseValueByType(String value, String datatype) {
-        if (value == null || value.isEmpty() || value.equals("NULL")) {
-            return null;
-        }
-        
-        String lowerDatatype = datatype.toLowerCase();
-        
-        try {
-            return switch (lowerDatatype) {
-                case "smallint", "int2" -> Short.parseShort(value.trim());
-                case "integer", "int4", "int" -> Integer.parseInt(value.trim());
-                case "bigint", "int8" -> Long.parseLong(value.trim());
-                case "real", "float4" -> Float.parseFloat(value.trim());
-                case "double precision", "float8" -> Double.parseDouble(value.trim());
-                case "bool", "boolean" -> "t".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
-                case "date" -> LocalDate.parse(value.trim());
-                case "timestamp" -> LocalDateTime.parse(value.trim(), TIMESTAMP_FORMATTER);
-                case "timestamp with time zone", "timestamptz" -> OffsetDateTime.parse(value.trim(), TIMESTAMPTZ_FORMATTER).toInstant();
-                case "time without time zone", "time" -> LocalTime.parse(value.trim());
-                default -> {
-                    if (lowerDatatype.contains("numeric") || lowerDatatype.contains("decimal")) {
-                        yield BigDecimal.valueOf(Double.parseDouble(value.trim()));
-                    }
-                    yield value;
+        csvData.forEach(csv -> {
+            if (csv.getCompositePeers() != null && !csv.getCompositePeers().isEmpty() && !"NULL".equalsIgnoreCase(csv.getCompositePeers().trim())) {
+                String vertexName = csv.getSchemaName().trim() + "." + csv.getTableName().trim() + "." + csv.getColumnName().trim();
+                uniqueGraph.addVertex(vertexName);
+                log.debug("Added unique vertex: {}", vertexName);
+                log.debug("Composite unique peers for {}: {}", csv.getColumnName(), csv.getCompositePeers());
+                for (String peer : csv.getCompositePeers().split(",")) {
+                    if (!uniqueGraph.containsVertex(peer.trim())) uniqueGraph.addVertex(peer.trim());
+                    uniqueGraph.addEdge(vertexName, peer.trim());
+                    log.debug("Added unique edge: {} to {}", vertexName, peer.trim());
                 }
-            };
-        } catch (Exception e) {
-            log.warn("Failed to parse value '{}' as type '{}', returning as String. Error: {}", value, datatype, e.getMessage());
-            return value;
-        }
-    }
-
-    private static List<String> getStrings(String cleanedString) {
-        List<String> result = new ArrayList<>();
-        String[] parts = cleanedString.split(",");
-
-        for (int i = 0; i < parts.length; i++) {
-            String part = parts[i];
-
-            if (i == 0 && part.startsWith("\"")) {
-                part = part.substring(1);
             }
-
-            if (i == parts.length - 1 && part.endsWith("\"")) {
-                part = part.substring(0, part.length() - 1);
+            if (csv.getCompositeFkPeers() != null && !csv.getCompositeFkPeers().isEmpty() && !"NULL".equalsIgnoreCase(csv.getCompositeFkPeers().trim())) {
+                String vertexName = csv.getSchemaName().trim() + "." + csv.getTableName().trim() + "." + csv.getColumnName().trim();
+                fkGraph.addVertex(vertexName);
+                log.debug("Added FK vertex: {}", vertexName);
+                log.debug("Composite FK peers for {}: {}", csv.getColumnName(), csv.getCompositeFkPeers());
+                for (String peer : csv.getCompositeFkPeers().split(",")) {
+                    if (!fkGraph.containsVertex(peer.trim())) fkGraph.addVertex(peer.trim());
+                    fkGraph.addEdge(vertexName, peer.trim());
+                    log.debug("Added FK edge: {} to {}", vertexName, peer.trim());
+                }
             }
+        });
+        BronKerboschCliqueFinder<String, DefaultEdge> uniqueFinder = new BronKerboschCliqueFinder<>(uniqueGraph),
+                fkFinder = new BronKerboschCliqueFinder<>(fkGraph);
 
-            part = part.replace("\"\"", "\"");
+        // Отдельные составные уникальные индексы в табличках
+        uniqueFinder.forEach(clique -> {
+                log.debug("Found Unique clique: {}", clique);
+                for (String vertex : clique) {
+                    compositeUniquePeersMap.computeIfAbsent(vertex, k -> new ArrayList<>()).add(clique);
+                }
+            }
+        );
 
-            result.add(part);
-        }
-        return result;
+        // Отдельные составные внешние ключи в табличках
+        fkFinder.forEach(clique -> {
+                log.debug("Found FK clique: {}", clique);
+                for (String vertex : clique) {
+                    compositeFkPeersMap.computeIfAbsent(vertex, k -> new ArrayList<>()).add(clique);
+                }
+        });
     }
 }

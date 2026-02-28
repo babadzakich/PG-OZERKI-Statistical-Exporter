@@ -268,7 +268,7 @@ void export_stats(PGconn* conn, const char* export_filename) {
 
     
     if (cop_res_status != PGRES_COPY_OUT) {
-        pg_log_error("Stats query has failed with result: %s", PQresStatus(cop_res_status));
+        pg_log_error("Stats query has failed with result: %s", PQresultErrorMessage(cop_res));
         destroyPQExpBuffer(cop_buf);
         destroyPQExpBuffer(statQuery);
         PQclear(cop_res);

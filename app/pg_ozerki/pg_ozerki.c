@@ -8,10 +8,10 @@
 #include "catalog/pg_class.h"
 
 
+
 SimpleStringList table_include_patterns = {NULL, NULL};
 SimpleOidList table_include_oids = {NULL, NULL};
 int	strict_names = 0;
-
 
 static void prohibit_crossdb_refs(PGconn *conn, const char *dbname,
 								  const char *pattern);
@@ -24,8 +24,7 @@ set_restrict_relation_kind(Archive *AH, const char *value);
 
 static void
 setupDumpWorker(Archive *AH);
-static void
-getAdditionalACLs(Archive *fout);
+
 
 static void
 getDependencies(Archive *fout);
@@ -45,6 +44,11 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH);
 
 static void
 buildTocEntryArrays(ArchiveHandle *AH);
+
+void
+expand_table_name_patterns(Archive *fout,
+						   SimpleStringList *patterns, SimpleOidList *oids,
+						   bool strict_names, bool with_child_tables);
 
 static bool have_extra_float_digits = false;
 static int	extra_float_digits;
@@ -281,20 +285,25 @@ int main(int argc, char** argv) {
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
 	 */
+
+	//use_role = dopt.cparams.username;
 	ConnectDatabase(fout, &dopt.cparams, false);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
+
+
 	pg_log_debug("Connected to database");
 	deps = InitQueryDependencies();
 	planner_settings = get_planner_settings(fout);
 	if (by_query) {
-		
+		deps->been_analyzed = true;
 		extract_tables_from_query_text(GetConnection(fout), dump_query, deps);
 
 		find_views_for_tables(GetConnection(fout), deps, dump_query);
 		for (int i = 0; i < deps->tableCount; i++) {
 			simple_string_list_append(&table_include_patterns, deps->tableNames[i]);
 		}
-		dopt.include_everything = false;
+		
+		if (deps->tableCount > 0) dopt.include_everything = true;
 		expand_table_name_patterns(fout, &table_include_patterns,
 							   &table_include_oids,
 							   strict_names, false);
@@ -317,7 +326,7 @@ int main(int argc, char** argv) {
 		exit(0);
 	}
 	collectRoleNames(fout);
-	tblinfo = getSchemaData(fout, &numTables);
+	tblinfo = getSchemaData(fout, &numTables, deps);
 	getDependencies(fout);
 
 	boundaryObjs = createBoundaryObjects();
@@ -398,111 +407,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-static void
-getAdditionalACLs(Archive *fout)
-{
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult   *res;
-	int			ntups,
-				i;
 
-	/* Check for per-column ACLs */
-	appendPQExpBufferStr(query,
-						 "SELECT DISTINCT attrelid FROM pg_attribute "
-						 "WHERE attacl IS NOT NULL");
-
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-	ntups = PQntuples(res);
-	for (i = 0; i < ntups; i++)
-	{
-		Oid			relid = atooid(PQgetvalue(res, i, 0));
-		TableInfo  *tblinfo;
-
-		tblinfo = findTableByOid(relid);
-		/* OK to ignore tables we haven't got a DumpableObject for */
-		if (tblinfo)
-		{
-			tblinfo->dobj.components |= DUMP_COMPONENT_ACL;
-			tblinfo->hascolumnACLs = true;
-		}
-	}
-	PQclear(res);
-
-	/* Fetch initial-privileges data */
-	if (fout->remoteVersion >= 90600)
-	{
-		printfPQExpBuffer(query,
-						  "SELECT objoid, classoid, objsubid, privtype, initprivs "
-						  "FROM pg_init_privs");
-
-		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-		ntups = PQntuples(res);
-		for (i = 0; i < ntups; i++)
-		{
-			Oid			objoid = atooid(PQgetvalue(res, i, 0));
-			Oid			classoid = atooid(PQgetvalue(res, i, 1));
-			int			objsubid = atoi(PQgetvalue(res, i, 2));
-			char		privtype = *(PQgetvalue(res, i, 3));
-			char	   *initprivs = PQgetvalue(res, i, 4);
-			CatalogId	objId;
-			DumpableObject *dobj;
-
-			objId.tableoid = classoid;
-			objId.oid = objoid;
-			dobj = findObjectByCatalogId(objId);
-			/* OK to ignore entries we haven't got a DumpableObject for */
-			if (dobj)
-			{
-				/* Cope with sub-object initprivs */
-				if (objsubid != 0)
-				{
-					if (dobj->objType == DO_TABLE)
-					{
-						/* For a column initprivs, set the table's ACL flags */
-						dobj->components |= DUMP_COMPONENT_ACL;
-						((TableInfo *) dobj)->hascolumnACLs = true;
-					}
-					else
-						pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
-									   classoid, objoid, objsubid);
-					continue;
-				}
-
-				/*
-				 * We ignore any pg_init_privs.initprivs entry for the public
-				 * schema, as explained in getNamespaces().
-				 */
-				if (dobj->objType == DO_NAMESPACE &&
-					strcmp(dobj->name, "public") == 0)
-					continue;
-
-				/* Else it had better be of a type we think has ACLs */
-				if (dobj->objType == DO_NAMESPACE ||
-					dobj->objType == DO_TYPE ||
-					dobj->objType == DO_FUNC ||
-					dobj->objType == DO_AGG ||
-					dobj->objType == DO_TABLE ||
-					dobj->objType == DO_PROCLANG ||
-					dobj->objType == DO_FDW ||
-					dobj->objType == DO_FOREIGN_SERVER)
-				{
-					DumpableObjectWithAcl *daobj = (DumpableObjectWithAcl *) dobj;
-
-					daobj->dacl.privtype = privtype;
-					daobj->dacl.initprivs = pstrdup(initprivs);
-				}
-				else
-					pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
-								   classoid, objoid, objsubid);
-			}
-		}
-		PQclear(res);
-	}
-
-	destroyPQExpBuffer(query);
-}
 
 
 TocEntry *
@@ -1200,8 +1105,9 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	DumpOptions *dopt = AH->dopt;
 	PGconn	   *conn = GetConnection(AH);
 	const char *std_strings;
+
 	
-	PQclear(ExecuteSqlQueryForSingleRow(AH, ALWAYS_SECURE_SEARCH_PATH_SQL));
+	//PQclear(ExecuteSqlQueryForSingleRow(AH, ALWAYS_SECURE_SEARCH_PATH_SQL));
 	/*
 	 * Set the client encoding if requested.
 	 */
@@ -1246,6 +1152,9 @@ setup_connection(Archive *AH, const char *dumpencoding,
 			AH->use_role = pg_strdup(use_role);
 	}
 
+	PGresult* search_path_res = ExecuteSqlQueryForSingleRow(AH, "SHOW search_path");
+	
+	pg_log_debug("current search_path %s", PQgetvalue(search_path_res, 0, 0));
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	ExecuteSqlStatement(AH, "SET DATESTYLE = ISO");
 
@@ -3057,8 +2966,8 @@ expand_table_name_patterns(Archive *fout,
 
 		ExecuteSqlStatement(fout, "RESET search_path");
 		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-		PQclear(ExecuteSqlQueryForSingleRow(fout,
-											ALWAYS_SECURE_SEARCH_PATH_SQL));
+		//PQclear(ExecuteSqlQueryForSingleRow(fout,
+											//ALWAYS_SECURE_SEARCH_PATH_SQL));
 		if (strict_names && PQntuples(res) == 0)
 			pg_fatal("no matching tables were found for pattern \"%s\"", cell->val);
 

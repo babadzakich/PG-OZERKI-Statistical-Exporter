@@ -2,7 +2,7 @@ package ru.nsu.datagen.dataGenerator.generators.numbergenerator.datetime;
 
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -11,15 +11,14 @@ import java.time.ZoneOffset;
 import java.util.*;
 
 @Slf4j
-public class TimestampTZValueGenerator implements ValueGenerator {
+public class TimestampTZValueGenerator extends ValueGeneratorAC {
     private static final Instant PG_MIN_TIMESTAMP = LocalDateTime.of(-4712, 1, 1, 0, 0, 0).toInstant(ZoneOffset.UTC);
     private static final Instant PG_MAX_TIMESTAMP = LocalDateTime.of(294276, 12, 31, 23, 59, 59).toInstant(ZoneOffset.UTC);
 
     private final Faker faker = new Faker();
 
-    @Override
-    public Object generateValue() {
-        return faker.timeAndDate().between(PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP).toString();
+    public TimestampTZValueGenerator() {
+        super(PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP);
     }
 
     @Override
@@ -33,40 +32,6 @@ public class TimestampTZValueGenerator implements ValueGenerator {
         }
 
         return faker.timeAndDate().between(left, right).toString();
-    }
-
-    @Override
-    public java.util.List<Object> generateValues(int count) {
-        return generateValues(count, PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP);
-    }
-
-    @Override
-    public java.util.List<Object> generateValues(int count, Object leftBorder, Object rightBorder) {
-        Instant left = convertToInstant(leftBorder, PG_MIN_TIMESTAMP);
-        Instant right = convertToInstant(rightBorder, PG_MAX_TIMESTAMP);
-
-        if (!left.isBefore(right)) {
-            log.warn("Left border {} >= right border {}, generating same timestamp {} times", left, right, count);
-            return new ArrayList<>(Collections.nCopies(count, left));
-        }
-
-        Set<String> uniqueValues = new HashSet<>();
-        long maxAttempts = count * 100L;
-        long attempts = 0;
-
-        while (uniqueValues.size() < count && attempts < maxAttempts) {
-            uniqueValues.add(faker.timeAndDate().between(left, right).toString());
-            attempts++;
-        }
-
-        if (uniqueValues.size() < count) {
-            log.error("Could not generate {} unique timestamps in range ({} to {}) after {} attempts. Generated only {} unique values.",
-                    count, left, right, maxAttempts, uniqueValues.size());
-            throw new RuntimeException("Couldn`t generate all unique values with " + this.getClass()
-                    + ". Done only " + uniqueValues.size() + " out of " + count + " unique values.");
-        }
-
-        return new ArrayList<>(uniqueValues);
     }
 
     private Instant convertToInstant(Object value, Instant defaultValue) {
