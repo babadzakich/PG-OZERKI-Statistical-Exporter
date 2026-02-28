@@ -1,7 +1,9 @@
 package ru.nsu.datagen.plancheck.struct;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.Collections;
 import java.util.List;
 
 public class PlanTree {
@@ -10,19 +12,28 @@ public class PlanTree {
 
     public static PlanTree fromJson(String json) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
+        JsonNode rootNode = mapper.readTree(json);
+        List<ExplainRoot> explainList;
 
-        List<ExplainRoot> explainList = mapper.readValue(json, mapper.getTypeFactory()
-                .constructCollectionType(List.class, ExplainRoot.class));
+        if (rootNode.isArray()) {
+            // Если пришёл массив — десериализуем как список
+            explainList = mapper.readValue(json, mapper.getTypeFactory()
+                    .constructCollectionType(List.class, ExplainRoot.class));
+        } else {
+            // Если пришёл объект — оборачиваем в список
+            ExplainRoot single = mapper.readValue(json, ExplainRoot.class);
+            explainList = Collections.singletonList(single);
+        }
 
         if (explainList.isEmpty()) {
             throw new IllegalArgumentException("Empty EXPLAIN JSON");
         }
 
-        PlanNode rootNode = explainList.get(0).plan;
-        int count = countNodes(rootNode);
+        PlanNode rootNodePlan = explainList.get(0).plan;
+        int count = countNodes(rootNodePlan);
 
         PlanTree tree = new PlanTree();
-        tree.root = rootNode;
+        tree.root = rootNodePlan;
         tree.nodeCount = count;
         return tree;
     }
