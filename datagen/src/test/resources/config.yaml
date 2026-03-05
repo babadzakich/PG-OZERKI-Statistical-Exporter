@@ -1,6 +1,6 @@
-user: kubicl
-password: kubicl
-db_url: jdbc:postgresql://localhost:5433/testdb
+user: shadowplay
+password: postgres
+db_url: jdbc:postgresql://localhost:5432/new
 schema: schema.sql
 statistic: stats.csv
 tables:

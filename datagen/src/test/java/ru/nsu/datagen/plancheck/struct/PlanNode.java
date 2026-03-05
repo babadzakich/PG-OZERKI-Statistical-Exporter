@@ -16,7 +16,7 @@ public class PlanNode {
     @JsonProperty(value = "Relation Name", defaultValue = "-")
     public String relName;
 
-    @JsonProperty(value = "Index", defaultValue = "-")
+    @JsonProperty(value = "Index Name", defaultValue = "-")
     public String index;
 
     public List<PlanNode> getPlans() {
@@ -28,5 +28,9 @@ public class PlanNode {
 
     public String getFieldSum() {
         return nodeType + relName + index;
+    }
+
+    public String getNodeType(){
+        return nodeType;
     }
 }
