@@ -82,7 +82,7 @@ public class IntegrationTest {
     }
 
     /**
-     * Выполняет EXPLAIN (ANALYZE, FORMAT JSON) для запроса из конфига
+     * Выполняет EXPLAIN (FORMAT JSON) для запроса из конфига
      * и сравнивает полученный план с эталонным из файла.
      */
     private void compareQueryPlans(Connection conn, Config config) throws Exception {
@@ -95,7 +95,7 @@ public class IntegrationTest {
         String sqlQuery = readResourceFile(queryPath);
         String expectedPlanJson = readResourceFile(sourcePlanPath);
 
-        String explainJson = executeExplainAnalyze(conn, sqlQuery);
+        String explainJson = executeExplain(conn, sqlQuery);
 
         PlanTree actualTree = PlanTree.fromJson(explainJson);
         PlanTree expectedTree = PlanTree.fromJson(expectedPlanJson);
@@ -110,10 +110,10 @@ public class IntegrationTest {
     }
 
     /**
-     * Выполняет EXPLAIN (ANALYZE, FORMAT JSON) для заданного SQL-запроса.
+     * Выполняет EXPLAIN (FORMAT JSON) для заданного SQL-запроса.
      */
-    private String executeExplainAnalyze(Connection conn, String sql) throws SQLException {
-        String explainSql = "EXPLAIN (ANALYZE, FORMAT JSON) " + sql;
+    private String executeExplain(Connection conn, String sql) throws SQLException {
+        String explainSql = "EXPLAIN (FORMAT JSON) " + sql;
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(explainSql)) {
             rs.next();
