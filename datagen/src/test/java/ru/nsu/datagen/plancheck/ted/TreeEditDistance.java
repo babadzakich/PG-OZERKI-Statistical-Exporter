@@ -17,11 +17,11 @@ public class TreeEditDistance {
     static double relable = 1f;
     static double insert = 1f;
 
-    public static double compute(PlanNode tree1, PlanNode tree2) {
-        if (tree1 == null && tree2 == null) return 0;
-        if (tree1 == null) return costInsertTree(tree2);
-        if (tree2 == null) return costDeleteTree(tree1);
-        return forestDistance(Collections.singletonList(tree1), Collections.singletonList(tree2));
+    public static double compute(PlanNode actualPlan, PlanNode sourcePlan) {
+        if (actualPlan == null && sourcePlan == null) return 0;
+        if (actualPlan == null) return costInsertTree(sourcePlan);
+        if (sourcePlan == null) return costDeleteTree(actualPlan);
+        return forestDistance(Collections.singletonList(actualPlan), Collections.singletonList(sourcePlan));
     }
 
 
