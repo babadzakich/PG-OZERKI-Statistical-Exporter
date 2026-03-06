@@ -101,7 +101,7 @@ public class IntegrationTest {
         PlanTree expectedTree = PlanTree.fromJson(expectedPlanJson);
 
         // Вычисление расстояния редактирования деревьев
-        int distance = TreeEditDistance.compute(actualTree.root, expectedTree.root);
+        double distance = TreeEditDistance.compute(actualTree.root, expectedTree.root);
         System.out.println("✓ Расстояние редактирования планов: " + distance * 100 + "%");
 
         // Проверяем совпадения на >50%

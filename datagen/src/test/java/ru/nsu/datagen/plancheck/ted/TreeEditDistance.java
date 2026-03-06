@@ -13,11 +13,11 @@ import java.util.List;
  учитывается только тип узла
  */
 public class TreeEditDistance {
-    float deleteCost = 1f;
-    float relable = 1f;
-    float insert = 1f;
+    static double deleteCost = 1f;
+    static double relable = 1f;
+    static double insert = 1f;
 
-    public static int compute(PlanNode tree1, PlanNode tree2) {
+    public static double compute(PlanNode tree1, PlanNode tree2) {
         if (tree1 == null && tree2 == null) return 0;
         if (tree1 == null) return costInsertTree(tree2);
         if (tree2 == null) return costDeleteTree(tree1);
@@ -25,30 +25,30 @@ public class TreeEditDistance {
     }
 
 
-    private static int costDeleteTree(PlanNode node) {
-        int cost = 1;
+    private static double costDeleteTree(PlanNode node) {
+        double cost = deleteCost;
         for (PlanNode child : safeGetPlans(node)) {
             cost += costDeleteTree(child);
         }
         return cost;
     }
 
-    private static int costInsertTree(PlanNode node) {
-        int cost = 1;
+    private static double costInsertTree(PlanNode node) {
+        double cost = insert;
         for (PlanNode child : safeGetPlans(node)) {
             cost += costInsertTree(child);
         }
         return cost;
     }
 
-    private static int costReplace(PlanNode a, PlanNode b) {
-        return a.getFieldSum().equals(b.getFieldSum()) ? 0 : 1;
+    private static double costReplace(PlanNode a, PlanNode b) {
+        return a.getFieldSum().equals(b.getFieldSum()) ? 0f : relable;
     }
 
-    private static int forestDistance(List<PlanNode> forest1, List<PlanNode> forest2) {
+    private static double forestDistance(List<PlanNode> forest1, List<PlanNode> forest2) {
         int n = forest1.size();
         int m = forest2.size();
-        int[][] dp = new int[n + 1][m + 1];
+        double[][] dp = new double[n + 1][m + 1];
 
         // Заполняем таблицу снизу вверх
         for (int i = n; i >= 0; i--) {
@@ -57,26 +57,26 @@ public class TreeEditDistance {
                     dp[i][j] = 0;
                 } else if (i == n) {
                     // Вставка оставшихся из forest2
-                    int cost = 0;
+                    double cost = 0;
                     for (int k = j; k < m; k++) {
                         cost += costInsertTree(forest2.get(k));
                     }
                     dp[i][j] = cost;
                 } else if (j == m) {
                     // Удаление оставшихся из forest1
-                    int cost = 0;
+                    double cost = 0;
                     for (int k = i; k < n; k++) {
                         cost += costDeleteTree(forest1.get(k));
                     }
                     dp[i][j] = cost;
                 } else {
-                    int deleteOption = dp[i + 1][j] + costDeleteTree(forest1.get(i));
-                    int insertOption = dp[i][j + 1] + costInsertTree(forest2.get(j));
-                    int childrenDist = forestDistance(
+                    double deleteOption = dp[i + 1][j] + costDeleteTree(forest1.get(i));
+                    double insertOption = dp[i][j + 1] + costInsertTree(forest2.get(j));
+                    double childrenDist = forestDistance(
                             safeGetPlans(forest1.get(i)),
                             safeGetPlans(forest2.get(j))
                     );
-                    int replaceOption = childrenDist
+                    double replaceOption = childrenDist
                             + costReplace(forest1.get(i), forest2.get(j))
                             + dp[i + 1][j + 1];
 
