@@ -27,7 +27,7 @@ public class TreeEditDistance {
 
     private static double costDeleteTree(PlanNode node) {
         double cost = deleteCost;
-        for (PlanNode child : safeGetPlans(node)) {
+        for (PlanNode child : node.getPlans()) {
             cost += costDeleteTree(child);
         }
         return cost;
@@ -35,7 +35,7 @@ public class TreeEditDistance {
 
     private static double costInsertTree(PlanNode node) {
         double cost = insert;
-        for (PlanNode child : safeGetPlans(node)) {
+        for (PlanNode child : node.getPlans()) {
             cost += costInsertTree(child);
         }
         return cost;
@@ -73,8 +73,8 @@ public class TreeEditDistance {
                     double deleteOption = dp[i + 1][j] + costDeleteTree(forest1.get(i));
                     double insertOption = dp[i][j + 1] + costInsertTree(forest2.get(j));
                     double childrenDist = forestDistance(
-                            safeGetPlans(forest1.get(i)),
-                            safeGetPlans(forest2.get(j))
+                            forest1.get(i).getPlans(),
+                            forest2.get(j).getPlans()
                     );
                     double replaceOption = childrenDist
                             + costReplace(forest1.get(i), forest2.get(j))
@@ -85,12 +85,5 @@ public class TreeEditDistance {
             }
         }
         return dp[0][0];
-    }
-
-    private static List<PlanNode> safeGetPlans(PlanNode node) {
-        if (node == null || node.plans == null) {
-            return Collections.emptyList();
-        }
-        return node.plans;
     }
 }
