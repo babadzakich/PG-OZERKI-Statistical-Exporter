@@ -24,9 +24,6 @@ ALTER SYSTEM SET work_mem = '4096kB';
 -- Extensions
 --
 
-CREATE EXTENSION IF NOT EXISTS pg_ozerki WITH SCHEMA public VERSION '1.0';
-COMMENT ON EXTENSION pg_ozerki IS 'pg_ozerki extension';
-
 CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog VERSION '1.0';
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
 
