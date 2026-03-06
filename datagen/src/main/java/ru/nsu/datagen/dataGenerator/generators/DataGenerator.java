@@ -223,9 +223,10 @@ public class DataGenerator {
                     if (refTable == null) {
                         continue;
                     }
-
+                    Set<Object> toAdd = refTable.getColumns().get(colName).getMcv().keySet();
+                    toAdd.addAll(refTable.getColumns().get(colName).getHistogramm());
                     ReferencingTreeNode node = new ReferencingTreeNode(
-                            schema, tableName, colName, refTable.getRecordCount(), refTable.getColumns().get(colName).getMcv().keySet());
+                            schema, tableName, colName, refTable.getRecordCount(), toAdd);
 
                     // Рекурсивно ищем тех, кто ссылается на ссылающуюся колонку
                     ColumnMetadata refColumn = refTable.getColumns().get(colName);
