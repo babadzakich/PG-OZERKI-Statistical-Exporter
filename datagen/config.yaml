@@ -1,7 +1,7 @@
 host: localhost
 port: 5432
-user: kubicl
-password: kubicl
+user: shadowplay
+password: postgres
 dbname: new
-schemaPath: scripts/schema.sql
-statPath: scripts/stats.csv
+schemaPath: scripts/11.sql
+statPath: scripts/11.csv

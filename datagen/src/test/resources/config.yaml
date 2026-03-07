@@ -1,6 +1,6 @@
-user: kubicl
-password: kubicl
-db_url: jdbc:postgresql://localhost:5432/testdb
+user: shadowplay
+password: postgres
+db_url: jdbc:postgresql://localhost:5432/new
 schema: schema.sql
 statistic: stats.csv
 tables:
@@ -17,3 +17,5 @@ tables:
     expectedCount: 500000
     pk:
       - id
+query_path: test_query.sql
+source_plan_path: source_plan.json
