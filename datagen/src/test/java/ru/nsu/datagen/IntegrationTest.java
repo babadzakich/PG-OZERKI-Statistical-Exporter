@@ -82,7 +82,7 @@ public class IntegrationTest {
     }
 
     /**
-     * Выполняет EXPLAIN (FORMAT JSON) для запроса из конфига
+     * Выполняет EXPLAIN (ANALYZE, FORMAT JSON) для запроса из конфига
      * и сравнивает полученный план с эталонным из файла.
      */
     private void compareQueryPlans(Connection conn, Config config) throws Exception {
@@ -95,29 +95,32 @@ public class IntegrationTest {
         String sqlQuery = readResourceFile(queryPath);
         String expectedPlanJson = readResourceFile(sourcePlanPath);
 
-        String explainJson = executeExplain(conn, sqlQuery);
+        String explainJson = executeExplainAnalyze(conn, sqlQuery);
 
         PlanTree actualTree = PlanTree.fromJson(explainJson);
         PlanTree expectedTree = PlanTree.fromJson(expectedPlanJson);
 
         // Вычисление расстояния редактирования деревьев
-        double distance = TreeEditDistance.compute(actualTree.root, expectedTree.root);
-        System.out.println("✓ Расстояние редактирования планов: " + distance * 100 + "%");
+        float similarity = TreeEditDistance.computeSimilarity(actualTree.root, expectedTree.root);
 
+        System.out.println("Совпадение плано на " + similarity + "%");
         // Проверяем совпадения на >50%
-        assertTrue(distance < 0.5, "Distance gt 50%");
-        System.out.println("Совпадение плано на " + distance * 100 + "%");
+        assertTrue(similarity > 0.5, "Similarity gt 50%");
+
     }
 
     /**
-     * Выполняет EXPLAIN (FORMAT JSON) для заданного SQL-запроса.
+     * Выполняет EXPLAIN (ANALYZE, FORMAT JSON) для заданного SQL-запроса.
      */
-    private String executeExplain(Connection conn, String sql) throws SQLException {
-        String explainSql = "EXPLAIN (FORMAT JSON) " + sql;
+    private String executeExplainAnalyze(Connection conn, String sql) throws SQLException {
+        String explainSql = "EXPLAIN (VERBOSE, FORMAT JSON) " + sql;
         try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(explainSql)) {
+             ) {
+            stmt.execute("ANALYZE");
+            ResultSet rs = stmt.executeQuery(explainSql);
             rs.next();
             // PostgreSQL возвращает JSON в первой колонке первой строки
+            System.out.println(rs.getString(1));
             return rs.getString(1);
         }
     }

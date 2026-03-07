@@ -4,7 +4,7 @@
     "Parallel Aware": false,
     "Async Capable": false,
     "Scan Direction": "Forward",
-    "Index": "product_review_pkey",
+    "Index Name": "product_review_pkey",
     "Relation Name": "product_review",
     "Schema": "public",
     "Alias": "product_review",
