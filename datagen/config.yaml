@@ -1,7 +1,0 @@
-host: localhost
-port: 5432
-user: shadowplay
-password: postgres
-dbname: new
-schemaPath: scripts/11.sql
-statPath: scripts/11.csv

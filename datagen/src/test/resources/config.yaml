@@ -1,4 +1,4 @@
-user: shadowplay
+user: kubicl
 password: postgres
 db_url: jdbc:postgresql://localhost:5432/new
 schema: schema.sql
