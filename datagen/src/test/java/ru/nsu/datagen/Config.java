@@ -14,6 +14,8 @@ public class Config {
     private final String DB_NAME;
     private final String SCHEMA_PATH;
     private final String STATS_PATH;
+    private final String queryPath;
+    private final String sourcePlanPath;
 
     private final List<TableHolder> tables;
 
@@ -61,6 +63,8 @@ public class Config {
             this.SCHEMA_PATH = (String) configMap.get("schema");
             this.STATS_PATH = (String) configMap.get("statistic");
             this.tables = databases;
+            this.queryPath = (String) configMap.get("query_path");
+            this.sourcePlanPath = (String) configMap.get("source_plan_path");
         }
     }
 

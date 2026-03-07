@@ -1,14 +1,10 @@
 package ru.nsu.datagen;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
-import org.yaml.snakeyaml.Yaml;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.importer.Importer;
-import ru.nsu.datagen.plancheck.struct.ExplainRoot;
-import ru.nsu.datagen.plancheck.struct.PlanNode;
 import ru.nsu.datagen.plancheck.struct.PlanTree;
 import ru.nsu.datagen.plancheck.ted.TreeEditDistance;
 
@@ -27,16 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.*;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import static org.junit.jupiter.api.Assertions.*;
-
-import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
-import ru.nsu.datagen.dataGenerator.model.TableMetadata;
-import ru.nsu.datagen.importer.Importer;
 
 /**
  * Интеграционный тест для проверки всего pipeline генерации
@@ -49,7 +40,7 @@ public class IntegrationTest {
 
     @Container
     private static final PostgreSQLContainer<?> postgres =
-            new PostgreSQLContainer<>("postgres:16");
+            new PostgreSQLContainer<>("postgres:17");
 
     private static HikariDataSource dataSource;
     private Config config;
@@ -134,8 +125,8 @@ public class IntegrationTest {
      * и сравнивает полученный план с эталонным из файла.
      */
     private void compareQueryPlans(Connection conn, Config config) throws Exception {
-        String queryPath = config.queryPath();
-        String sourcePlanPath = config.sourcePlanPath();
+        String queryPath = config.getQueryPath();
+        String sourcePlanPath = config.getSourcePlanPath();
         if (queryPath == null || sourcePlanPath == null) {
             throw new Exception("null path to query or source_plan");
         }
