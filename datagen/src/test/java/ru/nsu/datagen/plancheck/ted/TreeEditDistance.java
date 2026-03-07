@@ -1,5 +1,6 @@
 package ru.nsu.datagen.plancheck.ted;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.plancheck.struct.PlanNode;
 
 import java.util.Collections;
@@ -14,10 +15,9 @@ import java.util.Objects;
 /** Zhang-Shasha impl
  учитывается только тип узла
  */
+@Slf4j
 public class TreeEditDistance {
-    float deleteCost = 1f;
-    float relable = 1f;
-    float insert = 1f;
+
 
     private static final Map<String, Float> NODE_WEIGHTS = Map.of(
             "Seq Scan", 2.0f,
@@ -30,17 +30,17 @@ public class TreeEditDistance {
             "Sort", 0.5f
     );
 
-    public static float compute(PlanNode tree1, PlanNode tree2) {
-        if (tree1 == null && tree2 == null) return 0;
-        if (tree1 == null) return costInsertTree(tree2);
-        if (tree2 == null) return costDeleteTree(tree1);
-        return forestDistance(Collections.singletonList(tree1), Collections.singletonList(tree2));
+    public static float compute(PlanNode actualPlan, PlanNode sourcePlan) {
+        if (actualPlan == null && sourcePlan == null) return 0;
+        if (actualPlan == null) return costInsertTree(sourcePlan);
+        if (sourcePlan == null) return costDeleteTree(actualPlan);
+        return forestDistance(Collections.singletonList(actualPlan), Collections.singletonList(sourcePlan));
     }
 
 
     private static float costDeleteTree(PlanNode node) {
         float cost = getNodeWeight(node);
-        for (PlanNode child : safeGetPlans(node)) {
+        for (PlanNode child : node.getPlans()) {
             cost += costDeleteTree(child);
         }
         return cost;
@@ -48,7 +48,7 @@ public class TreeEditDistance {
 
     private static float costInsertTree(PlanNode node) {
         float cost = getNodeWeight(node);
-        for (PlanNode child : safeGetPlans(node)) {
+        for (PlanNode child : node.getPlans()) {
             cost += costInsertTree(child);
         }
         return cost;
@@ -93,8 +93,8 @@ public class TreeEditDistance {
                     float deleteOption = dp[i + 1][j] + costDeleteTree(forest1.get(i));
                     float insertOption = dp[i][j + 1] + costInsertTree(forest2.get(j));
                     float childrenDist = forestDistance(
-                            safeGetPlans(forest1.get(i)),
-                            safeGetPlans(forest2.get(j))
+                            forest1.get(i).getPlans(),
+                            forest2.get(j).getPlans()
                     );
                     float replaceOption = childrenDist
                             + costReplace(forest1.get(i), forest2.get(j))
@@ -107,33 +107,32 @@ public class TreeEditDistance {
         return dp[0][0];
     }
 
-    private static List<PlanNode> safeGetPlans(PlanNode node) {
-        if (node == null || node.plans == null) {
-            return Collections.emptyList();
-        }
-        return node.plans;
-    }
 
     private static float getNodeWeight(PlanNode node) {
-        return NODE_WEIGHTS.get(node.getNodeType());
+        Float res = NODE_WEIGHTS.get(node.getNodeType());
+        if (res == null) {
+            log.warn("No such node type: " + node.nodeType);
+            return 1.0f;
+        }
+        return res;
     }
 
     private static float totalTreeWeight(PlanNode node) {
         if (node == null) return 0;
         float weight = getNodeWeight(node);
-        for (PlanNode child : safeGetPlans(node)) {
+        for (PlanNode child : node.getPlans()) {
             weight += totalTreeWeight(child);
         }
         return weight;
     }
 
-    public static float computeSimilarity(PlanNode tree1, PlanNode tree2) {
-        float distance = compute(tree1, tree2);
+    public static float computeSimilarity(PlanNode actualPlan, PlanNode sourcePlan) {
+        float distance = compute(actualPlan, sourcePlan);
 
-        float costTree1 = totalTreeWeight(tree1);
-        float costTree2 = totalTreeWeight(tree2);
+        float costActualPlan = totalTreeWeight(actualPlan);
+        float costSourcePlan = totalTreeWeight(sourcePlan);
 
-        float maxCost = costTree1 + costTree2;
+        float maxCost = costActualPlan + costSourcePlan;
 
         if (maxCost == 0) return 100.0f;
 

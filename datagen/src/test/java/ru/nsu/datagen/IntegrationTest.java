@@ -100,24 +100,24 @@ public class IntegrationTest {
         PlanTree actualTree = PlanTree.fromJson(explainJson);
         PlanTree expectedTree = PlanTree.fromJson(expectedPlanJson);
 
-        TreeEditDistance ted = new TreeEditDistance();
         // Вычисление расстояния редактирования деревьев
-        float distance = ted.compute(actualTree.root, expectedTree.root);
-        float similarity = ted.computeSimilarity(actualTree.root, expectedTree.root);
-        System.out.println("✓ Расстояние редактирования планов: " + distance * 100 + "%");
+        float similarity = TreeEditDistance.computeSimilarity(actualTree.root, expectedTree.root);
 
-        // Проверяем совпадения на >50%
-        //assertTrue(distance < 0.5, "Distance gt 50%");
         System.out.println("Совпадение плано на " + similarity + "%");
+        // Проверяем совпадения на >50%
+        assertTrue(similarity > 0.5, "Similarity gt 50%");
+
     }
 
     /**
      * Выполняет EXPLAIN (ANALYZE, FORMAT JSON) для заданного SQL-запроса.
      */
     private String executeExplainAnalyze(Connection conn, String sql) throws SQLException {
-        String explainSql = "EXPLAIN (ANALYZE, FORMAT JSON) " + sql;
+        String explainSql = "EXPLAIN (VERBOSE, FORMAT JSON) " + sql;
         try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(explainSql)) {
+             ) {
+            stmt.execute("ANALYZE");
+            ResultSet rs = stmt.executeQuery(explainSql);
             rs.next();
             // PostgreSQL возвращает JSON в первой колонке первой строки
             System.out.println(rs.getString(1));
