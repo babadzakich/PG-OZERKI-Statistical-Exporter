@@ -1,14 +1,10 @@
 package ru.nsu.datagen;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
-import org.yaml.snakeyaml.Yaml;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.importer.Importer;
-import ru.nsu.datagen.plancheck.struct.ExplainRoot;
-import ru.nsu.datagen.plancheck.struct.PlanNode;
 import ru.nsu.datagen.plancheck.struct.PlanTree;
 import ru.nsu.datagen.plancheck.ted.TreeEditDistance;
 
@@ -20,43 +16,86 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import com.zaxxer.hikari.HikariConfig;
+import org.junit.jupiter.api.*;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Интеграционный тест для проверки всего pipeline генерации
+ * данных.
+ * Использует локальную PostgreSQL БД.
+ * Перед запуском теста убедитесь что БД доступна
+ */
+@Testcontainers
 public class IntegrationTest {
-    private final HikariDataSource dataSource;
 
-    public IntegrationTest() {
-        Config config;
-        try {
-            config = loadConfig("config.yaml");
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load config", e);
+    @Container
+    private static final PostgreSQLContainer<?> postgres =
+            new PostgreSQLContainer<>("postgres:17");
+
+    private static HikariDataSource dataSource;
+    private Config config;
+
+    @BeforeAll
+    static void beforeAll() throws SQLException {
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
+        hikariConfig.setUsername(postgres.getUsername());
+        hikariConfig.setPassword(postgres.getPassword());
+        dataSource = new HikariDataSource(hikariConfig);
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE DATABASE \"testdb\"");
         }
-        this.dataSource = new HikariDataSource();
-        this.dataSource.setJdbcUrl(config.DB_URL());
-        this.dataSource.setUsername(config.DB_USER());
-        this.dataSource.setPassword(config.DB_PASSWORD());
     }
 
-    @Test
-    void testFullPipelineIntegration() throws Exception {
-        Config config = loadConfig("config.yaml");
-        ClassLoader classLoader = getClass().getClassLoader();
-        String schemaPath = Paths.get(classLoader.getResource(config.SCHEMA_PATH()).toURI()).toString();
-        String statsPath = Paths.get(classLoader.getResource(config.STATS_PATH()).toURI()).toString();
-
+    @BeforeEach
+    void setUp(TestInfo testInfo) throws IOException, SQLException {
+        String configPath = testInfo.getTestMethod()
+                .map(m -> m.getAnnotation(ConfigFile.class))
+                .map(ConfigFile::value)
+                .orElse("config.yaml");
+        config = new Config(configPath);
         try (Connection conn = dataSource.getConnection()) {
             // Очищаем БД перед тестом
             try (Statement stmt = conn.createStatement()) {
-                for (var dbHolder : config.tables()) {
+                for (var dbHolder : config.getTables()) {
                     stmt.execute("DROP TABLE IF EXISTS " + dbHolder.getName() + " CASCADE");
                 }
             }
+        }
+    }
 
+    @AfterAll
+    static void tearDown() {
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+        }
+    }
+
+    /**
+     * Основной регрессионный тест, проверяющий работу всего pipeline:
+     * 1. Создание схемы БД
+     * 2. Импорт статистики
+     * 3. Генерация данных
+     * 4. Проверка целостности данных и ограничений
+     */
+    @Test
+    void testFullPipelineIntegration() throws Exception {
+        ClassLoader classLoader = getClass().getClassLoader();
+        String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
+        String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
+
+        try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
             List<TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
             assertNotNull(importedData, "Импортированные данные не должны быть null");
@@ -68,7 +107,7 @@ public class IntegrationTest {
             System.out.println("✓ Генерация данных завершена");
 
             // Проверка целостности данных и ограничений
-            for (var dbHolder : config.tables()) {
+            for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);
             }
 
@@ -86,8 +125,8 @@ public class IntegrationTest {
      * и сравнивает полученный план с эталонным из файла.
      */
     private void compareQueryPlans(Connection conn, Config config) throws Exception {
-        String queryPath = config.queryPath();
-        String sourcePlanPath = config.sourcePlanPath();
+        String queryPath = config.getQueryPath();
+        String sourcePlanPath = config.getSourcePlanPath();
         if (queryPath == null || sourcePlanPath == null) {
             throw new Exception("null path to query or source_plan");
         }
@@ -197,7 +236,9 @@ public class IntegrationTest {
         }
     }
 
+    // Проверяет что размер таблицы соответствует ожидаемому
     private void checkTableSize(Connection conn, TableHolder dbHolder) throws SQLException {
+        // Проверка количества записей
         try (Statement stmt = conn.createStatement()) {
             ResultSet rs = stmt.executeQuery(
                     "SELECT COUNT(*) FROM " + dbHolder.getSchema() + "." + dbHolder.getName());
@@ -207,74 +248,6 @@ public class IntegrationTest {
                     "Количество записей в таблице " + dbHolder.getName() +
                             " должно быть " + dbHolder.getSize());
             System.out.println("✓ Таблица " + dbHolder.getSchema() + "." + dbHolder.getName() + ": " + rowCount + " записей");
-        }
-    }
-
-    public record Config(String DB_URL, String DB_USER, String DB_PASSWORD, String SCHEMA_PATH, String STATS_PATH,
-                         List<TableHolder> tables, String queryPath, String sourcePlanPath) {
-    }
-
-    @lombok.Getter
-    public static class TableHolder {
-        private final String name;
-        private final String schema;
-        private long size;
-        private final List<List<String>> uniques;
-        private final List<String> pks;
-
-        public TableHolder(String name, String schema, long size, List<List<String>> uniques, List<String> pks) {
-            this.name = name;
-            this.schema = schema;
-            this.size = size;
-            this.uniques = uniques;
-            this.pks = pks;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    Config loadConfig(String configPath) throws IOException {
-        if (configPath == null || configPath.isEmpty()) {
-            throw new IllegalArgumentException("Config path cannot be null or empty");
-        }
-        if (!configPath.endsWith(".yaml")) {
-            throw new IllegalArgumentException("Config file must be a YAML file");
-        }
-
-        ClassLoader classLoader = getClass().getClassLoader();
-        try (InputStream configFileStream = classLoader.getResourceAsStream(configPath)) {
-            if (configFileStream == null) {
-                throw new RuntimeException("Config file not found in resources: " + configPath);
-            }
-            Yaml yaml = new Yaml();
-            Map<String, Object> configMap = yaml.load(configFileStream);
-
-            List<Map<String, Object>> databasesRaw = (List<Map<String, Object>>) configMap.get("tables");
-            List<TableHolder> databases = new ArrayList<>();
-
-            if (databasesRaw != null) {
-                for (Map<String, Object> dbRaw : databasesRaw) {
-                    String schema = (String) dbRaw.getOrDefault("schema", "public");
-                    String name = (String) dbRaw.get("name");
-                    long expectedCount = ((Number) dbRaw.get("expectedCount")).longValue();
-                    List<List<String>> uniques = (List<List<String>>) dbRaw.get("uniques");
-                    List<String> pk = (List<String>) dbRaw.get("pk");
-                    databases.add(new TableHolder(name, schema, expectedCount, uniques, pk));
-                }
-            }
-
-            String queryPath = (String) configMap.get("query_path");
-            String sourcePlanPath = (String) configMap.get("source_plan_path");
-
-            return new Config(
-                    (String) configMap.get("db_url"),
-                    (String) configMap.get("user"),
-                    (String) configMap.get("password"),
-                    (String) configMap.get("schema"),
-                    (String) configMap.get("statistic"),
-                    databases,
-                    queryPath,
-                    sourcePlanPath
-            );
         }
     }
 }

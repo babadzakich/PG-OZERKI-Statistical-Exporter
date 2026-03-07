@@ -1,8 +1,7 @@
-user: kubicl
-password: postgres
-db_url: jdbc:postgresql://localhost:5432/new
 schema: schema.sql
 statistic: stats.csv
+query_path: test_query.sql
+source_plan_path: source_plan.json
 tables:
   - name: product_review
     schema: public
@@ -17,5 +16,3 @@ tables:
     expectedCount: 500000
     pk:
       - id
-query_path: test_query.sql
-source_plan_path: source_plan.json
