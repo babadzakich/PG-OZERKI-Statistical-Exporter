@@ -2923,15 +2923,12 @@ void mark_schemas_for_dump(TableInfo *tblinfo, int numTables)
 
     for (int i = 0; i < numTables; i++)
     {
-        // Проверяем, помечена ли таблица для дампа
         if (tblinfo[i].dobj.dump & DUMP_COMPONENT_DEFINITION)
         {
-            // В pg_dump связь со схемой идет через dobj.namespace
             NamespaceInfo *ns = tblinfo[i].dobj.namespace;
 
             if (ns)
             {
-                // Пропускаем системные схемы по имени
                 if (strcmp(ns->dobj.name, "public") == 0 ||
                     strncmp(ns->dobj.name, "pg_", 3) == 0 ||
                     strcmp(ns->dobj.name, "information_schema") == 0)
@@ -2939,15 +2936,13 @@ void mark_schemas_for_dump(TableInfo *tblinfo, int numTables)
                     continue;
                 }
 
-                // Если схема еще не помечена — помечаем только её структуру
                 if (!(ns->dobj.dump & DUMP_COMPONENT_DEFINITION))
                 {
                     ns->dobj.dump |= DUMP_COMPONENT_DEFINITION;
                     
-                    // Мы НЕ трогаем ns->dobj.dump_contains, 
-                    // поэтому функции из этой схемы не потянутся.
                     
-                    pg_log_info("Схема '%s' принудительно включена для таблицы '%s'", 
+                    
+                    pg_log_info("Schema '%s' exported for table '%s'", 
                                  ns->dobj.name, tblinfo[i].dobj.name);
                 }
             }
