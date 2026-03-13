@@ -3,9 +3,10 @@ package ru.nsu.datagen.dataGenerator.generators.fk.impl;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator {
-    private final Random random = new Random();
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     @Override
     public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,

@@ -20,8 +20,4 @@ public class TableDependency {
     }
 
     public Set<TableDependency> getDependencies() { return new HashSet<>(dependencies); }
-
-    public boolean hasDependencies() {
-        return !dependencies.isEmpty();
-    }
 }

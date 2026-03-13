@@ -21,6 +21,13 @@ public class Pipeline {
         hikariConfig.setUsername(user);
         hikariConfig.setPassword(password);
 
+        // Connection pool configuration for optimal performance
+        hikariConfig.setMaximumPoolSize(20);
+        hikariConfig.setMinimumIdle(5);
+        hikariConfig.setConnectionTimeout(30000);
+        hikariConfig.setIdleTimeout(600000);
+        hikariConfig.setMaxLifetime(1800000);
+
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
             List<TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
             DatabaseDataGenerator.generateData(rawImportedData, dataSource);

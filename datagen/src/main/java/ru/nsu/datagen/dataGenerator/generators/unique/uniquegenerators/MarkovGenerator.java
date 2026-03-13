@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
@@ -16,13 +16,15 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
+    private static final int MARKOV_MAX_ATTEMPTS_PER_ITEM = 200;
+
     private final List<ColumnMetadata> columnsMetadata;
     private final List<Map<Object, Double>> columns;
     private final List<String> names;
     private final int recordCount;
     private final List<Double> ndistincts;
     private final Map<String, List<ReferencingTreeNode>> referencingTrees;
-    private final Random random = new Random(System.currentTimeMillis());
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
                            Map<String, List<ReferencingTreeNode>> referencingTrees) {
@@ -45,7 +47,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     @Override
     public void generate(Map<String, List<Object>> columnData) {
         log.info("Запуск Markov генератора для {} уникальных записей и колонок {}", recordCount, names);
-        List<List<Object>> uniqueValues = generateUnique(recordCount, 200);
+        List<List<Object>> uniqueValues = generateUnique(recordCount, MARKOV_MAX_ATTEMPTS_PER_ITEM);
         
         for (int colIdx = 0; colIdx < names.size(); colIdx++) {
             List<Object> columnValues = new ArrayList<>();
