@@ -9,6 +9,8 @@ import java.util.Set;
 
 @Slf4j
 public abstract class ValueGeneratorAC implements ValueGenerator {
+    private static final long MAX_GENERATION_ATTEMPTS_MULTIPLIER = 100L;
+
     Object minValue;
     Object maxValue;
 
@@ -81,7 +83,7 @@ public abstract class ValueGeneratorAC implements ValueGenerator {
      */
     public void generateValues(List<Object> values, int count, Object leftBorder, Object rightBorder) {
         Set<Object> uniqValues = new HashSet<>(values);
-        long maxAttempts = count * 100L;
+        long maxAttempts = count * MAX_GENERATION_ATTEMPTS_MULTIPLIER;
         long attempts = 0;
         int i = 0;
         while (i < count && attempts < maxAttempts) {

@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 
 /*
 TODO:
@@ -34,7 +36,7 @@ public class DatabaseDataGenerator {
         // Init table store
         TableStore tableStore = new TableStore(dataSource);
         // generate
-        Map<String, List<Object>> generatedData = new HashMap<>();
+        Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
         Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
         Map<String, TableMetadata> allTablesMap = new HashMap<>();
         for (TableMetadata t : tableMetadataList) {
@@ -53,27 +55,31 @@ public class DatabaseDataGenerator {
                 storeFutures.put(table.getTableName(), CompletableFuture.allOf(
                         dependencyFutures.toArray(new CompletableFuture[0])
                 ).thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))
-                        .exceptionally(ex -> {
-                            log.error("Exception during storing table: {}", table.getTableName(), ex);
-                            return null;
+                        .handle((result, ex) -> {
+                            if (ex != null) {
+                                log.error("Exception during storing table: {}", table.getTableName(), ex);
+                                throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
+                            }
+                            return result;
                         }));
             } else {
                 storeFutures.put(table.getTableName(), CompletableFuture.runAsync(() -> storeAsync(table, tableStore, generatedTableData))
-                        .exceptionally(ex -> {
-                    log.error("Exception during storing table: {}", table.getTableName(), ex);
-                    return null;
-                }));
+                    .handle((result, ex) -> {
+                        if (ex != null) {
+                            log.error("Exception during storing table: {}", table.getTableName(), ex);
+                            throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
+                        }
+                        return result;
+                    }));
             }
             for (String columnName : generatedTableData.keySet()) {
                 if (table.getColumns().get(columnName).getReferencingColumns() != null) {
                     generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
                 }
             }
-//            generatedData.put(table.getNamespace() + '.' + table.getTableName(), generatedTableData);
         }
         CompletableFuture.allOf(storeFutures.values().toArray(new CompletableFuture[0])).join();
         log.info("Data generation and storage completed.");
-//        debugPrintData(generatedData);
     }
 
     private static void storeAsync(TableMetadata table, TableStore tableStore, Map<String, List<Object>> generatedTableData) {
@@ -82,26 +88,6 @@ public class DatabaseDataGenerator {
             tableStore.storeTable(table, generatedTableData);
         } catch (SQLException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    private static void debugPrintData(Map<String, Map<String, List<Object>>> generatedData) {
-        int size = 0;
-        for (String tableName : generatedData.keySet()) {
-
-            for (String columnName : generatedData.get(tableName).keySet()) {
-                size = generatedData.get(tableName).get(columnName).size();
-                break;
-
-            }
-            for (int i = 0; i < size; i++) {
-                StringBuilder data = new StringBuilder("[");
-                for (String columnName : generatedData.get(tableName).keySet()) {
-                    data.append(generatedData.get(tableName).get(columnName).get(i)).append(", ");
-                }
-                data.append("]");
-                log.trace("Table: {} Row {}: {}", tableName, i, data);
-            }
         }
     }
 }

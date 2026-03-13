@@ -67,13 +67,4 @@ public class DependencyGraph {
             order.add(node.getTable());
         }
     }
-
-    public boolean hasCycles() {
-        try {
-            getGenerationOrder();
-            return false;
-        } catch (RuntimeException e) {
-            return true;
-        }
-    }
 }
