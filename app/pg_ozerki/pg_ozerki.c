@@ -11,7 +11,17 @@
 
 SimpleStringList table_include_patterns = {NULL, NULL};
 SimpleOidList table_include_oids = {NULL, NULL};
+
+static SimpleStringList schema_include_patterns = {NULL, NULL};
+static SimpleOidList schema_include_oids = {NULL, NULL};
+
 int	strict_names = 0;
+
+static void
+expand_schema_name_patterns(Archive *fout,
+							SimpleStringList *patterns,
+							SimpleOidList *oids,
+							bool strict_names);
 
 static void prohibit_crossdb_refs(PGconn *conn, const char *dbname,
 								  const char *pattern);
@@ -290,7 +300,6 @@ int main(int argc, char** argv) {
 	ConnectDatabase(fout, &dopt.cparams, false);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
 
-
 	pg_log_debug("Connected to database");
 	deps = InitQueryDependencies();
 	planner_settings = get_planner_settings(fout);
@@ -302,11 +311,21 @@ int main(int argc, char** argv) {
 		for (int i = 0; i < deps->tableCount; i++) {
 			simple_string_list_append(&table_include_patterns, deps->tableNames[i]);
 		}
-		
+
+		for (int i = 0; i < deps->schemaCount; i++) {
+			simple_string_list_append(&schema_include_patterns, deps->schemas[i]);
+		}
+
 		if (deps->tableCount > 0) dopt.include_everything = true;
+
+		expand_schema_name_patterns(fout, &schema_include_patterns,
+							   &schema_include_oids,
+							   strict_names);
+
 		expand_table_name_patterns(fout, &table_include_patterns,
 							   &table_include_oids,
 							   strict_names, false);
+		
 		if (dump_explain) {
 			get_explain(GetConnection(fout), dump_query, explain_file, false);
 			pg_log_debug("EXPLAIN exported");
@@ -408,6 +427,60 @@ int main(int argc, char** argv) {
 }
 
 
+static void
+expand_schema_name_patterns(Archive *fout,
+							SimpleStringList *patterns,
+							SimpleOidList *oids,
+							bool strict_names)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	SimpleStringListCell *cell;
+	int			i;
+
+	if (patterns->head == NULL)
+		return;					/* nothing to do */
+
+	query = createPQExpBuffer();
+
+	/*
+	 * The loop below runs multiple SELECTs might sometimes result in
+	 * duplicate entries in the OID list, but we don't care.
+	 */
+
+	for (cell = patterns->head; cell; cell = cell->next)
+	{
+		PQExpBufferData dbbuf;
+		int			dotcnt;
+
+		appendPQExpBufferStr(query,
+							 "SELECT oid FROM pg_catalog.pg_namespace n\n");
+		initPQExpBuffer(&dbbuf);
+		processSQLNamePattern(GetConnection(fout), query, cell->val, false,
+							  false, NULL, "n.nspname", NULL, NULL, &dbbuf,
+							  &dotcnt);
+		if (dotcnt > 1)
+			pg_fatal("improper qualified name (too many dotted names): %s",
+					 cell->val);
+		else if (dotcnt == 1)
+			prohibit_crossdb_refs(GetConnection(fout), dbbuf.data, cell->val);
+		termPQExpBuffer(&dbbuf);
+
+		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+		if (strict_names && PQntuples(res) == 0)
+			pg_fatal("no matching schemas were found for pattern \"%s\"", cell->val);
+
+		for (i = 0; i < PQntuples(res); i++)
+		{
+			simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+		}
+
+		PQclear(res);
+		resetPQExpBuffer(query);
+	}
+
+	destroyPQExpBuffer(query);
+}
 
 
 TocEntry *

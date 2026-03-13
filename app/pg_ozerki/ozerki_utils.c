@@ -33,6 +33,7 @@ InitDumpOptions(DumpOptions *opts)
 	opts->include_everything = true;
 	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
+	opts->outputNoOwner = 1;
 }
 
 bool
