@@ -76,16 +76,6 @@ public class DataGenerator {
     }
 
     /**
-     * Извлекает значения конкретной колонки из данных таблицы
-     */
-    private List<Object> extractColumnValues(
-            Map<String, List<Object>> tableData,
-            String columnName) {
-
-        return tableData.getOrDefault(columnName, new ArrayList<>());
-    }
-
-    /**
      * Генерирует данные для всех колонок таблицы
      */
     private Map<String, List<Object>> generateColumnData(

@@ -50,7 +50,10 @@ public class ColumnMetadataCSV {
 
     public ColumnMetadata transformToColumnMetadata(List<Set<String>> compositePeersList, List<Set<String>> compositeFkPeersList) {
         log.debug("Start transforming column: {}.{}.{}", schemaName, tableName, columnName);
-        boolean isFk = false, isPk = false, isUnique = false;
+        boolean isFk = false;
+        boolean isPk = false;
+        boolean isUnique = false;
+
         if (modifiers != null) {
             String[] mods = modifiers.split(" ");
             Set<String> modSet = Arrays.stream(mods).map(String::trim).collect(Collectors.toSet());
@@ -59,7 +62,9 @@ public class ColumnMetadataCSV {
             isUnique = modSet.contains("UNIQUE") && !isPk;
         }
 
-        List<String> refSchemas = null, refTables= null, refCols = null;
+        List<String> refSchemas = null;
+        List<String> refTables = null;
+        List<String> refCols = null;
 
         if (isFk) {
             refSchemas = new ArrayList<>();

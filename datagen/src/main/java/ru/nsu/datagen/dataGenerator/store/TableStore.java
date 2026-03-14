@@ -15,6 +15,7 @@ import java.util.Map;
 @Slf4j
 public class TableStore {
     private final HikariDataSource dataSource;
+    private final int batchSize = 1000;
 
     public TableStore(HikariDataSource dataSource) {
         this.dataSource = dataSource;
@@ -27,7 +28,7 @@ public class TableStore {
                 statement.execute("SET search_path TO public, bookings");
             }
             try (PreparedStatement pstmnt = conn.prepareStatement(queryString)) {
-
+                int batchCount = 0;
                 // Каждая строка
                 for (int i = 0; i < tableMetadata.getRecordCount(); i++) {
                     // Каждая колонка
@@ -39,40 +40,28 @@ public class TableStore {
 
                         // Обработка массивов
                         if (columnMetadata.isArray()) {
-                            //System.out.println(type);
                             if (type.contains("[]")) {
                                 type = type.substring(0, type.indexOf("[]"));
                             }
                             Array sqlArray = conn.createArrayOf(type, new Object[]{value});
                             pstmnt.setArray(++j, sqlArray);
-                            // fuck
                         } else if (type.equals("interval")) {
-                            // Обработка интервала
                             PGobject pgObject = new PGobject();
                             pgObject.setType("interval");
                             pgObject.setValue((String) value);
                             pstmnt.setObject(++j, pgObject);
                         } else if (type.equals("timestamp without time zone") || type.equals("time without time zone")) {
-                            // СУПЕРНАДЕЖНОЕ РЕШЕНИЕ ДЛЯ TIMESTAMP
                             String timeStr = (String) value;
-                            // УПРОЩАЕМ: всегда добавляем дату 2000-01-01 к любому времени
-                            // Это абсолютно гарантированно сработает
-//                    timeStr = "2000-01-01 " + timeStr;
                             PGobject pgObject = new PGobject();
                             pgObject.setType("timestamp");
                             pgObject.setValue(timeStr);
                             pstmnt.setObject(++j, pgObject);
                         } else if ((type.equals("timestamp with time zone") || type.equals("timestamptz")) && value instanceof String timeStr) {
-                            // Обработка timestamp with time zone
-
-                            // Удаляем [Zone] из формата ZonedDateTime (например, [Etc/GMT-9])
                             if (timeStr.contains("[")) {
                                 timeStr = timeStr.substring(0, timeStr.indexOf("["));
                             }
 
-                            // Для timestamptz тоже может быть только время
                             if (!timeStr.contains("T") && !timeStr.contains("-")) {
-                                // Если нет T и нет дефиса, значит только время
                                 timeStr = "2000-01-01 " + timeStr;
                             }
 
@@ -148,8 +137,16 @@ public class TableStore {
                         }
                     }
                     pstmnt.addBatch();
+                    batchCount++;
+                    if (batchSize == batchCount) {
+                        pstmnt.executeBatch();
+                        batchCount = 0;
+                    }
                 }
-                pstmnt.executeBatch();
+                if (batchCount > 0) {
+                    log.debug("Executing final batch of size {} for table {}", batchCount, tableMetadata.getTableName());
+                    pstmnt.executeBatch();
+                }
             }
         } catch (SQLException e) {
             log.error("Failed to store data in table {}: {}", tableMetadata.getTableName(), e.getMessage());

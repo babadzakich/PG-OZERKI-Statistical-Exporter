@@ -336,6 +336,8 @@ getSchemaData(Archive *fout, int *numTablesPtr, QueryDependencies* deps)
 		pg_log_info("marking views for dump by query");
 		mark_views_for_dump(tblinfo, numTables, deps);
 
+		pg_log_info("marking schemas for dump by query");
+		mark_schemas_for_dump(tblinfo, numTables);
 		free(inhinfo);				/* not needed any longer */
 	} else {
 		numTables = 0;
@@ -343,6 +345,10 @@ getSchemaData(Archive *fout, int *numTablesPtr, QueryDependencies* deps)
 	*numTablesPtr = numTables;
 	return tblinfo;
 }
+
+
+
+
 
 NamespaceInfo *
 getNamespaces(Archive *fout, int *numNamespaces)
@@ -2904,6 +2910,41 @@ void mark_views_for_dump(TableInfo *tblinfo, int numTables, QueryDependencies *d
                 
 
                 
+            }
+        }
+    }
+}
+
+
+void mark_schemas_for_dump(TableInfo *tblinfo, int numTables)
+{
+    if (!tblinfo)
+        return;
+
+    for (int i = 0; i < numTables; i++)
+    {
+        if (tblinfo[i].dobj.dump & DUMP_COMPONENT_DEFINITION)
+        {
+            NamespaceInfo *ns = tblinfo[i].dobj.namespace;
+
+            if (ns)
+            {
+                if (strcmp(ns->dobj.name, "public") == 0 ||
+                    strncmp(ns->dobj.name, "pg_", 3) == 0 ||
+                    strcmp(ns->dobj.name, "information_schema") == 0)
+                {
+                    continue;
+                }
+
+                if (!(ns->dobj.dump & DUMP_COMPONENT_DEFINITION))
+                {
+                    ns->dobj.dump |= DUMP_COMPONENT_DEFINITION;
+                    
+                    
+                    
+                    pg_log_info("Schema '%s' exported for table '%s'", 
+                                 ns->dobj.name, tblinfo[i].dobj.name);
+                }
             }
         }
     }

@@ -4,9 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
+
 @Slf4j
 public class OneToManyForeignKeyGenerator implements ForeignKeyGenerator {
-    private final Random random = new Random();
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
     
     public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
                                                   Map<String, List<Object>> referencedData,

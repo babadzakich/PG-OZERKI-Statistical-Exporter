@@ -8,10 +8,11 @@ import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUni
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 public class StatTypeBasedGenerator implements NormalValueGenerator {
-    private final Random random = new Random();
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     @Override
     public List<Object> generateValues(ColumnMetadata columnMetadata) {

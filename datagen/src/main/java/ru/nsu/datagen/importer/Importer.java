@@ -46,15 +46,17 @@ public class Importer {
         }
         try {
             executeSqlScript(path, statement);
-        } catch (Exception e) {
-            throw new ImporterException("Cannot import schemas.");
+        } catch (IOException e) {
+            log.error("Cannot import schemas from SQL file.", e);
+            throw new ImporterException("Cannot import schemas from SQL file.");
+        } catch (SQLException e) {
+            log.error("Cannot execute SQL script for schema import.", e);
+            throw new ImporterException("Cannot execute SQL script for schema import.");
         }
     }
 
-    static private void executeSqlScript(String path, Statement statement) throws Exception {
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(path));
-
+    static private void executeSqlScript(String path, Statement statement) throws SQLException, IOException {
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
             // String Builder to build the query line by line.
             StringBuilder query = new StringBuilder();
             String line;
@@ -67,7 +69,6 @@ public class Importer {
                 query.append(line).append(" ");
 
                 if (line.trim().endsWith(";")) {
-                    // System.out.println(query);
                     // Execute the Query
                     statement.execute(query.toString().trim());
                     // Empty the Query string to add new query from the file
@@ -80,13 +81,6 @@ public class Importer {
             // Getting the ResultSet after executing the Script File
             ResultSet resultSet = statement.getResultSet();
             log.debug("Result set: {}", resultSet);
-        }
-        catch (IOException e) {
-            log.error("Some troubles with IO ops.", e);
-            throw new IOException("Some troubles with IO ops.");
-        } catch (SQLException e) {
-            log.error("Troubles with executing SQL script!", e);
-            throw new SQLException("Troubles with executing SQL script!");
         }
     }
 }

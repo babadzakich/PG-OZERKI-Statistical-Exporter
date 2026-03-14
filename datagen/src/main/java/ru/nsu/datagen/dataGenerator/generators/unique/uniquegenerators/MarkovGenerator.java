@@ -5,8 +5,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
@@ -17,10 +17,12 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
+    private static final int MARKOV_MAX_ATTEMPTS_PER_ITEM = 200;
+
     private final List<ColumnMetadata> columnsMetadata;
     private final int recordCount;
     private final Map<String, List<ReferencingTreeNode>> referencingTrees;
-    private final Random random = new Random(System.currentTimeMillis());
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
                            Map<String, List<ReferencingTreeNode>> referencingTrees) {
