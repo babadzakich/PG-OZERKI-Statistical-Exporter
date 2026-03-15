@@ -26,6 +26,8 @@ public class TreeEditDistance {
             "Hash Join", 3.0f,
             "Merge Join", 3.0f,
             "Nested Loop", 2.5f,
+            "Hash", 1.5f,
+            "Merge", 1.5f,
             "Aggregate", 1.0f,
             "Sort", 0.5f
     );
@@ -55,14 +57,28 @@ public class TreeEditDistance {
     }
 
     private static float costReplace(PlanNode a, PlanNode b) {
-        if (a.nodeType.equals(b.nodeType)) {
-            if (a.relName.equals(b.relName) && Objects.equals(a.index, b.index)) {
-                return 0f;
-            }
-            return 0.5f;
+        boolean sameType = Objects.equals(a.nodeType, b.nodeType);
+        boolean sameRel = Objects.equals(a.relName, b.relName);
+        boolean sameIndex = Objects.equals(a.index, b.index);
+        boolean sameSide = Objects.equals(a.parentRelationship, b.parentRelationship);
+
+        if (sameType && sameRel && sameIndex && sameSide) {
+            return 0f;
         }
 
-        return (getNodeWeight(a) + getNodeWeight(b)) * 0.4f;
+
+        if (sameType) {
+            float penalty = 0f;
+            if (!sameRel || !sameIndex) penalty += 0.4f;
+            if (!sameSide) penalty += 0.2f;
+            return penalty;
+        }
+
+
+        float weightA = getNodeWeight(a);
+        float weightB = getNodeWeight(b);
+
+        return (weightA + weightB) * 0.4f;
     }
 
     private static float forestDistance(List<PlanNode> forest1, List<PlanNode> forest2) {

@@ -1,6 +1,7 @@
 package ru.nsu.datagen;
 
 import com.zaxxer.hikari.HikariDataSource;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Использует локальную PostgreSQL БД.
  * Перед запуском теста убедитесь что БД доступна
  */
+@Slf4j
 @Testcontainers
 public class IntegrationTest {
 
@@ -90,6 +92,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
+    @ConfigFile("product/product_config.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
@@ -159,7 +162,7 @@ public class IntegrationTest {
             ResultSet rs = stmt.executeQuery(explainSql);
             rs.next();
             // PostgreSQL возвращает JSON в первой колонке первой строки
-            System.out.println(rs.getString(1));
+            log.info("Query plan in new database: {}", rs.getString(1));
             return rs.getString(1);
         }
     }
@@ -250,4 +253,19 @@ public class IntegrationTest {
             System.out.println("✓ Таблица " + dbHolder.getSchema() + "." + dbHolder.getName() + ": " + rowCount + " записей");
         }
     }
+
+
+//    @Test
+//    void compareIdenticalPlans() throws Exception{
+//        String planA = readResourceFile("identPlans/planA.json");
+//        String planB = readResourceFile("identPlans/planB.json");
+//
+//        PlanTree actualTree = PlanTree.fromJson(planA);
+//        PlanTree expectedTree = PlanTree.fromJson(planB);
+//
+//        // Вычисление расстояния редактирования деревьев
+//        float similarity = TreeEditDistance.computeSimilarity(actualTree.root, expectedTree.root);
+//
+//        System.out.println("Совпадение плано на " + similarity + "%");
+//    }
 }
