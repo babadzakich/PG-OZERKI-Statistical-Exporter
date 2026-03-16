@@ -23,11 +23,11 @@ public class TreeEditDistance {
             "Seq Scan", 2.0f,
             "Index Scan", 1.5f,
             "Index Only Scan", 1.2f,
-            "Hash Join", 3.0f,
+            "Hash Join", 3.5f,
             "Merge Join", 3.0f,
             "Nested Loop", 2.5f,
-            "Hash", 1.5f,
-            "Merge", 1.5f,
+            "Hash", 3.5f,
+            "Merge", 3.0f,
             "Aggregate", 1.0f,
             "Sort", 0.5f
     );
@@ -152,7 +152,7 @@ public class TreeEditDistance {
 
         if (maxCost == 0) return 100.0f;
 
-        float similarity = (1.0f - (distance / maxCost)) * 100.0f;
+        float similarity = (1.0f - (distance / Math.max(costActualPlan, costSourcePlan))) * 100.0f;
 
         return Math.max(0, Math.min(100, similarity));
     }

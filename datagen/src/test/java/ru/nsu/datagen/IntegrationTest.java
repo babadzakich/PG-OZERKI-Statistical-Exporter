@@ -147,7 +147,7 @@ public class IntegrationTest {
 
         System.out.println("Совпадение плано на " + similarity + "%");
         // Проверяем совпадения на >50%
-        assertTrue(similarity > 0.5, "Similarity gt 50%");
+        assertTrue(similarity > 50, "Similarity gt 50%");
 
     }
 
