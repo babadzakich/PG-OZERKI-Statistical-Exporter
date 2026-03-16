@@ -5,10 +5,7 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 
 import java.io.*;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.List;
 
 @Slf4j
@@ -50,8 +47,9 @@ public class Importer {
             log.error("Cannot import schemas from SQL file.", e);
             throw new ImporterException("Cannot import schemas from SQL file.");
         } catch (SQLException e) {
-            log.error("Cannot execute SQL script for schema import.", e);
+            log.error("Cannot execute SQL script for schema import. {}", e.getSQLState());
             throw new ImporterException("Cannot execute SQL script for schema import.");
+
         }
     }
 
@@ -60,9 +58,7 @@ public class Importer {
             // String Builder to build the query line by line.
             StringBuilder query = new StringBuilder();
             String line;
-
             while ((line = br.readLine()) != null) {
-
                 if (line.trim().startsWith("--")) { continue; }
 
                 // Append the line into the query string and add a space after that
@@ -70,7 +66,16 @@ public class Importer {
 
                 if (line.trim().endsWith(";")) {
                     // Execute the Query
-                    statement.execute(query.toString().trim());
+
+                    try {
+                        statement.execute(query.toString().trim());
+                    } catch (SQLException e) {
+                        log.error("Error during SQL statement execution. {} {}", e.getMessage(), query.toString().trim());
+
+
+                        throw new ImporterException("Cannot execute SQL script for schema import.");
+
+                    }
                     // Empty the Query string to add new query from the file
                     query = new StringBuilder();
                 }

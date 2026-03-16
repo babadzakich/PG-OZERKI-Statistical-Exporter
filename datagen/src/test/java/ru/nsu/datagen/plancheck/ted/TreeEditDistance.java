@@ -23,9 +23,11 @@ public class TreeEditDistance {
             "Seq Scan", 2.0f,
             "Index Scan", 1.5f,
             "Index Only Scan", 1.2f,
-            "Hash Join", 3.0f,
+            "Hash Join", 3.5f,
             "Merge Join", 3.0f,
             "Nested Loop", 2.5f,
+            "Hash", 3.5f,
+            "Merge", 3.0f,
             "Aggregate", 1.0f,
             "Sort", 0.5f
     );
@@ -55,14 +57,28 @@ public class TreeEditDistance {
     }
 
     private static float costReplace(PlanNode a, PlanNode b) {
-        if (a.nodeType.equals(b.nodeType)) {
-            if (a.relName.equals(b.relName) && Objects.equals(a.index, b.index)) {
-                return 0f;
-            }
-            return 0.5f;
+        boolean sameType = Objects.equals(a.nodeType, b.nodeType);
+        boolean sameRel = Objects.equals(a.relName, b.relName);
+        boolean sameIndex = Objects.equals(a.index, b.index);
+        boolean sameSide = Objects.equals(a.parentRelationship, b.parentRelationship);
+
+        if (sameType && sameRel && sameIndex && sameSide) {
+            return 0f;
         }
 
-        return (getNodeWeight(a) + getNodeWeight(b)) * 0.4f;
+
+        if (sameType) {
+            float penalty = 0f;
+            if (!sameRel || !sameIndex) penalty += 0.4f;
+            if (!sameSide) penalty += 0.2f;
+            return penalty;
+        }
+
+
+        float weightA = getNodeWeight(a);
+        float weightB = getNodeWeight(b);
+
+        return (weightA + weightB) * 0.4f;
     }
 
     private static float forestDistance(List<PlanNode> forest1, List<PlanNode> forest2) {
@@ -136,7 +152,7 @@ public class TreeEditDistance {
 
         if (maxCost == 0) return 100.0f;
 
-        float similarity = (1.0f - (distance / maxCost)) * 100.0f;
+        float similarity = (1.0f - (distance / Math.max(costActualPlan, costSourcePlan))) * 100.0f;
 
         return Math.max(0, Math.min(100, similarity));
     }

@@ -1,0 +1,1 @@
+select * from product_review join meta on meta.id = product_review.id
