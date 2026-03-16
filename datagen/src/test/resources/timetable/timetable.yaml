@@ -1,0 +1,20 @@
+schema: timetable/timetable_schema.sql
+statistic: timetable/timetable_stats.csv
+query_path: timetable/timetable_query.sql
+source_plan_path: timetable/timetable.json
+tables:
+  - name: airports_data
+    schema: bookings
+    expectedCount: 5501
+    pk:
+      - airport_code
+  - name: flights
+    schema: bookings
+    expectedCount: 21758
+    uniques:
+      - [route_no, scheduled_departure]
+    pk:
+      - flight_id
+  - name: routes
+    schema: bookings
+    expectedCount: 1162
