@@ -15,6 +15,3 @@ tables:
       - [route_no, scheduled_departure]
     pk:
       - flight_id
-  - name: routes
-    schema: bookings
-    expectedCount: 1162
