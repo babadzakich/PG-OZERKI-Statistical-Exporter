@@ -11,9 +11,9 @@ public class OneToManyForeignKeyGenerator implements ForeignKeyGenerator {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
     
     public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
-                                            Map<String, List<Object>> referencedData,
-                                            Map<String, List<Object>> allGeneratedData) {
-        log.info("Generating database foreign keys for column {}", columnMetadata.getName());
+                                                  Map<String, List<Object>> referencedData,
+                                                  Map<String, List<Object>> allGeneratedData) {
+        log.info("Generating database 1-M foreign keys for columns {}", columnMetadata.getName());
         String refSchema = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedSchema();
         String refTable = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedTable();
         String refColumn = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedColumn();

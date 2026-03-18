@@ -5,24 +5,23 @@ import ru.nsu.datagen.dataGenerator.generators.fk.impl.OneToOneForeignKeyGenerat
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Optional;
 
 public class ForeignKeyGeneratorFactory {
     private final Map<RelationshipType, ForeignKeyGenerator> generators;
+    private final Map<RelationshipType, ComplexForeignKeyGenerator> complexGenerators;
 
     public ForeignKeyGeneratorFactory() {
         this.generators = new EnumMap<>(RelationshipType.class);
+        this.complexGenerators = new EnumMap<>(RelationshipType.class);
         registerDefaultGenerators();
     }
 
     private void registerDefaultGenerators() {
         generators.put(RelationshipType.ONE_TO_ONE, new OneToOneForeignKeyGenerator());
         generators.put(RelationshipType.ONE_TO_MANY, new OneToManyForeignKeyGenerator());
-//        generators.put(RelationshipType.MANY_TO_ONE, new ManyToOneForeignKeyGenerator());
-//        generators.put(RelationshipType.MANY_TO_MANY, new ManyToManyForeignKeyGenerator());
-    }
 
-    public void registerGenerator(RelationshipType type, ForeignKeyGenerator generator) {
-        generators.put(type, generator);
+        complexGenerators.put(RelationshipType.ONE_TO_ONE, new OneToOneForeignKeyGenerator());
     }
 
     public ForeignKeyGenerator getGenerator(ColumnMetadata column) {
@@ -34,5 +33,9 @@ public class ForeignKeyGeneratorFactory {
         }
 
         return generator;
+    }
+
+    public Optional<ComplexForeignKeyGenerator> getComplexGenerator(ColumnMetadata column) {
+        return Optional.ofNullable(complexGenerators.get(column.getForeignKeyMetadata().getFirst().getRelationshipType()));
     }
 }

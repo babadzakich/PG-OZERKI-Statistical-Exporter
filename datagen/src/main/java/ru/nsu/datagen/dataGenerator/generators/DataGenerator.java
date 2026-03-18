@@ -1,6 +1,7 @@
 package ru.nsu.datagen.dataGenerator.generators;
 
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
@@ -142,12 +143,25 @@ public class DataGenerator {
             Map<String, List<Object>> existingData,
             Map<String, List<Object>> referencedData,
             Set<String> generatedColumns) {
-
         for (ColumnMetadata column : table.getColumns().values()) {
-            if (column.isForeignKey()) {
-                List<Object> foreignKeys = fkGeneratorFactory.getGenerator(column)
-                        .generateForeignKeys(column, referencedData, existingData);
-                columnData.put(column.getName(), foreignKeys);
+            if (column.isForeignKey() && !generatedColumns.contains(column.getName())) {
+                if (!column.getCompositeForeignPeers().isEmpty()) {
+                    List<ColumnMetadata> foreignKeysMultiple = column.getCompositeForeignPeers().getFirst()
+                            .stream().map(foreignPeer -> table.getColumns().get(foreignPeer.split("\\.")[2]))
+                            .toList();
+                    Optional<ComplexForeignKeyGenerator> generator = fkGeneratorFactory.getComplexGenerator(column);
+                    if (generator.isPresent()) {
+                        List<List<Object>> foreignKeys = generator.get().generateForeignKeys(foreignKeysMultiple, referencedData, existingData);
+                        for (int i = 0; i < foreignKeysMultiple.size(); i++) {
+                            columnData.put(foreignKeysMultiple.get(i).getName(), foreignKeys.get(i));
+                        }
+                    } else {
+                        throw new IllegalArgumentException("No generator found for " + column.getName());
+                    }
+                } else {
+                    List<Object> foreignKeys = fkGeneratorFactory.getGenerator(column).generateForeignKeys(column, referencedData, existingData);
+                    columnData.put(column.getName(), foreignKeys);
+                }
                 generatedColumns.add(column.getName());
             }
         }
@@ -160,25 +174,23 @@ public class DataGenerator {
             List<ColumnMetadata> uniqueList = new ArrayList<>();
             for (ColumnMetadata column : table.getColumns().values()) {
                 if (column.isUnique() && !generatedColumns.contains(column.getName())) {
-                    for (String col : column.getCompositeUniquePeers().getFirst()) {
-                        uniqueList.add(table.getColumns().get(col.split("\\.")[2]));
+                    column.getCompositeUniquePeers().getFirst().stream() // TODO: Поддержка пересекающихся уникальных ключей
+                            .map(col -> table.getColumns().get(col.split("\\.")[2]))
+                            .forEach(uniqueList::add);
+                    // Собираем дерево обратных зависимостей для каждой unique-колонки
+                    Map<String, List<ReferencingTreeNode>> referencingTrees = new HashMap<>();
+                    for (ColumnMetadata uniqueCol : uniqueList) {
+                        List<ReferencingTreeNode> tree = collectReferencingTree(uniqueCol, new HashSet<>());
+                        referencingTrees.put(uniqueCol.getName(), tree);
                     }
-                    break;
+
+                    if (!uniqueList.isEmpty())
+                        UniqueKeyGeneratorChooser.generate(uniqueList, columnData,
+                                uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
+                                table.getRecordCount(), referencingTrees);
+                    uniqueList.forEach(column2 -> generatedColumns.add(column2.getName()));
                 }
             }
-
-            // Собираем дерево обратных зависимостей для каждой unique-колонки
-            Map<String, List<ReferencingTreeNode>> referencingTrees = new HashMap<>();
-            for (ColumnMetadata uniqueCol : uniqueList) {
-                List<ReferencingTreeNode> tree = collectReferencingTree(uniqueCol, new HashSet<>());
-                referencingTrees.put(uniqueCol.getName(), tree);
-            }
-
-            if (!uniqueList.isEmpty())
-                UniqueKeyGeneratorChooser.generate(uniqueList, columnData,
-                        uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
-                        table.getRecordCount(), referencingTrees);
-            uniqueList.forEach(column -> generatedColumns.add(column.getName()));
     }
 
     /**
@@ -213,9 +225,10 @@ public class DataGenerator {
                     if (refTable == null) {
                         continue;
                     }
-
+                    Set<Object> toAdd = refTable.getColumns().get(colName).getMcv().keySet();
+                    toAdd.addAll(refTable.getColumns().get(colName).getHistogramm());
                     ReferencingTreeNode node = new ReferencingTreeNode(
-                            schema, tableName, colName, refTable.getRecordCount(), refTable.getColumns().get(colName).getMcv().keySet());
+                            schema, tableName, colName, refTable.getRecordCount(), toAdd);
 
                     // Рекурсивно ищем тех, кто ссылается на ссылающуюся колонку
                     ColumnMetadata refColumn = refTable.getColumns().get(colName);

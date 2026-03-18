@@ -1,11 +1,14 @@
 package ru.nsu.datagen.dataGenerator.generators.fk.impl;
 
+import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
-
-public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator {
+import java.util.stream.Collectors;
+@Slf4j
+public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, ComplexForeignKeyGenerator {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     @Override
@@ -13,32 +16,36 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator {
                                             Map<String, List<Object>> referencedData,
                                             Map<String, List<Object>> allGeneratedData) {
 
+        log.info("Generating database 1-1 foreign keys for column {}", columnMetadata.getName());
+        String refSchema = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedSchema();
         String refTable = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedTable();
         String refColumn = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedColumn();
-        String refKey = refTable + "." + refColumn;
+        String refKey = refSchema + '.' + refTable + '.' + refColumn;
+        Set<Object> usefulData = new HashSet<>(allGeneratedData.get(refKey));
 
-        if (!referencedData.containsKey(refKey)) {
-            throw new IllegalStateException("Referenced data not found: " + refKey);
+        for (int i = 1; i < columnMetadata.getForeignKeyMetadata().size(); i++) {
+            refSchema = columnMetadata.getForeignKeyMetadata().get(i).getReferencedSchema();
+            refTable = columnMetadata.getForeignKeyMetadata().get(i).getReferencedTable();
+            refColumn = columnMetadata.getForeignKeyMetadata().get(i).getReferencedColumn();
+            usefulData.retainAll(allGeneratedData.get(refSchema + '.' + refTable + '.' + refColumn));
         }
 
-        List<Object> refValues = referencedData.get(refKey);
-        List<Object> foreignKeys = new ArrayList<>();
         int recordCount = columnMetadata.getRecordCount();
-        double nullPercentage = columnMetadata.getNullPercentage();
-
-        // Для ONE_TO_ONE создаем прямое соответствие записей
-        for (int i = 0; i < recordCount; i++) {
-            if (random.nextDouble() < nullPercentage) {
-                foreignKeys.add(null);
-            } else if (i < refValues.size()) {
-                // Прямое соответствие по индексу
-                foreignKeys.add(refValues.get(i));
-            } else {
-                // Если записей больше чем в родительской таблице, берем случайные значения
-                foreignKeys.add(refValues.get(random.nextInt(refValues.size())));
-            }
+        if (usefulData.size() < recordCount) {
+            log.error("Not enough unique referenced values for 1-1 relationship. Needed: {}, available: {}. " +
+                    "Some values will be duplicated.", recordCount, usefulData.size());
+            throw new RuntimeException("Not enough unique referenced values for 1-1 relationship.");
         }
 
-        return foreignKeys;
+        return usefulData.stream()
+                .collect(Collectors.collectingAndThen(Collectors.toList(), list -> {
+                    Collections.shuffle(list, random);
+                    return list.subList(0, recordCount);
+                }));
+    }
+
+    @Override
+    public List<List<Object>> generateForeignKeys(List<ColumnMetadata> columnMetadata, Map<String, List<Object>> referencedData, Map<String, List<Object>> allGeneratedData) {
+        return List.of();
     }
 }
