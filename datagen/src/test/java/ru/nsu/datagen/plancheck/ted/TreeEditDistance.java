@@ -154,7 +154,7 @@ public class TreeEditDistance {
 
         if (maxCost == 0) return 100.0f;
 
-        float similarity = (1.0f - (distance / Math.max(costActualPlan, costSourcePlan)));
+        float similarity = (1.0f - (distance / Math.max(costActualPlan, costSourcePlan))) * 100.0f;
 
         return Math.max(0, Math.min(100, similarity));
     }

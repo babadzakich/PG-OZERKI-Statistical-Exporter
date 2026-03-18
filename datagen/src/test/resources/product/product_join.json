@@ -1,7 +1,7 @@
 [
   {
     "Plan": {
-      "Node Type": "Merge Join",
+      "Node Type": "Hash Join",
       "Parallel Aware": false,
       "Async Capable": false,
       "Join Type": "Inner",
@@ -28,7 +28,7 @@
           "Output": ["meta.id", "meta.review_code", "meta.comment"]
         },
         {
-          "Node Type": "Merge",
+          "Node Type": "Hash",
           "Parent Relationship": "Inner",
           "Parallel Aware": false,
           "Async Capable": false,

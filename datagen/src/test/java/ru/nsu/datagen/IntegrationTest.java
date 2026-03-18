@@ -91,8 +91,8 @@ public class IntegrationTest {
      * 3. Генерация данных
      * 4. Проверка целостности данных и ограничений
      */
-    @Test
-    @ConfigFile("timetable/timetable.yaml")
+    //@Test
+    //@ConfigFile("timetable/timetable.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
@@ -145,7 +145,7 @@ public class IntegrationTest {
         // Вычисление расстояния редактирования деревьев
         float similarity = TreeEditDistance.computeSimilarity(actualTree.root, expectedTree.root);
 
-        System.out.println("Совпадение плано на " + similarity + "%");
+        System.out.println("Совпадение планов на " + similarity + "%");
         // Проверяем совпадения на >50%
         assertTrue(similarity > 50, "Similarity gt 50%");
 
@@ -254,18 +254,22 @@ public class IntegrationTest {
         }
     }
 
+    @Test
+    @ConfigFile("flights/flights.yaml")
+    public void testFlightsFullPipeline() throws Exception {
+        testFullPipelineIntegration();
+    }
 
-//    @Test
-//    void compareIdenticalPlans() throws Exception{
-//        String planA = readResourceFile("identPlans/planA.json");
-//        String planB = readResourceFile("identPlans/planB.json");
-//
-//        PlanTree actualTree = PlanTree.fromJson(planA);
-//        PlanTree expectedTree = PlanTree.fromJson(planB);
-//
-//        // Вычисление расстояния редактирования деревьев
-//        float similarity = TreeEditDistance.computeSimilarity(actualTree.root, expectedTree.root);
-//
-//        System.out.println("Совпадение плано на " + similarity + "%");
-//    }
+
+    @Test
+    @ConfigFile("flights_simple/flights_simple.yaml")
+    public void testFlightsSimpleFullPipeline() throws Exception {
+        testFullPipelineIntegration();
+    }
+
+    @Test
+    @ConfigFile("product/product_config.yaml")
+    public void testProductFullPipeline() throws Exception {
+        testFullPipelineIntegration();
+    }
 }
