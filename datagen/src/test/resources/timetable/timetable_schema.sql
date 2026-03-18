@@ -71,14 +71,14 @@ CREATE TABLE bookings.flights (
 -- Name: flights_flight_id_seq; Type: SEQUENCE; Schema: bookings; Owner: -
 --
 
-ALTER TABLE bookings.flights ALTER COLUMN flight_id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME bookings.flights_flight_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
+-- ALTER TABLE bookings.flights ALTER COLUMN flight_id ADD GENERATED ALWAYS AS IDENTITY (
+--     SEQUENCE NAME bookings.flights_flight_id_seq
+--     START WITH 1
+--     INCREMENT BY 1
+--     NO MINVALUE
+--     NO MAXVALUE
+--     CACHE 1
+-- );
 
 
 --
@@ -163,19 +163,6 @@ CREATE INDEX routes_departure_airport_lower_idx ON bookings.routes USING btree (
 --
 -- Name: routes routes_arrival_airport_fkey; Type: FK CONSTRAINT; Schema: bookings; Owner: -
 --
-
-ALTER TABLE ONLY bookings.routes
-    ADD CONSTRAINT routes_arrival_airport_fkey FOREIGN KEY (arrival_airport) REFERENCES airports_data(airport_code);
-
-
---
--- Name: routes routes_departure_airport_fkey; Type: FK CONSTRAINT; Schema: bookings; Owner: -
---
-
-ALTER TABLE ONLY bookings.routes
-    ADD CONSTRAINT routes_departure_airport_fkey FOREIGN KEY (departure_airport) REFERENCES airports_data(airport_code);
-
-
 --
 -- PostgreSQL database dump complete
 --

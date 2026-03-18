@@ -19,7 +19,7 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         log.info("Generating values for column: {}", columnMetadata.getName());
         if (columnMetadata.getNdistinct() == -1) {
             log.debug("Using SimpleUniqueGenerator for column: {}, because ndistinct = -1", columnMetadata.getName());
-            UniqueKeyGenerator generator = new SimpleUniqueGenerator(List.of(columnMetadata), columnMetadata.getRecordCount(), null);
+            UniqueKeyGenerator generator = new SimpleUniqueGenerator(List.of(columnMetadata), columnMetadata.getRecordCount(), null, null, null);
             return generator.generate();
         }
         Set<Object> objectSet = new HashSet<>();

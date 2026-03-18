@@ -8,10 +8,15 @@ import java.util.Map;
 import java.util.Optional;
 
 public class ForeignKeyGeneratorFactory {
+    private static final ForeignKeyGeneratorFactory foreignKeyGeneratorFactory = new ForeignKeyGeneratorFactory();
     private final Map<RelationshipType, ForeignKeyGenerator> generators;
     private final Map<RelationshipType, ComplexForeignKeyGenerator> complexGenerators;
 
-    public ForeignKeyGeneratorFactory() {
+    public static ForeignKeyGeneratorFactory getInstance() {
+        return foreignKeyGeneratorFactory;
+    }
+
+    private ForeignKeyGeneratorFactory() {
         this.generators = new EnumMap<>(RelationshipType.class);
         this.complexGenerators = new EnumMap<>(RelationshipType.class);
         registerDefaultGenerators();

@@ -13,8 +13,8 @@ import java.time.ZoneOffset;
 public class TimestampValueGenerator extends ValueGeneratorAC {
     private final Faker faker = new Faker();
 
-    private static final LocalDateTime PG_MIN_TIMESTAMP = LocalDateTime.of(-4712, 1, 1, 0, 0, 0);
-    private static final LocalDateTime PG_MAX_TIMESTAMP = LocalDateTime.of(294276, 12, 31, 23, 59, 59);
+    private static final LocalDateTime PG_MIN_TIMESTAMP = LocalDateTime.of(1970, 1, 1, 0, 0, 0);
+    private static final LocalDateTime PG_MAX_TIMESTAMP = LocalDateTime.of(2100, 12, 31, 23, 59, 59);
 
     public TimestampValueGenerator() {
         super(PG_MIN_TIMESTAMP, PG_MAX_TIMESTAMP);

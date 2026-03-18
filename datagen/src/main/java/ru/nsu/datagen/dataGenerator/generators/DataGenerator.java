@@ -21,7 +21,7 @@ public class DataGenerator {
     private final Map<String, TableMetadata> allTablesMap;
 
     public DataGenerator(Map<String, TableMetadata> allTablesMap) {
-        this.fkGeneratorFactory = new ForeignKeyGeneratorFactory();
+        this.fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
         this.normalValueGenerator = new StatTypeBasedGenerator();
         this.allTablesMap = allTablesMap;
     }
@@ -87,7 +87,7 @@ public class DataGenerator {
         Set<String> generatedColumns = new HashSet<>();
 
         // Сначала генерируем FK, потом PK, потом обычные колонки потом уники
-        generateUniqueConstraint(table, columnData, generatedColumns);
+        generateUniqueConstraint(table, columnData, existingData, referencedData, generatedColumns);
         generateForeignKeys(table, columnData, existingData, referencedData, generatedColumns);
         generatePrimaryKeys(table, columnData, generatedColumns);
         generateNormalColumns(table, columnData, generatedColumns);
@@ -167,13 +167,15 @@ public class DataGenerator {
         }
     }
 
-    private void generateUniqueConstraint(
+    private void generateUniqueConstraint (
         TableMetadata table,
         Map<String, List<Object>> columnData,
+        Map<String, List<Object>> existingData,
+        Map<String, List<Object>> referencedData,
         Set<String> generatedColumns) {
-            List<ColumnMetadata> uniqueList = new ArrayList<>();
             for (ColumnMetadata column : table.getColumns().values()) {
                 if (column.isUnique() && !generatedColumns.contains(column.getName())) {
+                    List<ColumnMetadata> uniqueList = new ArrayList<>();
                     column.getCompositeUniquePeers().getFirst().stream() // TODO: Поддержка пересекающихся уникальных ключей
                             .map(col -> table.getColumns().get(col.split("\\.")[2]))
                             .forEach(uniqueList::add);
@@ -187,7 +189,7 @@ public class DataGenerator {
                     if (!uniqueList.isEmpty())
                         UniqueKeyGeneratorChooser.generate(uniqueList, columnData,
                                 uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
-                                table.getRecordCount(), referencingTrees);
+                                table.getRecordCount(), referencingTrees, existingData, referencedData);
                     uniqueList.forEach(column2 -> generatedColumns.add(column2.getName()));
                 }
             }

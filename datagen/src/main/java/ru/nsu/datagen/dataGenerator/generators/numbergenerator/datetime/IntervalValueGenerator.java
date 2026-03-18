@@ -32,7 +32,7 @@ public class IntervalValueGenerator extends ValueGeneratorAC {
 
                 Duration randomDuration = Duration.ofSeconds(faker.number().numberBetween(left.duration().getSeconds(), right.duration().getSeconds() + 1));
 
-                return randomPeriod.toString() + " " + randomDuration.toString().substring(1);
+                return randomPeriod.toString() + randomDuration.toString().substring(1);
             } catch (IllegalArgumentException e) {
                 log.error("Failed to parse interval borders: {}", e.getMessage());
             }
