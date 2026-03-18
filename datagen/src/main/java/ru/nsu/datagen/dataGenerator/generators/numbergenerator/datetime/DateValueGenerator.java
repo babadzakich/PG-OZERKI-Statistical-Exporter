@@ -23,13 +23,13 @@ public class DateValueGenerator extends ValueGeneratorAC {
 
         if (leftValue.isAfter(rightValue) || leftValue.isEqual(rightValue)) {
             log.warn("Left border {} >= right border {}, using left value", leftValue, rightValue);
-            return leftValue.toString();
+            return leftValue;
         }
 
         return faker.timeAndDate().between(
                 leftValue.atStartOfDay(ZoneOffset.UTC).toInstant(),
                 rightValue.atStartOfDay(ZoneOffset.UTC).toInstant()
-        ).atZone(ZoneOffset.UTC).toLocalDate().toString();
+        ).atZone(ZoneOffset.UTC).toLocalDate();
     }
 
     private LocalDate getLocalDate(Object value, LocalDate defaultValue) {

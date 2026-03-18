@@ -7,10 +7,10 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.math.BigDecimal;
 import java.sql.*;
-
-import org.postgresql.util.PGobject;
 import java.util.List;
 import java.util.Map;
+
+import org.postgresql.util.PGobject;
 
 @Slf4j
 public class TableStore {
@@ -37,6 +37,7 @@ public class TableStore {
                         Object value = generatedTableData.get(columnName).get(i);
                         ColumnMetadata columnMetadata = tableMetadata.getColumns().get(columnName);
                         String type = columnMetadata.getDataType();
+                        String normalizedType = type.toLowerCase();
 
                         // Обработка массивов
                         if (columnMetadata.isArray()) {
@@ -45,54 +46,49 @@ public class TableStore {
                             }
                             Array sqlArray = conn.createArrayOf(type, new Object[]{value});
                             pstmnt.setArray(++j, sqlArray);
-                        } else if (type.equals("interval")) {
+                        } else if (normalizedType.equals("interval")) {
                             PGobject pgObject = new PGobject();
                             pgObject.setType("interval");
-                            pgObject.setValue((String) value);
+                            pgObject.setValue(value.toString());
                             pstmnt.setObject(++j, pgObject);
-                        } else if (type.equals("timestamp without time zone") || type.equals("time without time zone")) {
-                            String timeStr = (String) value;
-                            PGobject pgObject = new PGobject();
-                            pgObject.setType("timestamp");
-                            pgObject.setValue(timeStr);
-                            pstmnt.setObject(++j, pgObject);
-                        } else if ((type.equals("timestamp with time zone") || type.equals("timestamptz")) && value instanceof String timeStr) {
-                            if (timeStr.contains("[")) {
-                                timeStr = timeStr.substring(0, timeStr.indexOf("["));
+                        } else if (normalizedType.equals("time without time zone") || normalizedType.equals("time")) {
+                            pstmnt.setObject(++j, value, Types.TIME);
+                        } else if (normalizedType.equals("timestamp without time zone") || normalizedType.equals("timestamp")) {
+                            if (value instanceof java.time.Instant instant) {
+                                pstmnt.setTimestamp(++j, Timestamp.from(instant));
+                            } else {
+                                pstmnt.setObject(++j, value, Types.TIMESTAMP);
                             }
-
-                            if (!timeStr.contains("T") && !timeStr.contains("-")) {
-                                timeStr = "2000-01-01 " + timeStr;
+                        } else if (normalizedType.equals("timestamp with time zone") || normalizedType.equals("timestamptz")) {
+                            if (value instanceof java.time.Instant instant) {
+                                pstmnt.setObject(++j, instant, Types.TIMESTAMP_WITH_TIMEZONE);
+                            } else if (value instanceof String s) {
+                                PGobject pgObject = new PGobject();
+                                pgObject.setType("timestamptz");
+                                pgObject.setValue(s);
+                                pstmnt.setObject(++j, pgObject);
+                            } else {
+                                pstmnt.setObject(++j, value);
                             }
-
-                            PGobject pgObject = new PGobject();
-                            pgObject.setType("timestamptz");
-                            pgObject.setValue(timeStr);
-                            pstmnt.setObject(++j, pgObject);
-                        } else if (type.contains("time zone")) {
-                            PGobject pgObject = new PGobject();
-                            pgObject.setType("timestamp");
-                            pgObject.setValue((String) value);
-                            pstmnt.setObject(++j, pgObject);
-                        } else if (type.contains("tstzrange")) {
+                        } else if (normalizedType.contains("tstzrange")) {
                             PGobject pgObject = new PGobject();
                             pgObject.setType("tstzrange");
                             pgObject.setValue((String) value);
                             pstmnt.setObject(++j, pgObject);
-                        } else if (type.contains("date")) {
+                        } else if (normalizedType.contains("date")) {
                             PGobject pgObject = new PGobject();
                             pgObject.setType("date");
                             pgObject.setValue(value.toString());
                             pstmnt.setObject(++j, pgObject);
-                        } else if (type.contains("num")) {
+                        } else if (normalizedType.contains("num")) {
                             pstmnt.setObject(++j, value);
-                        } else if (type.contains("money")) {
+                        } else if (normalizedType.contains("money")) {
                             PGobject pgObject = new PGobject();
                             pgObject.setType("money");
                             pgObject.setValue(value.toString());
                             pstmnt.setObject(++j, pgObject);
-                        } else if (value instanceof String && !type.contains("char")) {
-                            switch (type.toLowerCase()) {
+                        } else if (value instanceof String && !normalizedType.contains("char")) {
+                            switch (normalizedType) {
                                 case "smallint":
                                 case "int2":
                                     pstmnt.setShort(++j, Short.parseShort((String) value));
@@ -153,6 +149,7 @@ public class TableStore {
             throw e;
         }
     }
+
 
     private String getQueryString(TableMetadata tableMetadata) {
         StringBuilder stringBuilder = new StringBuilder();

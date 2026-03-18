@@ -1,12 +1,7 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
@@ -17,16 +12,23 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
+    private static final int MARKOV_MAX_ATTEMPTS_PER_ITEM = 200;
+
     private final List<ColumnMetadata> columnsMetadata;
     private final int recordCount;
     private final Map<String, List<ReferencingTreeNode>> referencingTrees;
-    private final Random random = new Random(System.currentTimeMillis());
+    private final Map<String, List<Object>> existingData;
+    private final Map<String, List<Object>> referencedData;
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
-                           Map<String, List<ReferencingTreeNode>> referencingTrees) {
+                           Map<String, List<ReferencingTreeNode>> referencingTrees,
+                           Map<String, List<Object>> allGeneratedData, Map<String, List<Object>> referencedData) {
         this.columnsMetadata = columnsMetadata;
         this.referencingTrees = referencingTrees;
         this.recordCount = recordCount;
+        this.existingData = allGeneratedData;
+        this.referencedData = referencedData;
     }
 
     @Override
@@ -52,15 +54,16 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     public List<List<Object>> generateUnique(int count, int maxAttemptsPerItem) {
 
         // Шаг 1: для каждой колонки строим точный набор уникальных значений размером ndistinct
-        List<List<Object>> colValueSets = new ArrayList<>();
+        Map<String, List<Object>> colValueSets = new LinkedHashMap<>();
         for (int i = 0; i < columnsMetadata.size(); i++) {
-            colValueSets.add(buildUniqueValueSet(i));
+            int finalI = i;
+            colValueSets.computeIfAbsent(columnsMetadata.get(i).getName(), k -> buildUniqueValueSet(finalI, colValueSets));
         }
 
         // Шаг 2: строим пул для каждой колонки — каждое значение встречается ровно count/ndistinct раз
         List<List<Object>> colPools = new ArrayList<>();
-        for (List<Object> valueSet : colValueSets) {
-            colPools.add(buildExactPool(valueSet, count));
+        for (var valueSet : colValueSets.keySet()) {
+            colPools.add(buildExactPool(colValueSets.get(valueSet), count));
         }
 
         // Шаг 3: зиппуем перемешанные пулы в строки
@@ -88,7 +91,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             while (results.size() < count && attempts < maxAttempts) {
                 attempts++;
                 List<Object> seq = new ArrayList<>(columnsMetadata.size());
-                for (List<Object> valueSet : colValueSets) {
+                for (List<Object> valueSet : colValueSets.values()) {
                     seq.add(valueSet.get(random.nextInt(valueSet.size())));
                 }
                 if (uniques.add(seq)) {
@@ -100,15 +103,15 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         // Шаг 5: если пространство исчерпано — расширяем value sets синтетическими значениями
         if (results.size() < count) {
             log.debug("Пространство комбинаций исчерпано. Расширяем синтетическими значениями...");
-            for (int i = 0; i < colValueSets.size(); i++) {
-                expandValueSet(colValueSets.get(i), count, i);
+            for (int i = 0; i < columnsMetadata.size(); i++) {
+                expandValueSet(colValueSets.get(columnsMetadata.get(i).getName()), count, i);
             }
             int attempts = 0;
             int maxAttempts = count * maxAttemptsPerItem;
             while (results.size() < count && attempts < maxAttempts) {
                 attempts++;
                 List<Object> seq = new ArrayList<>(columnsMetadata.size());
-                for (List<Object> valueSet : colValueSets) {
+                for (List<Object> valueSet : colValueSets.values()) {
                     seq.add(valueSet.get(random.nextInt(valueSet.size())));
                 }
                 if (uniques.add(seq)) {
@@ -130,16 +133,15 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     /**
      * Строит точный набор уникальных значений для колонки colIdx:
      * - все MCV-значения (гарантируем их присутствие в данных)
-     * - остаток до ndistinct генерируется через ValueGenerator
+     * - остаток до ndistinct генерируется через ValueGenerator или берется из FK
      */
-    private List<Object> buildUniqueValueSet(int colIdx) {
+    private List<Object> buildUniqueValueSet(int colIdx, Map<String, List<Object>> colValueSets) {
         ColumnMetadata colMeta = columnsMetadata.get(colIdx);
         Map<Object, Double> mcv = colMeta.getMcv();
         List<Object> histogram = colMeta.getHistogramm();
         double ndistinct = colMeta.getNdistinct();
-        ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(colMeta);
-
         int totalUnique = (int) (ndistinct < 0 ? -ndistinct * recordCount : ndistinct);
+
         totalUnique = Math.max(totalUnique, mcv.size());
 
         Set<Object> seen = new HashSet<>(mcv.keySet());
@@ -161,25 +163,103 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
         int toAdd = totalUnique - valueSet.size();
         if (toAdd > 0) {
-            List<Object> extra = new ArrayList<>(toAdd);
-            if (histogram != null && !histogram.isEmpty()) {
-                generator.generateValues(extra, toAdd, histogram.getFirst(), histogram.getLast());
-            } else {
-                generator.generateValues(extra, toAdd);
-            }
-            for (Object v : extra) {
-                if (seen.add(v)) {
-                    valueSet.add(v);
-                }
-            }
+            if (colMeta.isForeignKey()) {
+                boolean compositeHandled = false;
 
-            int safetyLimit = toAdd * 10;
-            int att = 0;
-            while (valueSet.size() < totalUnique && att < safetyLimit) {
-                att++;
-                Object v = generator.generateValue();
-                if (seen.add(v)) {
-                    valueSet.add(v);
+                if (colMeta.getCompositeForeignPeers() != null && !colMeta.getCompositeForeignPeers().isEmpty()) {
+                    List<String> peerColumns = colMeta.getCompositeForeignPeers().getFirst().stream().toList();
+                    if (!peerColumns.isEmpty()) {
+                        int selfPos = peerColumns.indexOf(colMeta.getName());
+                        if (selfPos >= 0 && selfPos < colMeta.getForeignKeyMetadata().size()) {
+                            List<List<Object>> parentColumnsData = new ArrayList<>();
+                            for (int i = 0; i < peerColumns.size() && i < colMeta.getForeignKeyMetadata().size(); i++) {
+                                var fkMeta = colMeta.getForeignKeyMetadata().get(i);
+                                String refKey = fkMeta.getReferencedSchema() + '.' + fkMeta.getReferencedTable() + '.' + fkMeta.getReferencedColumn();
+                                List<Object> parentData = existingData.get(refKey);
+                                if (parentData == null || parentData.isEmpty()) {
+                                    log.warn("Для composite FK колонки {} не найдены данные родительской колонки (ключ {}).", colMeta.getName(), refKey);
+                                    parentColumnsData.clear();
+                                    break;
+                                }
+                                parentColumnsData.add(parentData);
+                            }
+
+                            if (!parentColumnsData.isEmpty()) {
+                                int minSize = parentColumnsData.stream().mapToInt(List::size).min().orElse(0);
+                                if (minSize > 0) {
+                                    List<Integer> indices = new ArrayList<>(minSize);
+                                    for (int i = 0; i < minSize; i++) {
+                                        indices.add(i);
+                                    }
+                                    Collections.shuffle(indices, random);
+
+                                    List<Object> selfParentColumn = parentColumnsData.get(selfPos);
+                                    for (int idx : indices) {
+                                        if (valueSet.size() >= totalUnique) break;
+                                        Object val = selfParentColumn.get(idx);
+                                        if (seen.add(val)) {
+                                            valueSet.add(val);
+                                        }
+                                    }
+                                    compositeHandled = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!compositeHandled) {
+                    List<Set<Object>> validCandidatesPerFk = new ArrayList<>();
+                    for (var fk : colMeta.getForeignKeyMetadata()) {
+                        String refKey = fk.getReferencedSchema() + '.' + fk.getReferencedTable() + '.' + fk.getReferencedColumn();
+                        List<Object> parentData = existingData.get(refKey);
+
+                        if (parentData != null && !parentData.isEmpty()) {
+                            validCandidatesPerFk.add(new HashSet<>(parentData));
+                        } else {
+                            log.warn("Для FK колонки {} не найдены данные родительской таблицы (ключ {}).", colMeta.getName(), refKey);
+                        }
+                    }
+
+                    if (!validCandidatesPerFk.isEmpty()) {
+                        Set<Object> intersection = new HashSet<>(validCandidatesPerFk.getFirst());
+                        for (int k = 1; k < validCandidatesPerFk.size(); k++) {
+                            intersection.retainAll(validCandidatesPerFk.get(k));
+                        }
+
+                        List<Object> candidates = new ArrayList<>(intersection);
+                        Collections.shuffle(candidates, random);
+
+                        for (Object val : candidates) {
+                            if (valueSet.size() >= totalUnique) break;
+                            if (seen.add(val)) {
+                                valueSet.add(val);
+                            }
+                        }
+                    }
+                }
+            } else {
+                ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(colMeta);
+                List<Object> extra = new ArrayList<>(toAdd);
+                if (histogram != null && !histogram.isEmpty()) {
+                    generator.generateValues(extra, toAdd, histogram.getFirst(), histogram.getLast());
+                } else {
+                    generator.generateValues(extra, toAdd);
+                }
+                for (Object v : extra) {
+                    if (seen.add(v)) {
+                        valueSet.add(v);
+                    }
+                }
+
+                int safetyLimit = toAdd * 10;
+                int att = 0;
+                while (valueSet.size() < totalUnique && att < safetyLimit) {
+                    att++;
+                    Object v = generator.generateValue();
+                    if (seen.add(v)) {
+                        valueSet.add(v);
+                    }
                 }
             }
         }

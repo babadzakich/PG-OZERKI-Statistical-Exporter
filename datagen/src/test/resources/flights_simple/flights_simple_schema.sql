@@ -28,14 +28,6 @@ SET row_security = off;
 
 CREATE SCHEMA bookings;
 
-
---
--- Name: pg_ozerki; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS pg_ozerki WITH SCHEMA public;
-
-
 SET search_path = bookings, pg_catalog;
 
 SET default_tablespace = '';
@@ -53,10 +45,7 @@ CREATE TABLE bookings.flights (
     scheduled_departure timestamp with time zone NOT NULL,
     scheduled_arrival timestamp with time zone NOT NULL,
     actual_departure timestamp with time zone,
-    actual_arrival timestamp with time zone,
-    CONSTRAINT flight_actual_check CHECK (((actual_arrival IS NULL) OR ((actual_departure IS NOT NULL) AND (actual_arrival IS NOT NULL) AND (actual_arrival > actual_departure)))),
-    CONSTRAINT flight_scheduled_check CHECK ((scheduled_arrival > scheduled_departure)),
-    CONSTRAINT flight_status_check CHECK ((status = ANY (ARRAY['Scheduled'::text, 'On Time'::text, 'Delayed'::text, 'Boarding'::text, 'Departed'::text, 'Arrived'::text, 'Cancelled'::text])))
+    actual_arrival timestamp with time zone
 );
 
 

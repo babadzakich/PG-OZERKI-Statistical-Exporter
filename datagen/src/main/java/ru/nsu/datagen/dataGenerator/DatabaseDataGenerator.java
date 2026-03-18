@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,11 +48,17 @@ public class DatabaseDataGenerator {
         for (TableMetadata table : generationOrder) {
             log.info("Generate table: {}", table.getTableName());
             Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
-
             if (table.hasForeignKeyDependencies()) {
                 List<CompletableFuture<Void>> dependencyFutures = table.getRefTables().stream()
-                        .map(storeFutures::get)
-                        .toList();
+                        .map(refTable -> {
+                            log.info("Generate dependency table: {}", refTable);
+                            CompletableFuture<Void> future = storeFutures.get(refTable);
+                            if (future == null) {
+                                log.error("Missing future for dependency table: {}", refTable);
+                            }
+                            return storeFutures.get(refTable);
+                        })
+                        .filter(Objects::nonNull).toList();
                 storeFutures.put(table.getTableName(), CompletableFuture.allOf(
                         dependencyFutures.toArray(new CompletableFuture[0])
                 ).thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))

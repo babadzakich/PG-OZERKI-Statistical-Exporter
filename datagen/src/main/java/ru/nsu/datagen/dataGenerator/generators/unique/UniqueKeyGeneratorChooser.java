@@ -12,10 +12,11 @@ import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUni
 public class UniqueKeyGeneratorChooser {
     public static void generate(List<ColumnMetadata> uniqColumns, Map<String, List<Object>> columnData,
                                 GeneratorsTypes type, int recordCount,
-                                Map<String, List<ReferencingTreeNode>> referencingTrees) {
+                                Map<String, List<ReferencingTreeNode>> referencingTrees,
+                                Map<String, List<Object>> allGeneratedData, Map<String, List<Object>> referencedData) {
         UniqueKeyGenerator generator = switch (type) {
-            case MARKOV -> new MarkovGenerator(uniqColumns, recordCount, referencingTrees);
-            case SIMPLE -> new SimpleUniqueGenerator(uniqColumns, recordCount, referencingTrees);
+            case MARKOV -> new MarkovGenerator(uniqColumns, recordCount, referencingTrees, allGeneratedData, referencedData);
+            case SIMPLE -> new SimpleUniqueGenerator(uniqColumns, recordCount, referencingTrees, allGeneratedData, referencedData);
         };
         generator.generate(columnData);
     }
