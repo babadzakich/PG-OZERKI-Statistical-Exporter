@@ -8454,8 +8454,12 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpNamespace(fout, (const NamespaceInfo *) dobj);
 			break;
 		case DO_EXTENSION:
-			dumpExtension(fout, (const ExtensionInfo *) dobj);
-			break;
+			if (!no_exts) {
+				dumpExtension(fout, (const ExtensionInfo *) dobj);
+				break;
+			} else {
+				break;
+			}
 		case DO_TYPE:
 			dumpType(fout, (const TypeInfo *) dobj);
 			break;

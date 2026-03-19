@@ -18,7 +18,7 @@ static SimpleOidList schema_include_oids = {NULL, NULL};
 int	strict_names = 0;
 
 bool no_checks = false;
-
+bool no_exts = false;
 
 static void
 expand_schema_name_patterns(Archive *fout,
@@ -98,7 +98,8 @@ typedef enum {
 	EXPLAINFILE,
 	EXPLAINFILE_ANALZYE,
 	STATS_FILE,
-	NO_CHECKS
+	NO_CHECKS,
+	NO_EXTS
 } getopt_params;
 
 void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
@@ -235,6 +236,7 @@ int main(int argc, char** argv) {
 		{"explainfile-analyze", required_argument, NULL, EXPLAINFILE_ANALZYE},
 		{"stats-file", required_argument, NULL, STATS_FILE},
 		{"no-checks", no_argument, NULL, NO_CHECKS},
+		{"no-exts", no_argument, NULL, NO_EXTS},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -278,6 +280,9 @@ int main(int argc, char** argv) {
 				break;
 			case NO_CHECKS:
 				no_checks = true;
+				break;
+			case NO_EXTS:
+				no_exts = true;
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
