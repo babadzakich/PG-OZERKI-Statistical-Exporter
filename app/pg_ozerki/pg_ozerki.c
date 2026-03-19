@@ -17,6 +17,9 @@ static SimpleOidList schema_include_oids = {NULL, NULL};
 
 int	strict_names = 0;
 
+bool no_checks = false;
+
+
 static void
 expand_schema_name_patterns(Archive *fout,
 							SimpleStringList *patterns,
@@ -94,8 +97,8 @@ typedef enum {
 	QUERY,
 	EXPLAINFILE,
 	EXPLAINFILE_ANALZYE,
-	STATS_FILE
-
+	STATS_FILE,
+	NO_CHECKS
 } getopt_params;
 
 void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
@@ -121,7 +124,7 @@ void find_views_for_tables(PGconn* conn,QueryDependencies *deps, char* query_tex
     PQExpBuffer sql = createPQExpBuffer();
     PGresult *res;
 
-    appendPQExpBuffer(sql, "CREATE TEMPORARY VIEW pg_ozerki_tmp_deps AS %s", query_text);
+    appendPQExpBuffer(sql, "CREATE TEMPORARY VIEW pg_ozerki_tmp_deps AS SELECT 1 FROM (%s) AS sub", query_text);
     res = PQexec(conn, sql->data);
     
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -204,6 +207,7 @@ int main(int argc, char** argv) {
 
 	bool dump_schema = false;
 
+
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_DEBUG);
 
@@ -230,6 +234,7 @@ int main(int argc, char** argv) {
 		{"explainfile", required_argument, NULL, EXPLAINFILE},
 		{"explainfile-analyze", required_argument, NULL, EXPLAINFILE_ANALZYE},
 		{"stats-file", required_argument, NULL, STATS_FILE},
+		{"no-checks", no_argument, NULL, NO_CHECKS},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -270,6 +275,9 @@ int main(int argc, char** argv) {
 			case STATS_FILE:
 				dump_stat = true;
 				stats_file = pg_strdup(optarg);
+				break;
+			case NO_CHECKS:
+				no_checks = true;
 				break;
 			default:
 				/* getopt_long already emitted a complaint */

@@ -1792,6 +1792,10 @@ getTables(Archive *fout, int *numTables)
 		tblinfo[i].hasindex = (strcmp(PQgetvalue(res, i, i_relhasindex), "t") == 0);
 		tblinfo[i].hasrules = (strcmp(PQgetvalue(res, i, i_relhasrules), "t") == 0);
 		tblinfo[i].relpages = atoi(PQgetvalue(res, i, i_relpages));
+
+		if (no_checks){
+			tblinfo[i].ncheck = 0;
+		}
 		if (PQgetisnull(res, i, i_toastpages))
 			tblinfo[i].toastpages = 0;
 		else

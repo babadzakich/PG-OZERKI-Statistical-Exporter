@@ -1672,7 +1672,7 @@ void add_schema_to_deps(QueryDependencies *deps, const char *schema);
 extern SimpleStringList table_include_patterns;
 extern SimpleOidList table_include_oids;
 extern int	strict_names;
-
+extern bool no_checks;
 QueryDependencies* InitQueryDependencies();
 void export_stats(PGconn* conn, const char* export_filename);
 
