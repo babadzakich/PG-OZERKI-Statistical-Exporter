@@ -126,8 +126,8 @@ ALTER TABLE ONLY bookings.segments
 -- Name: segments segments_ticket_no_fkey; Type: FK CONSTRAINT; Schema: bookings; Owner: -
 --
 
---ALTER TABLE ONLY bookings.segments
---    ADD CONSTRAINT segments_ticket_no_fkey FOREIGN KEY (ticket_no) REFERENCES tickets(ticket_no);
+ALTER TABLE ONLY bookings.segments
+    ADD CONSTRAINT segments_ticket_no_fkey FOREIGN KEY (ticket_no) REFERENCES tickets(ticket_no);
 
 
 --

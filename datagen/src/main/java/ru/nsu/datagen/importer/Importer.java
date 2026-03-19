@@ -70,11 +70,18 @@ public class Importer {
                     try {
                         statement.execute(query.toString().trim());
                     } catch (SQLException e) {
-                        log.error("Error during SQL statement execution. {} {}", e.getMessage(), query.toString().trim());
+
+                        if (e.getSQLState() != null && e.getSQLState().equals("42P01")) {
+                            log.warn("No such relation: {}", e.getMessage());
+                        }
+
+                        else {
+                            log.error("Error during SQL statement execution. {} {} {}", e.getMessage(),
+                                    query.toString().trim(), e.getSQLState());
 
 
-                        throw new ImporterException("Cannot execute SQL script for schema import.");
-
+                            throw new ImporterException("Cannot execute SQL script for schema import.");
+                        }
                     }
                     // Empty the Query string to add new query from the file
                     query = new StringBuilder();
