@@ -7,7 +7,7 @@
 #include "getopt_long.h" 
 #include "catalog/pg_class.h"
 
-
+#define BATCH_SIZE 1024
 
 SimpleStringList table_include_patterns = {NULL, NULL};
 SimpleOidList table_include_oids = {NULL, NULL};
@@ -99,7 +99,8 @@ typedef enum {
 	EXPLAINFILE_ANALZYE,
 	STATS_FILE,
 	NO_CHECKS,
-	NO_EXTS
+	NO_EXTS,
+	QUERY_FILE
 } getopt_params;
 
 void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
@@ -125,7 +126,19 @@ void find_views_for_tables(PGconn* conn,QueryDependencies *deps, char* query_tex
     PQExpBuffer sql = createPQExpBuffer();
     PGresult *res;
 
-    appendPQExpBuffer(sql, "CREATE TEMPORARY VIEW pg_ozerki_tmp_deps AS SELECT 1 FROM (%s) AS sub", query_text);
+	char *clean_query = pg_strdup(query_text);
+    size_t len = strlen(clean_query);
+
+    while (len > 0 && (clean_query[len - 1] == ';' || 
+                       clean_query[len - 1] == ' ' || 
+                       clean_query[len - 1] == '\n' || 
+                       clean_query[len - 1] == '\r')) 
+    {
+        clean_query[len - 1] = '\0';
+        len--;
+    }
+
+    appendPQExpBuffer(sql, "CREATE TEMPORARY VIEW pg_ozerki_tmp_deps AS SELECT 1 FROM (%s) AS sub", clean_query);
     res = PQexec(conn, sql->data);
     
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -172,6 +185,22 @@ void find_views_for_tables(PGconn* conn,QueryDependencies *deps, char* query_tex
 	}
 }
 
+void get_query_from_file(char* filename, PQExpBuffer query) {
+	FILE* fp = fopen(filename, "r");
+	char buf[1024] = {0};
+	if (fp == NULL) {
+		pg_log_error("Can't read query from file %s", filename);
+		exit(1);
+	}
+
+	while(fread(buf, sizeof(char), BATCH_SIZE, fp)) {
+		appendPQExpBufferStr(query, buf);
+		memset(buf, 0, BATCH_SIZE);
+	}
+
+	fclose(fp);
+}
+
 int main(int argc, char** argv) {
     int			c;
 	const char *filename = NULL;
@@ -193,7 +222,7 @@ int main(int argc, char** argv) {
 	int			optindex;
 	DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
 	bool by_query = false;
-	char* dump_query;
+	char* dump_query = NULL;
 	RestoreOptions *ropt;
 	Archive    *fout;	
     static DumpOptions dopt;
@@ -208,6 +237,11 @@ int main(int argc, char** argv) {
 
 	bool dump_schema = false;
 
+
+	char* query_filename = NULL;
+	bool query_file = false;
+
+	PQExpBuffer query_file_text;
 
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_DEBUG);
@@ -237,7 +271,7 @@ int main(int argc, char** argv) {
 		{"stats-file", required_argument, NULL, STATS_FILE},
 		{"no-checks", no_argument, NULL, NO_CHECKS},
 		{"no-exts", no_argument, NULL, NO_EXTS},
-
+		{"query-file", required_argument, NULL, QUERY_FILE},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -284,6 +318,10 @@ int main(int argc, char** argv) {
 			case NO_EXTS:
 				no_exts = true;
 				break;
+			case QUERY_FILE:
+				query_file = true;
+				query_filename = pg_strdup(optarg);
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -293,7 +331,10 @@ int main(int argc, char** argv) {
 
 	
 
-    
+    if (by_query && query_file) {
+		pg_log_error_hint("You can't use --query and --query-file flags both.");
+		exit(1);
+	}
 	fout = CreateArchive(filename, archiveFormat, compression_spec,
 						 dosync, archiveMode, setupDumpWorker, sync_method);
 
@@ -316,8 +357,14 @@ int main(int argc, char** argv) {
 	pg_log_debug("Connected to database");
 	deps = InitQueryDependencies();
 	planner_settings = get_planner_settings(fout);
-	if (by_query) {
+	if (by_query || query_file) {
 		deps->been_analyzed = true;
+		if (query_file){
+			query_file_text = createPQExpBuffer();
+			get_query_from_file(query_filename, query_file_text);
+			dump_query = pg_strdup(query_file_text->data);
+
+		}
 		extract_tables_from_query_text(GetConnection(fout), dump_query, deps);
 
 		find_views_for_tables(GetConnection(fout), deps, dump_query);
@@ -349,6 +396,10 @@ int main(int argc, char** argv) {
 		}
 
 	}
+
+	
+	destroyPQExpBuffer(query_file_text);
+	
 	if (dump_stat) {
 		export_stats(GetConnection(fout), stats_file);
 		pg_log_debug("Stats exported");

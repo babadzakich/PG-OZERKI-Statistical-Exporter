@@ -5780,8 +5780,9 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 
 	if (tbinfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
 	{
-		if (tbinfo->relkind == RELKIND_SEQUENCE)
-			dumpSequence(fout, tbinfo);
+		if (tbinfo->relkind == RELKIND_SEQUENCE) {
+			//dumpSequence(fout, tbinfo);
+		}
 		else
 			dumpTableSchema(fout, tbinfo);
 	}
@@ -8536,7 +8537,7 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpTransform(fout, (const TransformInfo *) dobj);
 			break;
 		case DO_SEQUENCE_SET:
-			dumpSequenceData(fout, (const TableDataInfo *) dobj);
+			//dumpSequenceData(fout, (const TableDataInfo *) dobj);
 			break;
 		case DO_DUMMY_TYPE:
 			/* table rowtypes and array types are never dumped separately */
