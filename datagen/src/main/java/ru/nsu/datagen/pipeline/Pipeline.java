@@ -1,7 +1,7 @@
 package ru.nsu.datagen.pipeline;
 
 import java.sql.SQLException;
-import java.util.List;
+import java.util.Map;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -29,7 +29,7 @@ public class Pipeline {
         hikariConfig.setMaxLifetime(1800000);
 
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
-            List<TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
+            Map<String, TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
             DatabaseDataGenerator.generateData(rawImportedData, dataSource);
         } catch (Exception e) {
             log.error("Pipeline failed: ", e);

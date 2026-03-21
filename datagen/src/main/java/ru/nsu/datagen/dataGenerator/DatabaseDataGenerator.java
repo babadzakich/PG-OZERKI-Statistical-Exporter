@@ -27,10 +27,10 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    public static void generateData(List<TableMetadata> tableMetadataList, HikariDataSource dataSource) {
+    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource) {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph();
-        tableMetadataList.forEach(dependencyGraph::addTable);
+        tableMetadataList.forEach((key,value) -> dependencyGraph.addTable(value));
         // Get generation order
         dependencyGraph.buildDependencies();
         List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
@@ -39,11 +39,7 @@ public class DatabaseDataGenerator {
         // generate
         Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
         Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
-        Map<String, TableMetadata> allTablesMap = new HashMap<>();
-        for (TableMetadata t : tableMetadataList) {
-            allTablesMap.put(t.getTableName(), t);
-        }
-        DataGenerator dataGenerator = new DataGenerator(allTablesMap);
+        DataGenerator dataGenerator = new DataGenerator(tableMetadataList);
 
         for (TableMetadata table : generationOrder) {
             log.info("Generate table: {}", table.getTableName());

@@ -6,11 +6,11 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 
 import java.io.*;
 import java.sql.*;
-import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class Importer {
-    static public List<TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, Connection conn) {
+    static public Map<String, TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, Connection conn) {
         try {
             Statement statement = conn.createStatement();
             importSchemas(schemasScriptPath, statement);
@@ -24,7 +24,7 @@ public class Importer {
         }
     }
 
-    static private List<TableMetadata> importStatistic(String path) {
+    static private Map<String, TableMetadata> importStatistic(String path) {
         if (!new File(path).exists()) {
             throw new ImporterException("There is no import statistic file " + path );
         }
