@@ -27,6 +27,9 @@ public class Arguments {
     @Parameter(names = "-config", validateWith = FilePath.class)
     public String configPath;
 
+    @Parameter(names = "-explainanalyze", validateWith = FilePath.class)
+    public String explainAnalyzePath;
+
     @Parameter(names = "-help", help = true)
     public boolean help;
 }

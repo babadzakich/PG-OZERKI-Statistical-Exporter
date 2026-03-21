@@ -37,7 +37,7 @@ public class Main {
 
          Pipeline.startPipeline(
                  args.host, args.port, args.dbname, args.user, args.password,
-                 args.schemaPath, args.statPath
+                 args.schemaPath, args.statPath, args.explainAnalyzePath
          );
     }
 
@@ -56,6 +56,7 @@ public class Main {
             if (args.password == null) args.password = configArgs.password;
             if (args.schemaPath == null) args.schemaPath = configArgs.schemaPath;
             if (args.statPath == null) args.statPath = configArgs.statPath;
+            if (args.explainAnalyzePath == null) args.explainAnalyzePath = configArgs.explainAnalyzePath;
         }
     }
 

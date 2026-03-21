@@ -25,6 +25,7 @@ public class ColumnMetadata {
     private final List<Set<String>> compositeUniquePeers;
     private final List<Set<String>> compositeForeignPeers;
     private final Map<String, Map<String, List<String>>> referencingColumns;
+    private final AnalyzePlanInfo analyzePlan;
 
 
     @Builder
@@ -33,7 +34,7 @@ public class ColumnMetadata {
                           int recordCount, Integer maxLength, List<ForeignKeyMetadata> foreignKeyMetadata,
                           Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
                           List<Object> histogramm, List<Set<String>> compositeUniquePeers, List<Set<String>> compositeForeignPeers,
-                          Map<String, Map<String, List<String>>> referencingColumns
+                          Map<String, Map<String, List<String>>> referencingColumns, Optional<AnalyzePlanInfo> analyzePlan
     ) {
         this.name = name;
         this.isPrimaryKey = isPrimaryKey;
@@ -63,6 +64,7 @@ public class ColumnMetadata {
         this.compositeUniquePeers = compositeUniquePeers;
         this.compositeForeignPeers = compositeForeignPeers;
         this.referencingColumns = referencingColumns;
+        this.analyzePlan = analyzePlan.orElse(null);
     }
 
     @Override

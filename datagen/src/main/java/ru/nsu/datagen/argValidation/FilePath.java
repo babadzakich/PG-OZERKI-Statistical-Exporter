@@ -7,7 +7,7 @@ import java.io.File;
 
 public class FilePath implements IParameterValidator {
     public void validate(String name, String value) throws ParameterException {
-        if (new File(value).exists() == false) {
+        if (!new File(value).exists()) {
             throw new ParameterException("Parameter " + name + " should be correct filepath: " + value );
         }
     }

@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
+import ru.nsu.datagen.dataGenerator.model.AnalyzePlanInfo;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
 
@@ -27,7 +28,8 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    public static void generateData(List<TableMetadata> tableMetadataList, HikariDataSource dataSource) {
+    public static void generateData(List<TableMetadata> tableMetadataList, HikariDataSource dataSource,
+                                    Map<String, List<AnalyzePlanInfo>> analyzeInfo) {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph();
         tableMetadataList.forEach(dependencyGraph::addTable);

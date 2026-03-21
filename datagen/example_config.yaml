@@ -5,3 +5,4 @@ password: <Password>
 dbname: <DBName>
 schemaPath: <Path_to_schema.sql>
 statPath: <Path_to_statistic.csv>
+analyzeQueryPath: <Path_to_analyze_query.sql>
