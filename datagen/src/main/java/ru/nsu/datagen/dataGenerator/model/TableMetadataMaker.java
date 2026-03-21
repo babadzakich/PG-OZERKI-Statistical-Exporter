@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class TableMetadataMaker {
-    public static List<TableMetadata> processTableMetadata(Reader reader) {
+    public static Map<String, TableMetadata> processTableMetadata(Reader reader) {
         // Читаем CSV и превращаем его в список объектов ColumnMetadataCSV
         List<ColumnMetadataCSV> csvData = new CsvToBeanBuilder<ColumnMetadataCSV>(reader)
                 .withType(ColumnMetadataCSV.class)
@@ -27,7 +27,7 @@ public class TableMetadataMaker {
         Map<String, List<Set<String>>> compositeUniquePeersMap = new HashMap<>(), compositeFkPeersMap = new HashMap<>();
         computeCompositePeers(csvData, compositeUniquePeersMap, compositeFkPeersMap);
 
-        return csvData.stream()
+        var result =  csvData.stream()
                 .collect(Collectors.groupingBy(ColumnMetadataCSV::getTableName)) // Группируем по имени таблицы наши колонки из CSV
                 .entrySet().stream() // Тут мы получаем поток, где каждый энтри - это имя таблицы и список цсв колонок, относящихся к этой таблице
                 .map(entry -> { // Тут мы мапаем каждую группу колонок в объект TableMetadata
@@ -48,13 +48,46 @@ public class TableMetadataMaker {
 
                     int recordCount = tableCsvColumns.isEmpty() ? 0 : tableCsvColumns.getFirst().getRecordCount();
                     String namespace = tableCsvColumns.isEmpty() ? "public" : tableCsvColumns.getFirst().getSchemaName();
-                    Set<String> refTables = columnMetadataMap.keySet().stream()
-                            .filter(colName -> columnMetadataMap.get(colName).isForeignKey())
-                            .map(colName -> columnMetadataMap.get(colName).getForeignKeyMetadata().getFirst().getReferencedTable())
-                            .collect(Collectors.toSet());
-                    return new TableMetadata(tableName, columnMetadataMap, recordCount, namespace, refTables);
+                    return new TableMetadata(tableName, columnMetadataMap, recordCount, namespace);
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toMap( tableMetadata -> tableMetadata.getNamespace() + "." + tableMetadata.getTableName(), table -> table)); // Тут мы превращаем поток TableMetadata в мапу, где ключ - имя таблицы, а значение - объект TableMetadata;
+        result.forEach((tableName, tableMetadata) -> {
+            Map<String, ColumnMetadata> columns = tableMetadata.getColumns();
+            columns.forEach((columnName, columnMetadata) -> {
+                if (columnMetadata.isForeignKey()) {
+                    columnMetadata.getForeignKeyMetadata().removeIf(ref -> {
+                        log.debug("Processing foreign key column {}.{}.{}", tableName, columnName, ref);
+                        String refTableKey = ref.getReferencedSchema() + "." + ref.getReferencedTable();
+                        log.debug("Ref table key {} {}", tableName, refTableKey);
+                        if (result.containsKey(refTableKey)) {
+                            log.debug("Table already exists in table {} {}", tableName, refTableKey);
+                            var refTable = result.get(refTableKey);
+                            if (refTable.getNamespace().equals(ref.getReferencedSchema())
+                                    && refTable.getColumns().get(ref.getReferencedColumn()) != null) {
+                                return false;
+                            }
+                        }
+                        log.warn("Removing foreign key reference from {}.{} to {}.{}.{} because referenced table or column does not exist",
+                                tableName, columnName, ref.getReferencedSchema(), ref.getReferencedTable(), ref.getReferencedColumn());
+                        return true;
+                    });
+                    if (columnMetadata.getForeignKeyMetadata().isEmpty()) {
+                        log.warn("Column {}.{}.{} is marked as foreign key but has no valid references. Marking as non-foreign key.",
+                                tableName, columnName, columnMetadata.getName());
+                        columnMetadata.setForeignKey(false);
+                    }
+                }
+            });
+            Set<String> actualRefTables = columns.values().stream()
+                    .filter(ColumnMetadata::isForeignKey)
+                    .map(ColumnMetadata::getForeignKeyMetadata)
+                    .filter(Objects::nonNull)
+                    .flatMap(Collection::stream)
+                    .map(ForeignKeyMetadata::getReferencedTable)
+                    .collect(Collectors.toSet());
+            tableMetadata.setRefTables(actualRefTables);
+        });
+        return result;
     }
 
     private static void computeCompositePeers(List<ColumnMetadataCSV> csvData, Map<String, List<Set<String>>> compositeUniquePeersMap, Map<String, List<Set<String>>> compositeFkPeersMap) {

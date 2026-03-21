@@ -4,6 +4,7 @@ import java.util.*;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 @Getter
 public class ColumnMetadata {
@@ -11,7 +12,7 @@ public class ColumnMetadata {
     private final String dataType;
     private final String sourceDataType;
     private final boolean isPrimaryKey;
-    private final boolean isForeignKey;
+    @Setter private boolean isForeignKey;
     private final boolean isUnique;
     private final double nullPercentage;
     private final int recordCount;

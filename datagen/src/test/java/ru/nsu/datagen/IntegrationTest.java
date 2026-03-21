@@ -17,7 +17,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -100,7 +100,7 @@ public class IntegrationTest {
 
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
-            List<TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
+            Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
             assertNotNull(importedData, "Импортированные данные не должны быть null");
             assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
