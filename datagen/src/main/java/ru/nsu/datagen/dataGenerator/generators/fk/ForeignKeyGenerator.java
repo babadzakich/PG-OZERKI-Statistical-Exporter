@@ -6,6 +6,5 @@ import java.util.Map;
 
 public interface ForeignKeyGenerator {
     List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
-                                     Map<String, List<Object>> referencedData,
                                      Map<String, List<Object>> allGeneratedData);
 }

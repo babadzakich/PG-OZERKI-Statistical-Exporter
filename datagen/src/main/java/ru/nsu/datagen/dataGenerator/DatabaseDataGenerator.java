@@ -8,10 +8,7 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
 
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +35,15 @@ public class DatabaseDataGenerator {
         TableStore tableStore = new TableStore(dataSource);
         // generate
         Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
+        Map<String, Integer> referenceCounters = new ConcurrentHashMap<>();
+        tableMetadataList.forEach((tableName, table) ->
+                table.getColumns().forEach((colName, col) -> {
+                    if (col.getReferencingColumns() != null) {
+                        String key = table.getNamespace() + '.' + table.getTableName() + "." + colName;
+                        referenceCounters.put(key, col.getReferencingColumns().size());
+                    }
+                })
+        );
         Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
         DataGenerator dataGenerator = new DataGenerator(tableMetadataList);
 
@@ -80,6 +86,23 @@ public class DatabaseDataGenerator {
                     generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
                 }
             }
+            table.getColumns().forEach((colName, col) -> {
+                if (col.getForeignKeyMetadata() != null) { // колонка ссылается на родителя
+                    for (var foreignKey : col.getForeignKeyMetadata()) {
+                        String parentKey = foreignKey.getReferencedSchema() + "." + foreignKey.getReferencedTable() + "." + foreignKey.getReferencedColumn();// "schema.table.column"
+                        referenceCounters.computeIfPresent(parentKey, (k, count) -> {
+                            int newCount = count - 1;
+                            if (newCount <= 0) {
+                                generatedData.remove(k);
+                                log.info("Evicted parent data for key: {}", k);
+                            }
+                            return newCount;
+                        });
+                    }
+                }
+            });
+
+
         }
         CompletableFuture.allOf(storeFutures.values().toArray(new CompletableFuture[0])).join();
         log.info("Data generation and storage completed.");
