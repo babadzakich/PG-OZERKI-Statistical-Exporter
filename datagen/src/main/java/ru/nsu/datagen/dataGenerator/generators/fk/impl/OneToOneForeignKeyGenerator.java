@@ -13,7 +13,6 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, Complex
 
     @Override
     public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
-                                            Map<String, List<Object>> referencedData,
                                             Map<String, List<Object>> allGeneratedData) {
 
         log.info("Generating database 1-1 foreign keys for column {}", columnMetadata.getName());
@@ -46,7 +45,6 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, Complex
 
     @Override
     public List<List<Object>> generateForeignKeys(List<ColumnMetadata> columnMetadata,
-                                                  Map<String, List<Object>> referencedData,
                                                   Map<String, List<Object>> allGeneratedData) {
         log.info("Generating database 1-1 composite foreign keys");
         if (columnMetadata.isEmpty()) return Collections.emptyList();

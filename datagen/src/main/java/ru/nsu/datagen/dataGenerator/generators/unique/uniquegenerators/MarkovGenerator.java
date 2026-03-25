@@ -18,17 +18,15 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private final int recordCount;
     private final Map<String, List<ReferencingTreeNode>> referencingTrees;
     private final Map<String, List<Object>> existingData;
-    private final Map<String, List<Object>> referencedData;
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
                            Map<String, List<ReferencingTreeNode>> referencingTrees,
-                           Map<String, List<Object>> allGeneratedData, Map<String, List<Object>> referencedData) {
+                           Map<String, List<Object>> allGeneratedData) {
         this.columnsMetadata = columnsMetadata;
         this.referencingTrees = referencingTrees;
         this.recordCount = recordCount;
         this.existingData = allGeneratedData;
-        this.referencedData = referencedData;
     }
 
     @Override

@@ -33,7 +33,6 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testImplementation 'org.assertj:assertj-core:3.24.2'
     testImplementation 'org.yaml:snakeyaml:2.0'
-   //testImplementation 'org.yaml:snakeyaml:2.0'
     testImplementation "org.testcontainers:testcontainers:2.0.2"
     testImplementation "org.testcontainers:testcontainers-junit-jupiter:2.0.2"
     testImplementation "org.testcontainers:postgresql:1.20.4"
@@ -41,7 +40,7 @@ dependencies {
 
 test {
     useJUnitPlatform()
-
+    maxHeapSize = "6g"
     testLogging {
         events "passed", "skipped", "failed", "standardOut", "standardError"
         showStandardStreams = true

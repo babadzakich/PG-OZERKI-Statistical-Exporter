@@ -13,10 +13,10 @@ public class UniqueKeyGeneratorChooser {
     public static void generate(List<ColumnMetadata> uniqColumns, Map<String, List<Object>> columnData,
                                 GeneratorsTypes type, int recordCount,
                                 Map<String, List<ReferencingTreeNode>> referencingTrees,
-                                Map<String, List<Object>> allGeneratedData, Map<String, List<Object>> referencedData) {
+                                Map<String, List<Object>> allGeneratedData) {
         UniqueKeyGenerator generator = switch (type) {
-            case MARKOV -> new MarkovGenerator(uniqColumns, recordCount, referencingTrees, allGeneratedData, referencedData);
-            case SIMPLE -> new SimpleUniqueGenerator(uniqColumns, recordCount, referencingTrees, allGeneratedData, referencedData);
+            case MARKOV -> new MarkovGenerator(uniqColumns, recordCount, referencingTrees, allGeneratedData);
+            case SIMPLE -> new SimpleUniqueGenerator(uniqColumns, recordCount, referencingTrees, allGeneratedData);
         };
         generator.generate(columnData);
     }

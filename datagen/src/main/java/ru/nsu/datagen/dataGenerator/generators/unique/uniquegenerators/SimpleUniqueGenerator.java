@@ -17,22 +17,20 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     private final int recordCount;
     private final List<ReferencingTreeNode> referencingTrees;
     private final Map<String, List<Object>> allGeneratedData;
-    private final Map<String, List<Object>> referencedData;
 
     public SimpleUniqueGenerator(List<ColumnMetadata> uniqColumns, int recordCount,
                                  Map<String, List<ReferencingTreeNode>> referencingTrees,
-                                 Map<String, List<Object>> allGeneratedData, Map<String, List<Object>> referencedData) {
+                                 Map<String, List<Object>> allGeneratedData) {
         this.column = uniqColumns.getFirst();
         this.referencingTrees = referencingTrees == null ? null : referencingTrees.get(this.column.getName());
         this.recordCount = recordCount;
         this.allGeneratedData = allGeneratedData;
-        this.referencedData = referencedData;
     }
 
 	@Override
 	public List<Object> generate() {
         if (column.isForeignKey()) {
-            return ForeignKeyGeneratorFactory.getInstance().getGenerator(column).generateForeignKeys(column, allGeneratedData, referencedData);
+            return ForeignKeyGeneratorFactory.getInstance().getGenerator(column).generateForeignKeys(column, allGeneratedData);
         }
 		Map<String, List<Object>> columnData = new HashMap<>();
         generate(columnData);

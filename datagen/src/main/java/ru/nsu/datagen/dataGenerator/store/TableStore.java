@@ -15,7 +15,7 @@ import org.postgresql.util.PGobject;
 @Slf4j
 public class TableStore {
     private final HikariDataSource dataSource;
-    private final int batchSize = 1000;
+    private final int batchSize = 10000;
 
     public TableStore(HikariDataSource dataSource) {
         this.dataSource = dataSource;
@@ -30,6 +30,7 @@ public class TableStore {
             try (PreparedStatement pstmnt = conn.prepareStatement(queryString)) {
                 int batchCount = 0;
                 // Каждая строка
+                conn.setAutoCommit(false);
                 for (int i = 0; i < tableMetadata.getRecordCount(); i++) {
                     // Каждая колонка
                     int j = 0;
@@ -135,6 +136,7 @@ public class TableStore {
                     pstmnt.addBatch();
                     batchCount++;
                     if (batchSize == batchCount) {
+                        log.debug("Executing batch for table {}", tableMetadata.getNamespace() + "." + tableMetadata.getTableName());
                         pstmnt.executeBatch();
                         batchCount = 0;
                     }
@@ -143,6 +145,7 @@ public class TableStore {
                     log.debug("Executing final batch of size {} for table {}", batchCount, tableMetadata.getTableName());
                     pstmnt.executeBatch();
                 }
+                conn.commit();
             }
         } catch (SQLException e) {
             log.error("Failed to store data in table {}: {}", tableMetadata.getTableName(), e.getMessage());

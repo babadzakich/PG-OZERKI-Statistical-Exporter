@@ -98,7 +98,7 @@ public class ColumnMetadataCSV {
         Map<String, Map<String, List<String>>> referencingColumns = null;
         if (incomingReferences != null && !incomingReferences.isEmpty() && !"NULL".equals(incomingReferences)) {
             referencingColumns = new HashMap<>();
-            for (String ref : incomingReferences.split(",")) {
+            for (String ref : incomingReferences.split(", ")) {
                 String[] refParts = ref.split("\\.");
                 referencingColumns.computeIfAbsent(refParts[0], k -> new HashMap<>())
                         .computeIfAbsent(refParts[1], k -> new ArrayList<>()).add(refParts[2]);

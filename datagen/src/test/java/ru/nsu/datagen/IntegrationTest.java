@@ -49,14 +49,20 @@ public class IntegrationTest {
 
     @BeforeAll
     static void beforeAll() throws SQLException {
-        HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
-        hikariConfig.setUsername(postgres.getUsername());
-        hikariConfig.setPassword(postgres.getPassword());
-        dataSource = new HikariDataSource(hikariConfig);
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute("CREATE DATABASE \"testdb\"");
+        try {
+
+            HikariConfig hikariConfig = new HikariConfig();
+            hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
+            hikariConfig.setUsername(postgres.getUsername());
+            hikariConfig.setPassword(postgres.getPassword());
+            dataSource = new HikariDataSource(hikariConfig);
+            try (Connection conn = dataSource.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("CREATE DATABASE \"testdb\"");
+            }
+        } catch (SQLException e) {
+            log.error("Failed to set up database connection", e);
+            throw e;
         }
     }
 
@@ -92,7 +98,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("timetable/timetable.yaml")
+    @ConfigFile("big/big.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
@@ -156,7 +162,7 @@ public class IntegrationTest {
      */
     private String executeExplainAnalyze(Connection conn, String sql) throws SQLException {
         String explainSql = "EXPLAIN (VERBOSE, FORMAT JSON) " + sql;
-        try (Statement stmt = conn.createStatement();
+        try (Statement stmt = conn.createStatement()
              ) {
             stmt.execute("ANALYZE");
             ResultSet rs = stmt.executeQuery(explainSql);
