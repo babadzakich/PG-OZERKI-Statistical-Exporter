@@ -30,7 +30,8 @@ public class TreeEditDistance {
             Map.entry("Hash", 3.5f),
             Map.entry("Merge", 3.5f),
             Map.entry("Aggregate", 1.0f),
-            Map.entry("Sort", 0.5f)
+            Map.entry("Sort", 0.5f),
+            Map.entry("Gather", 2.5f)
 
     );
 

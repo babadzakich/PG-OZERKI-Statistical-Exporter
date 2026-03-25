@@ -272,4 +272,24 @@ public class IntegrationTest {
     public void testProductFullPipeline() throws Exception {
         testFullPipelineIntegration();
     }
+
+
+    @Test
+    @ConfigFile("timetable/timetable.yaml")
+    public void testTimetableFullPipeline() throws Exception {
+        testFullPipelineIntegration();
+    }
+
+    @Test
+    @ConfigFile("big/big.yaml")
+    public void testBigFullPipeline() throws Exception {
+        testFullPipelineIntegration();
+    }
+
+
+    @Test
+    @ConfigFile("all/all.yaml")
+    public void testAllFullPipeline() throws Exception {
+        testFullPipelineIntegration();
+    }
 }
