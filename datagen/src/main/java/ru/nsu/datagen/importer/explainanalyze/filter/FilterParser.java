@@ -64,11 +64,11 @@ public class FilterParser {
     }
 
     private static FilterClause buildNullClause(String expr, FilterOp filterOp) {
-        FilterClause clause = FilterClause.builder()
-                .column()
+        String column = expr.replaceAll("(?i)(IS\\s+NOT\\s+NULL|IS\\s+NULL)", "").trim();
+        return FilterClause.builder()
+                .column(cleanColumn(column))
                 .op(filterOp)
                 .build();
-        return clause;
     }
 
     private static FilterClause parseSimpleClause(String expr) {
@@ -113,6 +113,20 @@ public class FilterParser {
                 .op(FilterOp.ANY)
                 .value(values)
                 .isLiteral(true)
+                .build();
+    }
+
+    private static FilterExpression splitByOp(String expr, int opIdx, String opStr, FilterExpression.LogicOp logicOp) {
+        String left = expr.substring(0, opIdx).trim();
+        String right = expr.substring(opIdx + opStr.length() + 2).trim(); // +2 для пробелов вокруг оператора
+
+        FilterExpression leftExpr = parseExpression(left);
+        FilterExpression rightExpr = parseExpression(right);
+
+        return FilterExpression.builder()
+                .clauses(List.of())
+                .children(List.of(leftExpr, rightExpr))
+                .logicOp(logicOp)
                 .build();
     }
 

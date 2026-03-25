@@ -291,7 +291,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         List<Object> histogram = columnsMetadata.get(colIdx).getHistogramm();
         ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(columnsMetadata.get(colIdx));
 
-        int targetSize = (int) Math.ceil(Math.sqrt((double) count)) * 2;
+        int targetSize = (int) Math.ceil(Math.sqrt(count)) * 2;
 
         if (!histogram.isEmpty() && histogram.getFirst() instanceof Number && histogram.getLast() instanceof Number) {
             long rangeSize = ((Number) histogram.getLast()).longValue() - ((Number) histogram.getFirst()).longValue();
