@@ -1,0 +1,25 @@
+schema: big/big_schema.sql
+statistic: big/big_stats.csv
+query_path: big/big_query.sql
+source_plan_path: big/big_explain.json
+tables:
+  - name: airports_data
+    schema: bookings
+    expectedCount: 5501
+    pk:
+      - airport_code
+  - name: flights
+    schema: bookings
+    expectedCount: 135571
+    uniques:
+      - [route_no, scheduled_departure]
+    pk:
+      - flight_id
+  - name: routes
+    schema: bookings
+    expectedCount: 7242
+  - name: segments
+    schema: bookings
+    expectedCount: 27580256
+    uniques:
+      - [ticket_no, flight_id]

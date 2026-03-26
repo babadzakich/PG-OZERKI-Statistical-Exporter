@@ -1,0 +1,45 @@
+schema: all/all_schema.sql
+statistic: all/all_stats.csv
+query_path: all/all_query.sql
+source_plan_path: all/all_explain.json
+tables:
+  - name: airports_data
+    schema: bookings
+    expectedCount: 5501
+    pk:
+      - airport_code
+  - name: airplanes_data
+    schema: bookings
+    expectedCount: 10
+    pk:
+      - airplane_code
+  - name: bookings
+    schema: bookings
+    expectedCount: 9706657
+    pk:
+      - book_ref
+  - name: seats
+    schema: bookings
+    expectedCount: 1741
+    uniques:
+      - [airplane_code, seat_no]
+  - name: flights
+    schema: bookings
+    expectedCount: 135571
+    uniques:
+      - [route_no, scheduled_departure]
+    pk:
+      - flight_id
+  - name: routes
+    schema: bookings
+    expectedCount: 7242
+  - name: segments
+    schema: bookings
+    expectedCount: 27580256
+    uniques:
+      - [ticket_no, flight_id]
+  - name: tickets
+    schema: bookings
+    expectedCount: 27580256
+    uniques:
+      - [book_ref, passenger_id, outbound]
