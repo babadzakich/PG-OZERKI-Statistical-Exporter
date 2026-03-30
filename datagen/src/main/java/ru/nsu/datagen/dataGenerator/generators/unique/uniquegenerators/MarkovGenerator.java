@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
@@ -66,66 +67,62 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
         // Шаг 3: зиппуем перемешанные пулы в строки
         Set<List<Object>> uniques = new HashSet<>();
-        List<List<Object>> results = new ArrayList<>();
 
         for (int rowIdx = 0; rowIdx < count; rowIdx++) {
             List<Object> seq = new ArrayList<>(columnsMetadata.size());
             for (List<Object> pool : colPools) {
                 seq.add(pool.get(rowIdx));
             }
-            if (uniques.add(seq)) {
-                results.add(seq);
-            }
+            uniques.add(seq);
         }
 
-        log.debug("После zip: {}/{} уникальных записей", results.size(), count);
+        log.debug("После zip: {}/{} уникальных записей", uniques.size(), count);
 
         // Шаг 4: если коллизий много (пространство комбинаций меньше count) —
         // добираем случайным семплингом из тех же value sets
-        if (results.size() < count) {
-            log.debug("Добираем {} записей случайным семплингом", count - results.size());
+        if (uniques.size() < count) {
+            log.debug("Добираем {} записей случайным семплингом", count - uniques.size());
             int attempts = 0;
-            int maxAttempts = (count - results.size()) * maxAttemptsPerItem;
-            while (results.size() < count && attempts < maxAttempts) {
+            int maxAttempts = (count - uniques.size()) * maxAttemptsPerItem;
+            while (uniques.size() < count && attempts < maxAttempts) {
                 attempts++;
                 List<Object> seq = new ArrayList<>(columnsMetadata.size());
                 for (List<Object> valueSet : colValueSets.values()) {
                     seq.add(valueSet.get(random.nextInt(valueSet.size())));
                 }
-                if (uniques.add(seq)) {
-                    results.add(seq);
-                }
+                uniques.add(seq);
             }
         }
 
         // Шаг 5: если пространство исчерпано — расширяем value sets синтетическими значениями
-        if (results.size() < count) {
+        if (uniques.size() < count) {
             log.debug("Пространство комбинаций исчерпано. Расширяем синтетическими значениями...");
             for (int i = 0; i < columnsMetadata.size(); i++) {
+                if (columnsMetadata.get(i).isForeignKey()) {
+                    continue;
+                }
                 expandValueSet(colValueSets.get(columnsMetadata.get(i).getName()), count, i);
             }
             int attempts = 0;
             int maxAttempts = count * maxAttemptsPerItem;
-            while (results.size() < count && attempts < maxAttempts) {
+            while (uniques.size() < count && attempts < maxAttempts) {
                 attempts++;
                 List<Object> seq = new ArrayList<>(columnsMetadata.size());
                 for (List<Object> valueSet : colValueSets.values()) {
                     seq.add(valueSet.get(random.nextInt(valueSet.size())));
                 }
-                if (uniques.add(seq)) {
-                    results.add(seq);
-                }
+                uniques.add(seq);
             }
-            if (results.size() < count) {
+            if (uniques.size() < count) {
                 throw new RuntimeException(
                         "Не удалось получить требуемое количество уникальных элементов ("
-                                + count + "). Получено только: " + results.size()
+                                + count + "). Получено только: " + uniques.size()
                 );
             }
         }
 
-        log.debug("Итого уникальных записей: {}", results.size());
-        return results;
+        log.debug("Итого уникальных записей: {}", uniques.size());
+        return uniques.stream().toList();
     }
 
     /**
@@ -227,7 +224,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
                         List<Object> candidates = new ArrayList<>(intersection);
                         Collections.shuffle(candidates, random);
-
+//                        valueSet.add(candidates);
                         for (Object val : candidates) {
                             if (valueSet.size() >= totalUnique) break;
                             if (seen.add(val)) {

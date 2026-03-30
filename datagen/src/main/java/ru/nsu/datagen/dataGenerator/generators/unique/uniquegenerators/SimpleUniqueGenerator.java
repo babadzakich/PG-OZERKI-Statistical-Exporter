@@ -39,9 +39,16 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 
 	@Override
 	public void generate(Map<String, List<Object>> columnData) {
+        if (column.isForeignKey()) {
+            columnData.put(column.getName(),
+                    ForeignKeyGeneratorFactory.getInstance()
+                            .getGenerator(column)
+                            .generateForeignKeys(column, allGeneratedData));
+            return;
+        }
         String columnName = column.getName();
 
-        Set<Object> referencedValues = new HashSet<>(column.getMcv().entrySet());
+        Set<Object> referencedValues = new HashSet<>(column.getMcv().keySet());
         if (referencingTrees != null) {
             for (ReferencingTreeNode node : referencingTrees) {
                 collectReferencedValues(referencedValues, node);

@@ -35,17 +35,6 @@ public class DataGenerator {
             TableMetadata table,
             Map<String, List<Object>> existingData) {
 
-        // Генерируем данные для каждой колонки
-        return generateColumnData(table, existingData);
-    }
-
-    /**
-     * Генерирует данные для всех колонок таблицы
-     */
-    private Map<String, List<Object>> generateColumnData(
-            TableMetadata table,
-            Map<String, List<Object>> existingData) {
-
         Map<String, List<Object>> columnData = new HashMap<>();
         Set<String> generatedColumns = new HashSet<>();
 
@@ -171,7 +160,6 @@ public class DataGenerator {
                         continue;
                     }
                     Set<Object> toAdd = new HashSet<>(refTable.getColumns().get(colName).getMcv().keySet());
-                    toAdd.addAll(refTable.getColumns().get(colName).getHistogramm());
                     ReferencingTreeNode node = new ReferencingTreeNode(
                             schema, tableName, colName, refTable.getRecordCount(), toAdd);
 

@@ -26,6 +26,7 @@
 
     <logger name="com.opencsv" level="OFF"/>
     <logger name="com.zaxxer.hikari" level="OFF"/>
+    <logger name="org.testcontainers" level="OFF"/>
 
     <root level="debug">
         <appender-ref ref="STDOUT" />

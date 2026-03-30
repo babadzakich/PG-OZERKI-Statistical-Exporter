@@ -50,46 +50,19 @@ public class DatabaseDataGenerator {
         for (TableMetadata table : generationOrder) {
             log.info("Generate table: {}", table.getTableName());
             Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
-            if (table.hasForeignKeyDependencies()) {
-                List<CompletableFuture<Void>> dependencyFutures = table.getRefTables().stream()
-                        .map(refTable -> {
-                            log.info("Generate dependency table: {}", refTable);
-                            CompletableFuture<Void> future = storeFutures.get(refTable);
-                            if (future == null) {
-                                log.error("Missing future for dependency table: {}", refTable);
-                            }
-                            return storeFutures.get(refTable);
-                        })
-                        .filter(Objects::nonNull).toList();
-                storeFutures.put(table.getTableName(), CompletableFuture.allOf(
-                        dependencyFutures.toArray(new CompletableFuture[0])
-                ).thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))
-                        .handle((result, ex) -> {
-                            if (ex != null) {
-                                log.error("Exception during storing table: {}", table.getTableName(), ex);
-                                throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
-                            }
-                            return result;
-                        }));
-            } else {
-                storeFutures.put(table.getTableName(), CompletableFuture.runAsync(() -> storeAsync(table, tableStore, generatedTableData))
-                    .handle((result, ex) -> {
-                        if (ex != null) {
-                            log.error("Exception during storing table: {}", table.getTableName(), ex);
-                            throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
-                        }
-                        return result;
-                    }));
-            }
+
             for (String columnName : generatedTableData.keySet()) {
                 if (table.getColumns().get(columnName).getReferencingColumns() != null) {
                     generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
                 }
             }
-            table.getColumns().forEach((colName, col) -> {
-                if (col.getForeignKeyMetadata() != null) { // колонка ссылается на родителя
-                    for (var foreignKey : col.getForeignKeyMetadata()) {
-                        String parentKey = foreignKey.getReferencedSchema() + "." + foreignKey.getReferencedTable() + "." + foreignKey.getReferencedColumn();// "schema.table.column"
+
+            Runnable evictParents = () -> table.getColumns().forEach((colName, col) -> {
+                if (col.getForeignKeyMetadata() != null) {
+                    for (var fk : col.getForeignKeyMetadata()) {
+                        String parentKey = fk.getReferencedSchema() + "." +
+                                fk.getReferencedTable() + "." +
+                                fk.getReferencedColumn();
                         referenceCounters.computeIfPresent(parentKey, (k, count) -> {
                             int newCount = count - 1;
                             if (newCount <= 0) {
@@ -102,7 +75,40 @@ public class DatabaseDataGenerator {
                 }
             });
 
+            if (table.hasForeignKeyDependencies()) {
+                List<CompletableFuture<Void>> dependencyFutures = table.getRefTables().stream()
+                        .map(refTable -> {
+                            log.info("Generate dependency table: {}", refTable);
+                            CompletableFuture<Void> future = storeFutures.get(refTable);
+                            if (future == null) {
+                                log.error("Missing future for dependency table: {}", refTable);
+                            }
+                            return storeFutures.get(refTable);
+                        })
+                        .filter(Objects::nonNull).toList();
 
+                storeFutures.put(table.getTableName(), CompletableFuture.allOf(
+                        dependencyFutures.toArray(new CompletableFuture[0]))
+                        .thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))
+                                .thenRun(evictParents)
+                        .handle((result, ex) -> {
+                            if (ex != null) {
+                                log.error("Exception during storing table: {}", table.getTableName(), ex);
+                                throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
+                            }
+                            return result;
+                        }));
+            } else {
+                storeFutures.put(table.getTableName(), CompletableFuture.runAsync(() -> storeAsync(table, tableStore, generatedTableData))
+                                .thenRun(evictParents)
+                    .handle((result, ex) -> {
+                        if (ex != null) {
+                            log.error("Exception during storing table: {}", table.getTableName(), ex);
+                            throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
+                        }
+                        return result;
+                    }));
+            }
         }
         CompletableFuture.allOf(storeFutures.values().toArray(new CompletableFuture[0])).join();
         log.info("Data generation and storage completed.");

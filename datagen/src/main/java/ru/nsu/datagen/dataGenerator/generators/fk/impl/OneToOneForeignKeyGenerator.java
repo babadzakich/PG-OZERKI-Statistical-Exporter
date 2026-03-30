@@ -50,71 +50,66 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, Complex
         if (columnMetadata.isEmpty()) return Collections.emptyList();
 
         int recordCount = columnMetadata.getFirst().getRecordCount();
+        int parentTableCount = columnMetadata.getFirst().getForeignKeyMetadata().size();
 
-        String commonSchema = null;
-        String commonTable = null;
+        // Строим первый сет кортежей
+        var firstFk = columnMetadata.getFirst().getForeignKeyMetadata().getFirst();
+        int parentSize = allGeneratedData.get(
+                firstFk.getReferencedSchema() + "." + firstFk.getReferencedTable() + "." + firstFk.getReferencedColumn()
+        ).size();
 
-        var firstColFks = columnMetadata.getFirst().getForeignKeyMetadata();
+        Set<List<Object>> intersection = new LinkedHashSet<>();
+        for (int i = 0; i < parentSize; i++) {
+            List<Object> tuple = new ArrayList<>(columnMetadata.size());
+            for (ColumnMetadata col : columnMetadata) {
+                var fk = col.getForeignKeyMetadata().getFirst();
+                String refKey = fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn();
+                tuple.add(allGeneratedData.get(refKey).get(i));
+            }
+            intersection.add(tuple);
+        }
 
-        for (var fk : firstColFks) {
-            String schema = fk.getReferencedSchema();
-            String table = fk.getReferencedTable();
+        // Пересекаем с каждым следующим родителем
+        for (int tableIdx = 1; tableIdx < parentTableCount; tableIdx++) {
+            var fk0 = columnMetadata.getFirst().getForeignKeyMetadata().get(tableIdx);
+            int pSize = allGeneratedData.get(
+                    fk0.getReferencedSchema() + "." + fk0.getReferencedTable() + "." + fk0.getReferencedColumn()
+            ).size();
 
-            boolean allMatch = true;
-            for (int i = 1; i < columnMetadata.size(); i++) {
-                boolean match = columnMetadata.get(i).getForeignKeyMetadata().stream()
-                        .anyMatch(f -> f.getReferencedSchema().equals(schema) && f.getReferencedTable().equals(table));
-                if (!match) {
-                    allMatch = false;
-                    break;
+            Set<List<Object>> currentKeys = new HashSet<>();
+            for (int i = 0; i < pSize; i++) {
+                List<Object> tuple = new ArrayList<>(columnMetadata.size());
+                for (ColumnMetadata col : columnMetadata) {
+                    var fk = col.getForeignKeyMetadata().get(tableIdx);
+                    String refKey = fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn();
+                    tuple.add(allGeneratedData.get(refKey).get(i));
                 }
+                currentKeys.add(tuple);
             }
+            intersection.retainAll(currentKeys);
+        }
 
-            if (allMatch) {
-                commonSchema = schema;
-                commonTable = table;
-                break;
+        if (intersection.size() < recordCount) {
+            throw new RuntimeException("Not enough unique referenced tuples for 1-1 relationship. Needed: "
+                    + recordCount + ", available: " + intersection.size());
+        }
+
+        // Shuffled subList — без повторений (1-1)
+        List<List<Object>> validTuples = new ArrayList<>(intersection);
+        Collections.shuffle(validTuples, random);
+        validTuples = validTuples.subList(0, recordCount);
+
+        // Транспонируем: из списка кортежей в список колонок
+        List<List<Object>> result = new ArrayList<>(columnMetadata.size());
+        for (int j = 0; j < columnMetadata.size(); j++) {
+            result.add(new ArrayList<>(recordCount));
+        }
+        for (List<Object> tuple : validTuples) {
+            for (int j = 0; j < columnMetadata.size(); j++) {
+                result.get(j).add(tuple.get(j));
             }
         }
 
-        final String targetSchema = commonSchema;
-        final String targetTable = commonTable;
-
-        // 1. Resolve source data lists for each column in the composite key
-        List<List<Object>> sourceDataLists = columnMetadata.stream()
-                .map(cm -> {
-                    var fk = cm.getForeignKeyMetadata().stream()
-                            .filter(f -> targetSchema == null || (f.getReferencedSchema().equals(targetSchema) && f.getReferencedTable().equals(targetTable)))
-                            .findFirst()
-                            .orElse(cm.getForeignKeyMetadata().getFirst());
-
-                    String key = fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn();
-                    List<Object> data = allGeneratedData.get(key);
-                    if (data == null) {
-                        throw new IllegalStateException("Referenced data missing for " + key);
-                    }
-                    return data;
-                })
-                .toList();
-
-        int available = sourceDataLists.getFirst().size();
-        if (available < recordCount) {
-            throw new RuntimeException("Not enough unique referenced values for 1-1 relationship. Needed: " + recordCount + ", available: " + available);
-        }
-
-        // 2. Generate random indices
-        List<Integer> indices = java.util.stream.IntStream.range(0, available)
-                .boxed()
-                .collect(Collectors.collectingAndThen(Collectors.toList(), list -> {
-                    Collections.shuffle(list, random);
-                    return list.subList(0, recordCount);
-                }));
-
-        // 3. Map indices to values for each column
-        return sourceDataLists.stream()
-                .map(sourceList -> indices.stream()
-                        .map(sourceList::get)
-                        .toList())
-                .collect(Collectors.toList());
+        return result;
     }
 }

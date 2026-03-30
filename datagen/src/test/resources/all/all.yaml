@@ -15,7 +15,7 @@ tables:
       - airplane_code
   - name: bookings
     schema: bookings
-    expectedCount: 9706657
+    expectedCount: 9705485
     pk:
       - book_ref
   - name: seats

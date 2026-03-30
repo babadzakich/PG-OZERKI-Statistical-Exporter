@@ -136,7 +136,7 @@ public class TableStore {
                     pstmnt.addBatch();
                     batchCount++;
                     if (batchSize == batchCount) {
-                        log.debug("Executing batch for table {}", tableMetadata.getNamespace() + "." + tableMetadata.getTableName());
+//                        log.debug("Executing batch for table {}", tableMetadata.getNamespace() + "." + tableMetadata.getTableName());
                         pstmnt.executeBatch();
                         batchCount = 0;
                     }
@@ -145,6 +145,7 @@ public class TableStore {
                     log.debug("Executing final batch of size {} for table {}", batchCount, tableMetadata.getTableName());
                     pstmnt.executeBatch();
                 }
+                log.info("Finished storing data in table {}", tableMetadata.getTableName());
                 conn.commit();
             }
         } catch (SQLException e) {
