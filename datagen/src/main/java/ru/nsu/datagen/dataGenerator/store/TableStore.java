@@ -15,7 +15,7 @@ import org.postgresql.util.PGobject;
 @Slf4j
 public class TableStore {
     private final HikariDataSource dataSource;
-    private final int batchSize = 10000;
+    private final int BATCHSIZE = 10000;
 
     public TableStore(HikariDataSource dataSource) {
         this.dataSource = dataSource;
@@ -23,6 +23,8 @@ public class TableStore {
 
     public void storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData) throws SQLException {
         String queryString = getQueryString(tableMetadata);
+        int onePercent = tableMetadata.getRecordCount() / 100 + 1;
+        int progress = 0;
         try (Connection conn = dataSource.getConnection()) {
             try (Statement statement = conn.createStatement()) {
                 statement.execute("SET search_path TO public, bookings");
@@ -135,17 +137,20 @@ public class TableStore {
                     }
                     pstmnt.addBatch();
                     batchCount++;
-                    if (batchSize == batchCount) {
-//                        log.debug("Executing batch for table {}", tableMetadata.getNamespace() + "." + tableMetadata.getTableName());
+                    if (batchCount / onePercent > progress) {
+                        progress++;
+                        if (progress % 10 == 0)
+                            log.info("{}% of data stored in table {}", progress, tableMetadata.getTableName());
+                    }
+                    if (batchCount % BATCHSIZE == 0) {
                         pstmnt.executeBatch();
-                        batchCount = 0;
                     }
                 }
                 if (batchCount > 0) {
                     log.debug("Executing final batch of size {} for table {}", batchCount, tableMetadata.getTableName());
                     pstmnt.executeBatch();
                 }
-                log.info("Finished storing data in table {}", tableMetadata.getTableName());
+                log.info("100% of data stored in table {}, all data stored", tableMetadata.getTableName());
                 conn.commit();
             }
         } catch (SQLException e) {
