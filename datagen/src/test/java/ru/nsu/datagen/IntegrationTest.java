@@ -55,6 +55,7 @@ public class IntegrationTest {
             hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
             hikariConfig.setUsername(postgres.getUsername());
             hikariConfig.setPassword(postgres.getPassword());
+            hikariConfig.setMaximumPoolSize(Math.max(10, Runtime.getRuntime().availableProcessors()));
             dataSource = new HikariDataSource(hikariConfig);
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
@@ -98,7 +99,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("big/big.yaml")
+    @ConfigFile("timetable/timetable.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
