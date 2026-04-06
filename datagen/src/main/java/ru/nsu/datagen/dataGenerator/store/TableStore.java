@@ -30,9 +30,10 @@ public class TableStore {
     private final HikariDataSource dataSource;
     private final int BATCHSIZE = 10000;
     private final int CHUNK_SIZE = 50000;
-    private final int THREAD_COUNT = 8;
+    private final int THREAD_COUNT;
 
-    public TableStore(HikariDataSource dataSource) {
+    public TableStore(HikariDataSource dataSource, int threadCount) {
+        this.THREAD_COUNT = threadCount;
         this.dataSource = dataSource;
     }
 

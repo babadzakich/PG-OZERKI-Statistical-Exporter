@@ -37,7 +37,7 @@ public class Main {
 
          Pipeline.startPipeline(
                  args.host, args.port, args.dbname, args.user, args.password,
-                 args.schemaPath, args.statPath
+                 args.schemaPath, args.statPath, args.threads
          );
     }
 

@@ -113,7 +113,7 @@ public class IntegrationTest {
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
 
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource);
+            DatabaseDataGenerator.generateData(importedData, dataSource, config.getThreadCount());
             System.out.println("✓ Генерация данных завершена");
 
             // Проверка целостности данных и ограничений

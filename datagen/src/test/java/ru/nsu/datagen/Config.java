@@ -16,6 +16,7 @@ public class Config {
     private final String STATS_PATH;
     private final String queryPath;
     private final String sourcePlanPath;
+    private final int threadCount;
 
     private final List<TableHolder> tables;
 
@@ -65,6 +66,7 @@ public class Config {
             this.tables = databases;
             this.queryPath = (String) configMap.get("query_path");
             this.sourcePlanPath = (String) configMap.get("source_plan_path");
+            this.threadCount = (int) configMap.get("thread_count");
         }
     }
 

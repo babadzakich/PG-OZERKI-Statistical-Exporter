@@ -2,6 +2,7 @@ schema: schema.sql
 statistic: stats.csv
 query_path: test_query.sql
 source_plan_path: source_plan.json
+thread_count: 1
 tables:
   - name: product_review
     schema: public

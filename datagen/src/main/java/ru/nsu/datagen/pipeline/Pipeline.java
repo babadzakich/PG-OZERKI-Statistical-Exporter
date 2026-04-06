@@ -14,7 +14,7 @@ import ru.nsu.datagen.importer.Importer;
 public class Pipeline {
     static public void startPipeline(
             String host, Integer port, String dbname, String user, String password,
-            String schemaScriptPath, String statisticData
+            String schemaScriptPath, String statisticData, int threadCount
     ) throws SQLException {
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + dbname + "?currentSchema=bookings&reWriteBatchedInserts=true");
@@ -37,7 +37,7 @@ public class Pipeline {
 
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
             Map<String, TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
-            DatabaseDataGenerator.generateData(rawImportedData, dataSource);
+            DatabaseDataGenerator.generateData(rawImportedData, dataSource, threadCount);
         } catch (Exception e) {
             log.error("Pipeline failed: ", e);
             throw e;
