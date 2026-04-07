@@ -32,14 +32,14 @@
 * **--no-checks** - при установке этого флага не экспортируются CHECK ограничения
 * **--no-exts** - при установке этого флага не экспортируются расширения
 * **--query-file** - имя файла, содержащего текст запроса (нельзя использовать одновременно с флагом **--query**)
-
+* **--constr-file** - имя файла, куда будет экспортироваться информация об ограничениях (.csv) (обязателен)
 Например:
 ```bash
-./pg_ozerki --dbname demo --username shadowplay --host localhost --port 5432 --schema-file 11.sql --stats-file 11.csv --query "select * from bookings.tickets" --explainfile exp.json --no-exts --no-checks
+./pg_ozerki --dbname demo --username shadowplay --host localhost --port 5432 --schema-file 11.sql --stats-file 11.csv --query "select * from bookings.tickets" --explainfile exp.json --no-exts --no-checks --constr-file constr.csv
 ```
 
 Или
 
 ```bash
-./pg_ozerki --dbname demo --username shadowplay --host localhost --port 5432 --schema-file 11.sql --stats-file 11.csv --query-file query.sql --explainfile exp.json --no-exts --no-checks
+./pg_ozerki --dbname demo --username shadowplay --host localhost --port 5432 --schema-file 11.sql --stats-file 11.csv --query-file query.sql --explainfile exp.json --no-exts --no-checks --constr-file constr.csv
 ```
