@@ -5,15 +5,12 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 
 import java.io.*;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.List;
+import java.sql.*;
+import java.util.Map;
 
 @Slf4j
 public class Importer {
-    static public List<TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, Connection conn) {
+    static public Map<String, TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, Connection conn) {
         try {
             Statement statement = conn.createStatement();
             importSchemas(schemasScriptPath, statement);
@@ -27,7 +24,7 @@ public class Importer {
         }
     }
 
-    static private List<TableMetadata> importStatistic(String path) {
+    static private Map<String, TableMetadata> importStatistic(String path) {
         if (!new File(path).exists()) {
             throw new ImporterException("There is no import statistic file " + path );
         }
@@ -50,8 +47,9 @@ public class Importer {
             log.error("Cannot import schemas from SQL file.", e);
             throw new ImporterException("Cannot import schemas from SQL file.");
         } catch (SQLException e) {
-            log.error("Cannot execute SQL script for schema import.", e);
+            log.error("Cannot execute SQL script for schema import. {}", e.getSQLState());
             throw new ImporterException("Cannot execute SQL script for schema import.");
+
         }
     }
 
@@ -60,9 +58,7 @@ public class Importer {
             // String Builder to build the query line by line.
             StringBuilder query = new StringBuilder();
             String line;
-
             while ((line = br.readLine()) != null) {
-
                 if (line.trim().startsWith("--")) { continue; }
 
                 // Append the line into the query string and add a space after that
@@ -70,7 +66,23 @@ public class Importer {
 
                 if (line.trim().endsWith(";")) {
                     // Execute the Query
-                    statement.execute(query.toString().trim());
+
+                    try {
+                        statement.execute(query.toString().trim());
+                    } catch (SQLException e) {
+
+                        if (e.getSQLState() != null && e.getSQLState().equals("42P01")) {
+                            log.warn("No such relation: {}", e.getMessage());
+                        }
+
+                        else {
+                            log.error("Error during SQL statement execution. {} {} {}", e.getMessage(),
+                                    query.toString().trim(), e.getSQLState());
+
+
+                            throw new ImporterException("Cannot execute SQL script for schema import.");
+                        }
+                    }
                     // Empty the Query string to add new query from the file
                     query = new StringBuilder();
                 }

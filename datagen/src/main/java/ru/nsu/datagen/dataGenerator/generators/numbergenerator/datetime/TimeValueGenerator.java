@@ -25,6 +25,12 @@ public class TimeValueGenerator extends ValueGeneratorAC {
             right = LocalTime.MAX;
         }
 
-        return LocalTime.ofSecondOfDay(faker.time().between(left, right)).toString();
+        int leftSec = left.toSecondOfDay();
+        int rightSec = right.toSecondOfDay();
+
+        // Генерируем секунду суток в диапазоне [leftSec, rightSec)
+        int secondOfDay = leftSec + faker.random().nextInt(rightSec - leftSec);
+
+        return LocalTime.ofSecondOfDay(secondOfDay);
     }
 }

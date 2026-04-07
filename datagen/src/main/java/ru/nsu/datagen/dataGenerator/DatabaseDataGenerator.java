@@ -8,9 +8,7 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
 
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,10 +24,10 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    public static void generateData(List<TableMetadata> tableMetadataList, HikariDataSource dataSource) {
+    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource) {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph();
-        tableMetadataList.forEach(dependencyGraph::addTable);
+        tableMetadataList.forEach((key,value) -> dependencyGraph.addTable(value));
         // Get generation order
         dependencyGraph.buildDependencies();
         List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
@@ -37,24 +35,62 @@ public class DatabaseDataGenerator {
         TableStore tableStore = new TableStore(dataSource);
         // generate
         Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
+        Map<String, Integer> referenceCounters = new ConcurrentHashMap<>();
+        tableMetadataList.forEach((tableName, table) ->
+                table.getColumns().forEach((colName, col) -> {
+                    if (col.getReferencingColumns() != null) {
+                        String key = table.getNamespace() + '.' + table.getTableName() + "." + colName;
+                        referenceCounters.put(key, col.getReferencingColumns().size());
+                    }
+                })
+        );
         Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
-        Map<String, TableMetadata> allTablesMap = new HashMap<>();
-        for (TableMetadata t : tableMetadataList) {
-            allTablesMap.put(t.getTableName(), t);
-        }
-        DataGenerator dataGenerator = new DataGenerator(allTablesMap);
+        DataGenerator dataGenerator = new DataGenerator(tableMetadataList);
 
         for (TableMetadata table : generationOrder) {
             log.info("Generate table: {}", table.getTableName());
             Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
 
+            for (String columnName : generatedTableData.keySet()) {
+                if (table.getColumns().get(columnName).getReferencingColumns() != null) {
+                    generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
+                }
+            }
+
+            Runnable evictParents = () -> table.getColumns().forEach((colName, col) -> {
+                if (col.getForeignKeyMetadata() != null) {
+                    for (var fk : col.getForeignKeyMetadata()) {
+                        String parentKey = fk.getReferencedSchema() + "." +
+                                fk.getReferencedTable() + "." +
+                                fk.getReferencedColumn();
+                        referenceCounters.computeIfPresent(parentKey, (k, count) -> {
+                            int newCount = count - 1;
+                            if (newCount <= 0) {
+                                generatedData.remove(k);
+                                log.info("Evicted parent data for key: {}", k);
+                            }
+                            return newCount;
+                        });
+                    }
+                }
+            });
+
             if (table.hasForeignKeyDependencies()) {
                 List<CompletableFuture<Void>> dependencyFutures = table.getRefTables().stream()
-                        .map(storeFutures::get)
-                        .toList();
+                        .map(refTable -> {
+                            log.info("Generate dependency table: {}", refTable);
+                            CompletableFuture<Void> future = storeFutures.get(refTable);
+                            if (future == null) {
+                                log.error("Missing future for dependency table: {}", refTable);
+                            }
+                            return storeFutures.get(refTable);
+                        })
+                        .filter(Objects::nonNull).toList();
+
                 storeFutures.put(table.getTableName(), CompletableFuture.allOf(
-                        dependencyFutures.toArray(new CompletableFuture[0])
-                ).thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))
+                        dependencyFutures.toArray(new CompletableFuture[0]))
+                        .thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))
+                                .thenRun(evictParents)
                         .handle((result, ex) -> {
                             if (ex != null) {
                                 log.error("Exception during storing table: {}", table.getTableName(), ex);
@@ -64,6 +100,7 @@ public class DatabaseDataGenerator {
                         }));
             } else {
                 storeFutures.put(table.getTableName(), CompletableFuture.runAsync(() -> storeAsync(table, tableStore, generatedTableData))
+                                .thenRun(evictParents)
                     .handle((result, ex) -> {
                         if (ex != null) {
                             log.error("Exception during storing table: {}", table.getTableName(), ex);
@@ -71,11 +108,6 @@ public class DatabaseDataGenerator {
                         }
                         return result;
                     }));
-            }
-            for (String columnName : generatedTableData.keySet()) {
-                if (table.getColumns().get(columnName).getReferencingColumns() != null) {
-                    generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
-                }
             }
         }
         CompletableFuture.allOf(storeFutures.values().toArray(new CompletableFuture[0])).join();

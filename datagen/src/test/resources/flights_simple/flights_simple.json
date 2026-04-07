@@ -1,0 +1,17 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Seq Scan",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "flights",
+      "Schema": "bookings",
+      "Alias": "f",
+      "Startup Cost": 0.00,
+      "Total Cost": 421.58,
+      "Plan Rows": 21758,
+      "Plan Width": 51,
+      "Output": ["flight_id", "route_no", "status", "scheduled_departure", "scheduled_arrival", "actual_departure", "actual_arrival"]
+    }
+  }
+]

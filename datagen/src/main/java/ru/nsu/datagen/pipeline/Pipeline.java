@@ -1,7 +1,7 @@
 package ru.nsu.datagen.pipeline;
 
 import java.sql.SQLException;
-import java.util.List;
+import java.util.Map;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -17,7 +17,7 @@ public class Pipeline {
             String schemaScriptPath, String statisticData
     ) throws SQLException {
         HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + dbname + "?currentSchema=bookings");
+        hikariConfig.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + dbname + "?currentSchema=bookings&reWriteBatchedInserts=true");
         hikariConfig.setUsername(user);
         hikariConfig.setPassword(password);
 
@@ -28,8 +28,15 @@ public class Pipeline {
         hikariConfig.setIdleTimeout(600000);
         hikariConfig.setMaxLifetime(1800000);
 
+        // Позволяет драйверу кэшировать распарсенные SQL-запросы
+        hikariConfig.addDataSourceProperty("cachePrepStmts", "true");
+        // Лимит на количество кэшируемых запросов
+        hikariConfig.addDataSourceProperty("prepStmtCacheSize", "250");
+        // Лимит на длину запроса, который можно закэшировать
+        hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
-            List<TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
+            Map<String, TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
             DatabaseDataGenerator.generateData(rawImportedData, dataSource);
         } catch (Exception e) {
             log.error("Pipeline failed: ", e);

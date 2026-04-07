@@ -1,5 +1,6 @@
 package ru.nsu.datagen.plancheck.struct;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -18,6 +19,10 @@ public class PlanNode {
 
     @JsonProperty(value = "Index Name", defaultValue = "-")
     public String index;
+
+    @JsonProperty("Parent Relationship")
+    @JsonAlias("Parent Relationship")
+    public String parentRelationship = "-";
 
     public List<PlanNode> getPlans() {
         if (plans == null) {

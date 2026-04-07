@@ -1,0 +1,8 @@
+{
+  "Plan": {
+    "Node Type": "Index Scan",
+    "Relation Name": "users",
+    "Index Name": "idx_users_id",
+    "Plans": []
+  }
+}

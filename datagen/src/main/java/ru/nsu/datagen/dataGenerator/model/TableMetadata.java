@@ -1,6 +1,7 @@
 package ru.nsu.datagen.dataGenerator.model;
 
 import lombok.Getter;
+import lombok.Setter;
 
 import java.util.*;
 
@@ -12,15 +13,14 @@ public class TableMetadata {
     private final int recordCount;
     @Getter
     private final String namespace;
-    @Getter
-    private final Set<String> refTables;
+    @Getter @Setter
+    private Set<String> refTables;
 
-    public TableMetadata(String tableName, Map<String, ColumnMetadata> columns, int recordCount, String namespace, Set<String> refTables) {
+    public TableMetadata(String tableName, Map<String, ColumnMetadata> columns, int recordCount, String namespace) {
         this.tableName = tableName;
         this.columns = columns;
         this.recordCount = recordCount;
         this.namespace = namespace;
-        this.refTables = refTables;
     }
 
     public Map<String, ColumnMetadata> getColumns() { return new HashMap<>(columns); }
