@@ -29,4 +29,7 @@ public class Arguments {
 
     @Parameter(names = "-help", help = true)
     public boolean help;
+
+    @Parameter(names = "-IOthreads", help = true)
+    public int IOthreads;
 }

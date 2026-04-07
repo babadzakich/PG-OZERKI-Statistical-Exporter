@@ -24,7 +24,7 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource) {
+    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, int threadCount) {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph();
         tableMetadataList.forEach((key,value) -> dependencyGraph.addTable(value));
@@ -32,7 +32,7 @@ public class DatabaseDataGenerator {
         dependencyGraph.buildDependencies();
         List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
         // Init table store
-        TableStore tableStore = new TableStore(dataSource);
+        TableStore tableStore = new TableStore(dataSource, threadCount);
         // generate
         Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
         Map<String, Integer> referenceCounters = new ConcurrentHashMap<>();

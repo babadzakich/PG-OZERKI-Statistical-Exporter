@@ -3,6 +3,7 @@ password: <password>
 db_url: jdbc:postgresql://<DBhost>:<DBport>/<DBname>
 schema: <path_to_schema_from_resources>
 statistic: <path_to_stats_from_resources>
+thread_count: <number_of_threads_to_store_data>
 tables:
   - name: <tablename>
     schema: <schemaname>

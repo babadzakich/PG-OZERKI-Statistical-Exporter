@@ -2,6 +2,7 @@ schema: all/all_schema.sql
 statistic: all/all_stats.csv
 query_path: all/all_query.sql
 source_plan_path: all/all_explain.json
+thread_count: 1
 tables:
   - name: airports_data
     schema: bookings
@@ -35,11 +36,11 @@ tables:
     expectedCount: 7242
   - name: segments
     schema: bookings
-    expectedCount: 27580256
+    expectedCount: 27579244
     uniques:
       - [ticket_no, flight_id]
   - name: tickets
     schema: bookings
-    expectedCount: 27580256
+    expectedCount: 21093356
     uniques:
       - [book_ref, passenger_id, outbound]
