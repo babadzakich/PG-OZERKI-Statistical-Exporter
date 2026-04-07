@@ -1676,6 +1676,7 @@ extern bool no_checks;
 extern bool no_exts;
 QueryDependencies* InitQueryDependencies();
 void export_stats(PGconn* conn, const char* export_filename);
+void export_constraints(PGconn* conn, const char* export_filename);
 
 void get_explain(PGconn* conn, const char *query, char* filename, bool analyze);
 

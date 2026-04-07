@@ -100,7 +100,8 @@ typedef enum {
 	STATS_FILE,
 	NO_CHECKS,
 	NO_EXTS,
-	QUERY_FILE
+	QUERY_FILE,
+	CONSTRAINTS_FILE
 } getopt_params;
 
 void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
@@ -241,6 +242,9 @@ int main(int argc, char** argv) {
 	char* query_filename = NULL;
 	bool query_file = false;
 
+	char* constraints_filename = NULL;
+	bool constraints_file = false;
+
 	PQExpBuffer query_file_text;
 
 	pg_logging_init(argv[0]);
@@ -272,6 +276,7 @@ int main(int argc, char** argv) {
 		{"no-checks", no_argument, NULL, NO_CHECKS},
 		{"no-exts", no_argument, NULL, NO_EXTS},
 		{"query-file", required_argument, NULL, QUERY_FILE},
+		{"constr-file", required_argument, NULL, CONSTRAINTS_FILE},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -322,6 +327,10 @@ int main(int argc, char** argv) {
 				query_file = true;
 				query_filename = pg_strdup(optarg);
 				break;
+			case CONSTRAINTS_FILE:
+				constraints_file = true;
+				constraints_filename = pg_strdup(optarg);
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -357,6 +366,9 @@ int main(int argc, char** argv) {
 	pg_log_debug("Connected to database");
 	deps = InitQueryDependencies();
 	planner_settings = get_planner_settings(fout);
+	if (constraints_file) {
+		export_constraints(GetConnection(fout), constraints_filename);
+	}
 	if (by_query || query_file) {
 		deps->been_analyzed = true;
 		if (query_file){

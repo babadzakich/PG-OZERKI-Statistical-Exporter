@@ -32,7 +32,8 @@ OBJS = \
 	dump.o \
 	query.o \
 	stat_export.o \
-	plan_export.o
+	plan_export.o \
+	constraint_export.o
 
 all: pg_ozerki
 
