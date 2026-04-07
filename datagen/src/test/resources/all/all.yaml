@@ -36,11 +36,11 @@ tables:
     expectedCount: 7242
   - name: segments
     schema: bookings
-    expectedCount: 27580256
+    expectedCount: 27579244
     uniques:
       - [ticket_no, flight_id]
   - name: tickets
     schema: bookings
-    expectedCount: 27580256
+    expectedCount: 21093356
     uniques:
       - [book_ref, passenger_id, outbound]

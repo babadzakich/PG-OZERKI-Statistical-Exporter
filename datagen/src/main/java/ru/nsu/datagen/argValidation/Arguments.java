@@ -30,6 +30,6 @@ public class Arguments {
     @Parameter(names = "-help", help = true)
     public boolean help;
 
-    @Parameter(names = "-threads", help = true)
-    public int threads;
+    @Parameter(names = "-IOthreads", help = true)
+    public int IOthreads;
 }
