@@ -2,27 +2,27 @@ package ru.nsu.datagen.pipeline;
 
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+
 import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.argValidation.Arguments;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.importer.Importer;
 
 @Slf4j
 public class Pipeline {
-    static public void startPipeline(
-            String host, Integer port, String dbname, String user, String password,
-            String schemaScriptPath, String statisticData
-    ) throws SQLException {
+    static public void startPipeline(Arguments args) throws SQLException {
         HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + dbname + "?currentSchema=bookings&reWriteBatchedInserts=true");
-        hikariConfig.setUsername(user);
-        hikariConfig.setPassword(password);
+        hikariConfig.setJdbcUrl("jdbc:postgresql://" + args.host + ":" + args.port + "/" + args.dbname + "?currentSchema=bookings&reWriteBatchedInserts=true");
+        hikariConfig.setUsername(args.user);
+        hikariConfig.setPassword(args.password);
 
         // Connection pool configuration for optimal performance
-        hikariConfig.setMaximumPoolSize(20);
+        hikariConfig.setMaximumPoolSize(args.connectionPoolSize);
         hikariConfig.setMinimumIdle(5);
         hikariConfig.setConnectionTimeout(30000);
         hikariConfig.setIdleTimeout(600000);
@@ -35,9 +35,11 @@ public class Pipeline {
         // Лимит на длину запроса, который можно закэшировать
         hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
 
+        ExecutorService generationExecutor = java.util.concurrent.Executors.newFixedThreadPool(args.generationThreadPoolSize);
+
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
-            Map<String, TableMetadata> rawImportedData = Importer.startImport(schemaScriptPath, statisticData, dataSource.getConnection());
-            DatabaseDataGenerator.generateData(rawImportedData, dataSource);
+            Map<String, TableMetadata> rawImportedData = Importer.startImport(args.schemaPath, args.statPath, dataSource.getConnection());
+            DatabaseDataGenerator.generateData(rawImportedData, dataSource, generationExecutor, args.batchSize);
         } catch (Exception e) {
             log.error("Pipeline failed: ", e);
             throw e;

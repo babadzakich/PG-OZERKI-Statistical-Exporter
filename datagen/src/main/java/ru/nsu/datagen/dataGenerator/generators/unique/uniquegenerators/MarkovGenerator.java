@@ -1,15 +1,20 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
+import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
-import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
@@ -33,7 +38,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     @Override
     public void generate(Map<String, List<Object>> columnData) {
         log.info("Запуск Markov генератора для {} уникальных записей и колонок {}", recordCount, columnsMetadata.stream().map(ColumnMetadata::getName).toList());
-        List<List<Object>> uniqueValues = generateUnique(recordCount, 200);
+        List<List<Object>> uniqueValues = generateUnique(recordCount);
 
         for (int colIdx = 0; colIdx < columnsMetadata.size(); colIdx++) {
             List<Object> columnValues = new ArrayList<>();
@@ -50,7 +55,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 "use generate(Map<String, List<Object>> columnData) instead.");
     }
 
-    public List<List<Object>> generateUnique(int count, int maxAttemptsPerItem) {
+    public List<List<Object>> generateUnique(int count) {
 
         // Шаг 1: для каждой колонки строим точный набор уникальных значений размером ndistinct
         Map<String, List<Object>> colValueSets = new LinkedHashMap<>();
@@ -83,7 +88,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         if (uniques.size() < count) {
             log.debug("Добираем {} записей случайным семплингом", count - uniques.size());
             int attempts = 0;
-            int maxAttempts = (count - uniques.size()) * maxAttemptsPerItem;
+            int maxAttempts = (count - uniques.size()) * MARKOV_MAX_ATTEMPTS_PER_ITEM;
             while (uniques.size() < count && attempts < maxAttempts) {
                 attempts++;
                 List<Object> seq = new ArrayList<>(columnsMetadata.size());
@@ -104,7 +109,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 expandValueSet(colValueSets.get(columnsMetadata.get(i).getName()), count, i);
             }
             int attempts = 0;
-            int maxAttempts = count * maxAttemptsPerItem;
+            int maxAttempts = count * MARKOV_MAX_ATTEMPTS_PER_ITEM;
             while (uniques.size() < count && attempts < maxAttempts) {
                 attempts++;
                 List<Object> seq = new ArrayList<>(columnsMetadata.size());

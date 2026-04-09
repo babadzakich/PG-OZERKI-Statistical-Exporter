@@ -1,15 +1,17 @@
 package ru.nsu.datagen;
 
-import com.beust.jcommander.JCommander;
-import lombok.extern.slf4j.Slf4j;
-import org.yaml.snakeyaml.Yaml;
-import ru.nsu.datagen.argValidation.Arguments;
-import ru.nsu.datagen.pipeline.Pipeline;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.SQLException;
+
+import org.yaml.snakeyaml.Yaml;
+
+import com.beust.jcommander.JCommander;
+
+import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.argValidation.Arguments;
+import ru.nsu.datagen.pipeline.Pipeline;
 
 @Slf4j
 public class Main {
@@ -35,10 +37,7 @@ public class Main {
             return;
          }
 
-         Pipeline.startPipeline(
-                 args.host, args.port, args.dbname, args.user, args.password,
-                 args.schemaPath, args.statPath
-         );
+         Pipeline.startPipeline(args);
     }
 
     private static void loadConfig(Arguments args) throws IOException {
@@ -56,6 +55,9 @@ public class Main {
             if (args.password == null) args.password = configArgs.password;
             if (args.schemaPath == null) args.schemaPath = configArgs.schemaPath;
             if (args.statPath == null) args.statPath = configArgs.statPath;
+            args.batchSize = configArgs.batchSize != null ? configArgs.batchSize : args.batchSize;
+            args.generationThreadPoolSize = configArgs.generationThreadPoolSize != null ? configArgs.generationThreadPoolSize : args.generationThreadPoolSize;
+            args.connectionPoolSize = configArgs.connectionPoolSize != null ? configArgs.connectionPoolSize : args.connectionPoolSize;
         }
     }
 

@@ -27,6 +27,15 @@ public class Arguments {
     @Parameter(names = "-config", validateWith = FilePath.class)
     public String configPath;
 
+    @Parameter(names = "-batchSize")
+    public Integer batchSize = 10000;
+
+    @Parameter(names = "-generationThreadPoolSize")
+    public Integer generationThreadPoolSize = 4;
+
+    @Parameter(names = "-connectionPoolSize")
+    public Integer connectionPoolSize = 10;
+
     @Parameter(names = "-help", help = true)
     public boolean help;
 }

@@ -71,7 +71,7 @@ public class IntegrationTest {
         String configPath = testInfo.getTestMethod()
                 .map(m -> m.getAnnotation(ConfigFile.class))
                 .map(ConfigFile::value)
-                .orElse("config.yaml");
+                .orElse("Base/config.yaml");
         config = new Config(configPath);
         try (Connection conn = dataSource.getConnection()) {
             // Очищаем БД перед тестом
