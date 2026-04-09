@@ -7,6 +7,7 @@
 
 *.o
 pg_ozerki
+!pg_ozerki/
 # User-specific stuff
 *.idea
 
