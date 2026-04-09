@@ -1748,3 +1748,13 @@ selectDumpablePublicationObject(DumpableObject *dobj, Archive *fout);
 
 DumpId
 createDumpId(void);
+
+
+extern int ahprintf(ArchiveHandle *AH, const char *fmt,...) pg_attribute_printf(2, 3);
+extern void ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH);
+extern void mark_schemas_for_dump(TableInfo *tblinfo, int numTables);
+extern bool buildDefaultACLCommands(const char *type, const char *nspname,
+            const char *acls, const char *acldefault,
+            const char *owner,
+            int remoteVersion,
+            PQExpBuffer sql);

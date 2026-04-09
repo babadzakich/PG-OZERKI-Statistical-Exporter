@@ -375,6 +375,7 @@ int main(int argc, char** argv) {
 			query_file_text = createPQExpBuffer();
 			get_query_from_file(query_filename, query_file_text);
 			dump_query = pg_strdup(query_file_text->data);
+			destroyPQExpBuffer(query_file_text);
 
 		}
 		extract_tables_from_query_text(GetConnection(fout), dump_query, deps);
@@ -410,7 +411,7 @@ int main(int argc, char** argv) {
 	}
 
 	
-	destroyPQExpBuffer(query_file_text);
+	
 	
 	if (dump_stat) {
 		export_stats(GetConnection(fout), stats_file);
