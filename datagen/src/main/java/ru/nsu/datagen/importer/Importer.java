@@ -37,7 +37,7 @@ public class Importer {
         }
     }
 
-    static private void importSchemas(String path, Statement statement) throws ImporterException {
+    static public void importSchemas(String path, Statement statement) throws ImporterException {
         if (!new File(path).exists()) {
             throw new ImporterException("There is no import schemas script " + path);
         }

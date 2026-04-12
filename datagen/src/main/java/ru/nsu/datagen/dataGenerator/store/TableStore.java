@@ -14,10 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -37,198 +34,14 @@ public class TableStore {
         this.dataSource = dataSource;
     }
 
-//    public void storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData) throws SQLException {
-//        String queryString = getQueryString(tableMetadata);
-//        int onePercent = tableMetadata.getRecordCount() / 100 + 1;
-//        int progress = 0;
-//        try (Connection conn = dataSource.getConnection()) {
-//            try (Statement statement = conn.createStatement()) {
-//                statement.execute("SET search_path TO public, bookings");
-//            }
-//            try (PreparedStatement pstmnt = conn.prepareStatement(queryString)) {
-//                int batchCount = 0;
-//                // Каждая строка
-//                conn.setAutoCommit(false);
-//                for (int i = 0; i < tableMetadata.getRecordCount(); i++) {
-//                    // Каждая колонка
-//                    int j = 0;
-//                    for (String columnName : tableMetadata.getColumns().keySet()) {
-//                        Object value = generatedTableData.get(columnName).get(i);
-//                        ColumnMetadata columnMetadata = tableMetadata.getColumns().get(columnName);
-//                        String type = columnMetadata.getDataType();
-//                        String normalizedType = type.toLowerCase();
-//
-//                        // Обработка массивов
-//                        if (columnMetadata.isArray()) {
-//                            if (type.contains("[]")) {
-//                                type = type.substring(0, type.indexOf("[]"));
-//                            }
-//                            Array sqlArray = conn.createArrayOf(type, new Object[]{value});
-//                            pstmnt.setArray(++j, sqlArray);
-//                        } else if (normalizedType.equals("interval")) {
-//                            PGobject pgObject = new PGobject();
-//                            pgObject.setType("interval");
-//                            pgObject.setValue(value.toString());
-//                            pstmnt.setObject(++j, pgObject);
-//                        } else if (normalizedType.equals("time without time zone") || normalizedType.equals("time")) {
-//                            pstmnt.setObject(++j, value, Types.TIME);
-//                        } else if (normalizedType.equals("timestamp without time zone") || normalizedType.equals("timestamp")) {
-//                            if (value instanceof java.time.Instant instant) {
-//                                pstmnt.setTimestamp(++j, Timestamp.from(instant));
-//                            } else {
-//                                pstmnt.setObject(++j, value, Types.TIMESTAMP);
-//                            }
-//                        } else if (normalizedType.equals("timestamp with time zone") || normalizedType.equals("timestamptz")) {
-//                            if (value instanceof java.time.Instant instant) {
-//                                pstmnt.setObject(++j, instant, Types.TIMESTAMP_WITH_TIMEZONE);
-//                            } else if (value instanceof String s) {
-//                                PGobject pgObject = new PGobject();
-//                                pgObject.setType("timestamptz");
-//                                pgObject.setValue(s);
-//                                pstmnt.setObject(++j, pgObject);
-//                            } else {
-//                                pstmnt.setObject(++j, value);
-//                            }
-//                        } else if (normalizedType.contains("tstzrange")) {
-//                            PGobject pgObject = new PGobject();
-//                            pgObject.setType("tstzrange");
-//                            pgObject.setValue((String) value);
-//                            pstmnt.setObject(++j, pgObject);
-//                        } else if (normalizedType.contains("date")) {
-//                            PGobject pgObject = new PGobject();
-//                            pgObject.setType("date");
-//                            pgObject.setValue(value.toString());
-//                            pstmnt.setObject(++j, pgObject);
-//                        } else if (normalizedType.contains("num")) {
-//                            pstmnt.setObject(++j, value);
-//                        } else if (normalizedType.contains("money")) {
-//                            PGobject pgObject = new PGobject();
-//                            pgObject.setType("money");
-//                            pgObject.setValue(value.toString());
-//                            pstmnt.setObject(++j, pgObject);
-//                        } else if (value instanceof String && !normalizedType.contains("char")) {
-//                            switch (normalizedType) {
-//                                case "smallint":
-//                                case "int2":
-//                                    pstmnt.setShort(++j, Short.parseShort((String) value));
-//                                    break;
-//                                case "integer":
-//                                case "int4":
-//                                    pstmnt.setInt(++j, Integer.parseInt((String) value));
-//                                    break;
-//                                case "bigint":
-//                                case "int8":
-//                                    pstmnt.setLong(++j, Long.parseLong((String) value));
-//                                    break;
-//                                case "varchar":
-//                                case "text":
-//                                    pstmnt.setString(++j, (String) value);
-//                                    break;
-//                                case "boolean":
-//                                case "bool":
-//                                    pstmnt.setBoolean(++j, Boolean.parseBoolean((String) value));
-//                                    break;
-//                                case "decimal":
-//                                case "numeric":
-//                                    pstmnt.setBigDecimal(++j, new BigDecimal((String) value));
-//                                    break;
-//                                case "float8":
-//                                case "double":
-//                                case "double precision":
-//                                    pstmnt.setDouble(++j, Double.parseDouble((String) value));
-//                                    break;
-//                                case "float4":
-//                                case "real":
-//                                    pstmnt.setFloat(++j, Float.parseFloat((String) value));
-//                                    break;
-//                                case "bytea":
-//                                    pstmnt.setBytes(++j, ((String) value).getBytes());
-//                                    break;
-//                                default:
-//                                    throw new IllegalArgumentException("Unsupported type: " + type);
-//                            }
-//                        } else {
-//                            pstmnt.setObject(++j, value);
-//                        }
-//                    }
-//                    pstmnt.addBatch();
-//                    batchCount++;
-//                    if (batchCount / onePercent > progress) {
-//                        progress++;
-//                        if (progress % 10 == 0)
-//                            log.info("{}% of data stored in table {}", progress, tableMetadata.getTableName());
-//                    }
-//                    if (batchCount % BATCHSIZE == 0) {
-//                        pstmnt.executeBatch();
-//                    }
-//                }
-//                if (batchCount > 0) {
-//                    log.debug("Executing final batch of size {} for table {}", batchCount, tableMetadata.getTableName());
-//                    pstmnt.executeBatch();
-//                }
-//                log.info("100% of data stored in table {}, all data stored", tableMetadata.getTableName());
-//                conn.commit();
-//            }
-//        } catch (SQLException e) {
-//            log.error("Failed to store data in table {}: {}", tableMetadata.getTableName(), e.getMessage());
-//            throw e;
-//        }
-//    }
+
 
 
     private final DateTimeFormatter tsFormatter = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss.SSSX")
             .withZone(ZoneId.of("UTC"));
 
-//    public void storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData) throws SQLException {
-//        int totalRecords = tableMetadata.getRecordCount();
-//        if (totalRecords == 0) return;
-//
-//        // Определяем размер чанка для каждого потока
-//        int chunksCount = Math.min(THREAD_COUNT, (totalRecords / BATCHSIZE) + 1);
-//        int recordsPerChunk = (int) Math.ceil((double) totalRecords / chunksCount);
-//
-//        ExecutorService executor = Executors.newFixedThreadPool(chunksCount);
-//        List<Future<?>> futures = new ArrayList<>();
-//
-//        // Для общего прогресс-бара
-//        AtomicInteger totalStored = new AtomicInteger(0);
-//        int logStep = Math.max(1, totalRecords / 10); // Логируем каждые 10%
-//
-//        log.info("Starting parallel store for table {} using {} threads", tableMetadata.getTableName(), chunksCount);
-//
-//        for (int i = 0; i < chunksCount; i++) {
-//            final int startIdx = i * recordsPerChunk;
-//            final int endIdx = Math.min(startIdx + recordsPerChunk, totalRecords);
-//
-//            if (startIdx >= totalRecords) break;
-//
-//            futures.add(executor.submit(() -> {
-//                try {
-//                    processChunk(tableMetadata, generatedTableData, startIdx, endIdx, totalStored, logStep);
-//                } catch (Exception e) {
-//                    log.error("Error processing chunk {}-{} for table {}", startIdx, endIdx, tableMetadata.getTableName(), e);
-//                    throw new RuntimeException(e);
-//                }
-//            }));
-//        }
-//
-//
-//
-//        // Ждем завершения всех задач
-//        try {
-//            for (Future<?> future : futures) {
-//                future.get();
-//            }
-//        } catch (InterruptedException | ExecutionException e) {
-//            log.error("Parallel execution failed for table {}", tableMetadata.getTableName());
-//            throw new SQLException("Error in parallel processing", e);
-//        } finally {
-//            executor.shutdown();
-//        }
-//
-//        log.info("100% of data stored in table {}, total {} rows", tableMetadata.getTableName(), totalRecords);
-//    }
+
 
 
 
@@ -236,39 +49,34 @@ public class TableStore {
         int totalRecords = tableMetadata.getRecordCount();
         if (totalRecords == 0) return;
 
-        int chunksCount = (int) Math.ceil((double) totalRecords / CHUNK_SIZE);
-        ExecutorService executor = Executors.newFixedThreadPool(Math.min(THREAD_COUNT, chunksCount));
-        List<Future<?>> futures = new ArrayList<>();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            AtomicInteger totalStored = new AtomicInteger(0);
+            AtomicInteger lastReportedPercent = new AtomicInteger(-1);
 
-        AtomicInteger totalStored = new AtomicInteger(0);
+            log.info("Starting COPY store for table {} using Virtual Threads", tableMetadata.getTableName());
 
-        AtomicInteger lastReportedPercent = new AtomicInteger(-1);
-        log.info("Starting COPY store for table {} using {} threads", tableMetadata.getTableName(), THREAD_COUNT);
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-        for (int i = 0; i < totalRecords; i += CHUNK_SIZE) {
-            final int startIdx = i;
-            final int endIdx = Math.min(startIdx + CHUNK_SIZE, totalRecords);
+            for (int i = 0; i < totalRecords; i += CHUNK_SIZE) {
+                final int startIdx = i;
+                final int endIdx = Math.min(startIdx + CHUNK_SIZE, totalRecords);
 
-            futures.add(executor.submit(() -> {
-                try {
-                    processCopyChunk(tableMetadata, generatedTableData, startIdx, endIdx, totalStored, lastReportedPercent);
-                } catch (Exception e) {
-                    log.error("COPY Error in chunk {}-{}", startIdx, endIdx, e);
-                    throw new RuntimeException(e);
-                }
-            }));
+                futures.add(CompletableFuture.runAsync(() -> {
+                    try {
+                        processCopyChunk(tableMetadata, generatedTableData, startIdx, endIdx, totalStored, lastReportedPercent);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Error in virtual thread during COPY", e);
+                    }
+                }, executor));
+            }
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            log.info("100% of data stored in table {}, total {} rows", tableMetadata.getTableName(), totalRecords);
+        } catch (CompletionException e) {
+            throw new SQLException("Parallel COPY failed in virtual threads", e.getCause());
         }
-
-        try {
-            for (Future<?> future : futures) future.get();
-        } catch (Exception e) {
-            throw new SQLException("Parallel COPY failed", e);
-        } finally {
-            executor.shutdown();
-        }
-        log.info("Successfully copied {} rows into {}", totalRecords, tableMetadata.getTableName());
     }
-
     private void processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
                                   int start, int end, AtomicInteger counter, AtomicInteger lastReportedPercent) throws Exception {
 

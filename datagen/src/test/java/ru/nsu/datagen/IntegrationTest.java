@@ -55,7 +55,7 @@ public class IntegrationTest {
             hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
             hikariConfig.setUsername(postgres.getUsername());
             hikariConfig.setPassword(postgres.getPassword());
-            hikariConfig.setMaximumPoolSize(Math.max(10, Runtime.getRuntime().availableProcessors()));
+            hikariConfig.setMaximumPoolSize(32);
             dataSource = new HikariDataSource(hikariConfig);
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
@@ -99,12 +99,12 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("timetable/timetable.yaml")
+    @ConfigFile("all/all.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
-
+        String indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
             Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
@@ -116,6 +116,7 @@ public class IntegrationTest {
             DatabaseDataGenerator.generateData(importedData, dataSource, config.getThreadCount());
             System.out.println("✓ Генерация данных завершена");
 
+            Importer.importSchemas(indexPath, conn.createStatement());
             // Проверка целостности данных и ограничений
             for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);

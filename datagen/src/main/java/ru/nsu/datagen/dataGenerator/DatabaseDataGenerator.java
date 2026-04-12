@@ -78,7 +78,7 @@ public class DatabaseDataGenerator {
             if (table.hasForeignKeyDependencies()) {
                 List<CompletableFuture<Void>> dependencyFutures = table.getRefTables().stream()
                         .map(refTable -> {
-                            log.info("Generate dependency table: {}", refTable);
+                            log.info("Generate dependency table: {} for table: {}", refTable, table.getTableName());
                             CompletableFuture<Void> future = storeFutures.get(refTable);
                             if (future == null) {
                                 log.error("Missing future for dependency table: {}", refTable);
