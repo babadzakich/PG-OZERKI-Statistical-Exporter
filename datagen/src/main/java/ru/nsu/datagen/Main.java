@@ -55,6 +55,7 @@ public class Main {
             if (args.password == null) args.password = configArgs.password;
             if (args.schemaPath == null) args.schemaPath = configArgs.schemaPath;
             if (args.statPath == null) args.statPath = configArgs.statPath;
+            if (args.statPath == null) args.statPath = configArgs.indexFile;
             args.batchSize = configArgs.batchSize != null ? configArgs.batchSize : args.batchSize;
             args.generationThreadPoolSize = configArgs.generationThreadPoolSize != null ? configArgs.generationThreadPoolSize : args.generationThreadPoolSize;
             args.connectionPoolSize = configArgs.connectionPoolSize != null ? configArgs.connectionPoolSize : args.connectionPoolSize;

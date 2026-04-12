@@ -85,6 +85,8 @@ sanitize_line(const char *str, bool want_hyphen)
 
 	return result;
 }
+static void
+_printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData);
 
 char* planner_settings = NULL;
 
@@ -101,7 +103,8 @@ typedef enum {
 	NO_CHECKS,
 	NO_EXTS,
 	QUERY_FILE,
-	CONSTRAINTS_FILE
+	CONSTRAINTS_FILE,
+	INDEX_FILE
 } getopt_params;
 
 void add_view_to_deps(QueryDependencies *deps, Oid viewOid) {
@@ -226,6 +229,8 @@ int main(int argc, char** argv) {
 	char* dump_query = NULL;
 	RestoreOptions *ropt;
 	Archive    *fout;	
+	Archive	   *index_fout;
+
     static DumpOptions dopt;
 
 	bool dump_explain = false;
@@ -245,6 +250,9 @@ int main(int argc, char** argv) {
 	char* constraints_filename = NULL;
 	bool constraints_file = false;
 
+	char* index_filename = NULL;
+	bool index_file = false;
+
 	PQExpBuffer query_file_text;
 
 	pg_logging_init(argv[0]);
@@ -253,11 +261,11 @@ int main(int argc, char** argv) {
 	InitDumpOptions(&dopt);
 	archiveMode = archModeWrite;
 	archiveFormat = archNull;
+	dopt.dumpSections = SECTION_PRE_DATA | SECTION_DATA | SECTION_POST_DATA;
     
 	
 	dopt.schemaOnly = true;
 	dopt.include_everything = true;
-
 	static struct option long_options[] = {
 		
 
@@ -277,6 +285,7 @@ int main(int argc, char** argv) {
 		{"no-exts", no_argument, NULL, NO_EXTS},
 		{"query-file", required_argument, NULL, QUERY_FILE},
 		{"constr-file", required_argument, NULL, CONSTRAINTS_FILE},
+		{"index-file", required_argument, NULL, INDEX_FILE},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -331,6 +340,10 @@ int main(int argc, char** argv) {
 				constraints_file = true;
 				constraints_filename = pg_strdup(optarg);
 				break;
+			case INDEX_FILE:
+				index_file = true;
+				index_filename = pg_strdup(optarg);
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -348,6 +361,8 @@ int main(int argc, char** argv) {
 						 dosync, archiveMode, setupDumpWorker, sync_method);
 
 
+	
+	
 	SetArchiveOptions(fout, &dopt, NULL);
 
 	fout->minRemoteVersion = 90200;
@@ -358,7 +373,7 @@ int main(int argc, char** argv) {
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
 	 */
-
+	
 	//use_role = dopt.cparams.username;
 	ConnectDatabase(fout, &dopt.cparams, false);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
@@ -449,12 +464,22 @@ int main(int argc, char** argv) {
 						boundaryObjs[0].dumpId, boundaryObjs[1].dumpId);
 	    
 
-	for (i = 0; i < numObjs; i++)
-		dumpDumpableObject(fout, dobjs[i]);
 
+	ArchiveHandle *AH = (ArchiveHandle *) fout;
+	
+	FILE *main_fp = AH->FH;
+
+	for (i = 0; i < numObjs; i++){
+		
+		dumpDumpableObject(fout, dobjs[i]);
+	}
+	
+
+	
 	
 	ropt = NewRestoreOptions();
 	ropt->filename = filename;
+
 
 	/* if you change this list, see dumpOptionsFromRestoreOptions */
 	ropt->cparams.dbname = dopt.cparams.dbname ? pg_strdup(dopt.cparams.dbname) : NULL;
@@ -467,7 +492,7 @@ int main(int argc, char** argv) {
 	ropt->schemaOnly = dopt.schemaOnly;
 	ropt->if_exists = dopt.if_exists;
 	ropt->column_inserts = dopt.column_inserts;
-	ropt->dumpSections = dopt.dumpSections;
+	ropt->dumpSections = SECTION_PRE_DATA | SECTION_DATA | SECTION_POST_DATA;
 	ropt->aclsSkip = dopt.aclsSkip;
 	ropt->superuser = dopt.outputSuperuser;
 	ropt->createDB = dopt.outputCreateDB;
@@ -496,7 +521,41 @@ int main(int argc, char** argv) {
 	ProcessArchiveRestoreOptions(fout);
 	
 
-	RestoreArchive(fout);	
+	RestoreArchive(fout);
+	
+	fflush(AH->FH);
+
+    // if (index_file && index_filename)
+    // {
+    //     pg_log_info("Exporting indexes to: %s", index_filename);
+        
+    //     FILE *idx_fp = fopen(index_filename, "w");
+    //     if (idx_fp) 
+    //     {
+    //         ArchiveHandle *AH = (ArchiveHandle *) fout;
+    //         fprintf(idx_fp, "-- === INDEXES AND CONSTRAINTS ===\n\n");
+
+    //         TocEntry *te;
+    //         for (te = AH->toc->next; te != AH->toc; te = te->next)
+    //         {
+    //             if (te->section == SECTION_POST_DATA)
+    //             {
+    //                 if (te->defn && te->defn[0] != '\0')
+    //                 {
+    //                     fprintf(idx_fp, "%s\n\n", te->defn);
+    //                 }
+                    
+
+    //             }
+    //         }
+
+    //         fflush(idx_fp);
+    //         fclose(idx_fp);
+    //         pg_log_info("Indexes are succesfully dumped");
+    //     } else {
+	// 		pg_log_error("Cannot open file to write indexes");
+	// 	}
+    // }
 	CloseArchive(fout);
     
 	pg_log_debug("Schema exported");

@@ -18,6 +18,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -99,12 +100,13 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("all/all.yaml")
+    @ConfigFile("timetable/timetable.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
         String indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
+        ExecutorService generationExecutor = java.util.concurrent.Executors.newFixedThreadPool(config.getThreadCount());
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
             Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
@@ -113,7 +115,7 @@ public class IntegrationTest {
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
 
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource, config.getThreadCount());
+            DatabaseDataGenerator.generateData(importedData, dataSource);
             System.out.println("✓ Генерация данных завершена");
 
             Importer.importSchemas(indexPath, conn.createStatement());
