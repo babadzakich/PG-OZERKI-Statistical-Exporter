@@ -1,15 +1,24 @@
 package ru.nsu.datagen.dataGenerator.model;
 
-import com.opencsv.bean.CsvToBeanBuilder;
-import lombok.extern.slf4j.Slf4j;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.jgrapht.Graph;
 import org.jgrapht.alg.clique.BronKerboschCliqueFinder;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.graph.SimpleGraph;
 
-import java.io.Reader;
-import java.util.*;
-import java.util.stream.Collectors;
+import com.opencsv.bean.CsvToBeanBuilder;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class TableMetadataMaker {
@@ -83,7 +92,7 @@ public class TableMetadataMaker {
                     .map(ColumnMetadata::getForeignKeyMetadata)
                     .filter(Objects::nonNull)
                     .flatMap(Collection::stream)
-                    .map(ForeignKeyMetadata::getReferencedTable)
+                    .map(fk -> fk.getReferencedSchema() + "." + fk.getReferencedTable())
                     .collect(Collectors.toSet());
             tableMetadata.setRefTables(actualRefTables);
         });
@@ -92,7 +101,7 @@ public class TableMetadataMaker {
 
     private static void computeCompositePeers(List<ColumnMetadataCSV> csvData, Map<String, List<Set<String>>> compositeUniquePeersMap, Map<String, List<Set<String>>> compositeFkPeersMap) {
         Graph<String, DefaultEdge> uniqueGraph = new SimpleGraph<>(DefaultEdge.class), fkGraph = new SimpleGraph<>(DefaultEdge.class);
-
+        
         csvData.forEach(csv -> {
             if (csv.getCompositePeers() != null && !csv.getCompositePeers().isEmpty() && !"NULL".equalsIgnoreCase(csv.getCompositePeers().trim())) {
                 String vertexName = csv.getSchemaName().trim() + "." + csv.getTableName().trim() + "." + csv.getColumnName().trim();

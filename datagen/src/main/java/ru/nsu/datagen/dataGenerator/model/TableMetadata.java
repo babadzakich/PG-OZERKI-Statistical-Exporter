@@ -1,9 +1,12 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
 import lombok.Getter;
 import lombok.Setter;
-
-import java.util.*;
 
 public class TableMetadata {
     @Getter
@@ -14,7 +17,7 @@ public class TableMetadata {
     @Getter
     private final String namespace;
     @Getter @Setter
-    private Set<String> refTables;
+    private Set<String> refTables; //Те на кого мы ссылаемся
 
     public TableMetadata(String tableName, Map<String, ColumnMetadata> columns, int recordCount, String namespace) {
         this.tableName = tableName;
@@ -28,6 +31,10 @@ public class TableMetadata {
     public boolean hasForeignKeyDependencies() {
         return columns.values().stream()
                 .anyMatch(col -> col.isForeignKey() && col.getForeignKeyMetadata() != null);
+    }
+
+    public String getFullName() {
+        return namespace + "." + tableName;
     }
 
     @Override

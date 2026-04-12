@@ -1,5 +1,13 @@
 package ru.nsu.datagen.dataGenerator.generators;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
@@ -11,20 +19,27 @@ import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
-import java.util.*;
-
 @Slf4j
 public class DataGenerator {
-    private final ForeignKeyGeneratorFactory fkGeneratorFactory;
-    private final NormalValueGenerator normalValueGenerator;
+    private final ForeignKeyGeneratorFactory fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
+    private final NormalValueGenerator normalValueGenerator = new StatTypeBasedGenerator();
     private final Map<String, TableMetadata> allTablesMap;
 
     public DataGenerator(Map<String, TableMetadata> allTablesMap) {
-        this.fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
-        this.normalValueGenerator = new StatTypeBasedGenerator();
         this.allTablesMap = allTablesMap;
     }
 
+    public DataGenerator(Set<TableMetadata> allTablesSet) {
+        allTablesMap = allTablesSet.stream().collect(HashMap::new, (m, t) -> m.put(t.getFullName(), t), HashMap::putAll);
+    }
+
+    public Map<String, List<Object>> generateBatchTableData(
+            TableMetadata table,
+            Map<String, List<Object>> existingData,
+            int batchSize) {
+                return null;
+            }
+    
     /**
      * Генерирует данные для таблицы
      * @param table метаданные таблицы
