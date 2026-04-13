@@ -51,9 +51,9 @@ public class DatabaseDataGenerator {
                             List<CompletableFuture<Void>> levelFutures = level.stream()
                                     .map(table -> CompletableFuture.runAsync(() -> {
                                         log.info("Generate table: {}", table.getTableName());
-                                        Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, batchSize);
+                                        Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
                                         generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
-                                                generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + colName, generatedTableData.get(colName))
+                                                generatedData.put(table.getFullName() + "." + colName, generatedTableData.get(colName))
                                         );
                                         try {
                                             tableStore.storeTable(table, generatedTableData);
@@ -89,7 +89,7 @@ public class DatabaseDataGenerator {
         tableMetadataList.forEach((tableName, table) ->
                 table.getColumns().forEach((colName, col) -> {
                     if (col.getReferencingColumns() != null) {
-                        String key = table.getNamespace() + '.' + table.getTableName() + "." + colName;
+                        String key = table.getFullName() + "." + colName;
                         referenceCounters.put(key, col.getReferencingColumns().size());
                     }
                 })
@@ -103,7 +103,7 @@ public class DatabaseDataGenerator {
 
             for (String columnName : generatedTableData.keySet()) {
                 if (table.getColumns().get(columnName).getReferencingColumns() != null) {
-                    generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
+                    generatedData.put(table.getFullName() + "." + columnName, generatedTableData.get(columnName));
                 }
             }
 

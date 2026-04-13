@@ -1,14 +1,5 @@
 package ru.nsu.datagen;
 
-import com.zaxxer.hikari.HikariDataSource;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Test;
-import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
-import ru.nsu.datagen.dataGenerator.model.TableMetadata;
-import ru.nsu.datagen.importer.Importer;
-import ru.nsu.datagen.plancheck.struct.PlanTree;
-import ru.nsu.datagen.plancheck.ted.TreeEditDistance;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -18,17 +9,31 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import org.junit.jupiter.api.AfterAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-
-import com.zaxxer.hikari.HikariConfig;
-import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import static org.junit.jupiter.api.Assertions.*;
+
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
+import ru.nsu.datagen.dataGenerator.model.TableMetadata;
+import ru.nsu.datagen.importer.Importer;
+import ru.nsu.datagen.plancheck.struct.PlanTree;
+import ru.nsu.datagen.plancheck.ted.TreeEditDistance;
 
 /**
  * Интеграционный тест для проверки всего pipeline генерации
@@ -50,7 +55,7 @@ public class IntegrationTest {
     @BeforeAll
     static void beforeAll() throws SQLException {
         try {
-
+            System.setProperty("api.version", "1.44");
             HikariConfig hikariConfig = new HikariConfig();
             hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
             hikariConfig.setUsername(postgres.getUsername());
@@ -98,7 +103,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("big/big.yaml")
+    @ConfigFile("timetable/timetable.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
@@ -110,9 +115,9 @@ public class IntegrationTest {
             assertNotNull(importedData, "Импортированные данные не должны быть null");
             assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
-
+            ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource);
+            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, 1000);
             System.out.println("✓ Генерация данных завершена");
 
             // Проверка целостности данных и ограничений
