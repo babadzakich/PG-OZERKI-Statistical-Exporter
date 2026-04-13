@@ -110,7 +110,6 @@ public class IntegrationTest {
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
         String indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
-        ExecutorService generationExecutor = java.util.concurrent.Executors.newFixedThreadPool(config.getThreadCount());
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
             Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
