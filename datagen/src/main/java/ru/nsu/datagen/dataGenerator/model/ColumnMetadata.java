@@ -23,8 +23,8 @@ public class ColumnMetadata {
     private final double ndistinct;
     private final boolean isArray;
     private final List<Object> histogramm;
-    private final List<Set<String>> compositeUniquePeers;
-    private final List<Set<String>> compositeForeignPeers;
+    private final List<List<String>> compositeUniquePeers;
+    private final List<List<String>> compositeForeignPeers;
     private final Map<String, Map<String, List<String>>> referencingColumns;
 
 
@@ -33,7 +33,7 @@ public class ColumnMetadata {
                           boolean isForeignKey, boolean isUnique, double nullPercentage,
                           int recordCount, Integer maxLength, List<ForeignKeyMetadata> foreignKeyMetadata,
                           Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
-                          List<Object> histogramm, List<Set<String>> compositeUniquePeers, List<Set<String>> compositeForeignPeers,
+                          List<Object> histogramm, List<List<String>> compositeUniquePeers, List<List<String>> compositeForeignPeers,
                           Map<String, Map<String, List<String>>> referencingColumns
     ) {
         this.name = name;

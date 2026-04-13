@@ -110,9 +110,10 @@ public class IntegrationTest {
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
         String indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
+        String constraintPath = Paths.get(classLoader.getResource(config.getCONSTRAINT_PATH()).toURI()).toString();
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
-            Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
+            Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, constraintPath, conn);
             assertNotNull(importedData, "Импортированные данные не должны быть null");
             assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
