@@ -51,15 +51,19 @@ public class DatabaseDataGenerator {
                             List<CompletableFuture<Void>> levelFutures = level.stream()
                                     .map(table -> CompletableFuture.runAsync(() -> {
                                         log.info("Generate table: {}", table.getTableName());
-                                        Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
-                                        generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
-                                                generatedData.put(table.getFullName() + "." + colName, generatedTableData.get(colName))
-                                        );
-                                        try {
-                                            tableStore.storeTable(table, generatedTableData);
-                                        } catch (SQLException e) {
-                                            log.error("Failed to store table: {}", table.getTableName(), e);
-                                            throw new RuntimeException(e);
+                                        int createdAmount = 0;
+                                        while (createdAmount < table.getRecordCount()) {
+                                            int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
+                                            Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate);
+                                            generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
+                                                    generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
+                                            );
+                                            try {
+                                                tableStore.storeTable(table, generatedTableData);
+                                                createdAmount += toGenerate;
+                                            } catch (SQLException e) {
+                                                log.debug("Failed to store table: {}", table.getTableName(), e);
+                                            }
                                         }
                                     }, executorService)).toList();
 

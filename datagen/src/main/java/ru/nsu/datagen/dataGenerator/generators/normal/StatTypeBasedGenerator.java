@@ -1,5 +1,11 @@
 package ru.nsu.datagen.dataGenerator.generators.normal;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
+
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
@@ -7,16 +13,13 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-
 @Slf4j
 public class StatTypeBasedGenerator implements NormalValueGenerator {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
 
     @Override
-    public List<Object> generateValues(ColumnMetadata columnMetadata) {
-        log.info("Generating values for column: {}", columnMetadata.getName());
+    public List<Object> generateValues(ColumnMetadata columnMetadata, int batchSize) {
+        log.info("Generating batch of {} values for column: {}", batchSize, columnMetadata.getName());
         if (columnMetadata.getNdistinct() == -1) {
             log.debug("Using SimpleUniqueGenerator for column: {}, because ndistinct = -1", columnMetadata.getName());
             UniqueKeyGenerator generator = new SimpleUniqueGenerator(List.of(columnMetadata), columnMetadata.getRecordCount(), null, null);
@@ -151,6 +154,12 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         }
 
         return values;
+    }
+
+    @Override
+    public List<Object> generateValues(ColumnMetadata columnMetadata) {
+        log.info("Generating values for column: {}", columnMetadata.getName());
+        return generateValues(columnMetadata, columnMetadata.getRecordCount());
     }
 }
 

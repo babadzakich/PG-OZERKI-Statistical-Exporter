@@ -54,9 +54,9 @@ public class DataGenerator {
         Set<String> generatedColumns = new HashSet<>();
 
         // Сначала генерируем UNIQUE, потом FK, потом обычные колонки
-        generateUniqueConstraint(table, columnData, existingData, generatedColumns);
-        generateForeignKeys(table, columnData, existingData, generatedColumns);
-        generateNormalColumns(table, columnData, generatedColumns);
+        generateUniqueConstraint(table, columnData, existingData, generatedColumns, table.getRecordCount());
+        generateForeignKeys(table, columnData, existingData, generatedColumns, table.getRecordCount());
+        generateNormalColumns(table, columnData, generatedColumns, table.getRecordCount());
 
         return columnData;
     }
@@ -67,7 +67,8 @@ public class DataGenerator {
     private void generateNormalColumns(
             TableMetadata table,
             Map<String, List<Object>> columnData,
-            Set<String> generatedColumns) {
+            Set<String> generatedColumns,
+            int batchSize) {
 
         for (ColumnMetadata column : table.getColumns().values()) {
             if (!column.isPrimaryKey() && !column.isForeignKey() && !column.isUnique()) {
@@ -85,7 +86,8 @@ public class DataGenerator {
             TableMetadata table,
             Map<String, List<Object>> columnData,
             Map<String, List<Object>> existingData,
-            Set<String> generatedColumns) {
+            Set<String> generatedColumns,
+            int batchSize) {
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isForeignKey() && !generatedColumns.contains(column.getName())) {
                 if (!column.getCompositeForeignPeers().isEmpty()) {
@@ -114,7 +116,8 @@ public class DataGenerator {
         TableMetadata table,
         Map<String, List<Object>> columnData,
         Map<String, List<Object>> existingData,
-        Set<String> generatedColumns) {
+        Set<String> generatedColumns,
+        int batchSize) {
             for (ColumnMetadata column : table.getColumns().values()) {
                 if ((column.isUnique() || column.isPrimaryKey()) && !generatedColumns.contains(column.getName())) {
                     List<ColumnMetadata> uniqueList = new ArrayList<>();
