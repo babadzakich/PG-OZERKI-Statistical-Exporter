@@ -6,6 +6,7 @@
 #include "fe_utils/string_utils.h"
 #include "getopt_long.h" 
 #include "catalog/pg_class.h"
+#include "port.h"
 
 #define BATCH_SIZE 1024
 
@@ -28,6 +29,9 @@ expand_schema_name_patterns(Archive *fout,
 
 static void prohibit_crossdb_refs(PGconn *conn, const char *dbname,
 								  const char *pattern);
+
+static void
+help(const char *progname);
 
 static void
 setup_connection(Archive *AH, const char *dumpencoding,
@@ -243,7 +247,7 @@ int main(int argc, char** argv) {
 
 	bool dump_schema = false;
 
-
+	
 	char* query_filename = NULL;
 	bool query_file = false;
 
@@ -257,6 +261,27 @@ int main(int argc, char** argv) {
 
 	pg_logging_init(argv[0]);
 	pg_logging_set_level(PG_LOG_DEBUG);
+
+	progname = get_progname(argv[0]);
+
+	
+	
+	if (argc > 1)
+	{
+		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
+		{
+			help(progname);
+			exit(0);
+		}
+		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
+		{
+			puts("pg_dump (PostgreSQL) " PG_VERSION);
+			exit(0);
+		}
+	} else {
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
+	}
 
 	InitDumpOptions(&dopt);
 	archiveMode = archModeWrite;
@@ -525,43 +550,66 @@ int main(int argc, char** argv) {
 	
 	fflush(AH->FH);
 
-    // if (index_file && index_filename)
-    // {
-    //     pg_log_info("Exporting indexes to: %s", index_filename);
+    if (index_file && index_filename)
+    {
+        pg_log_info("Exporting indexes to: %s", index_filename);
         
-    //     FILE *idx_fp = fopen(index_filename, "w");
-    //     if (idx_fp) 
-    //     {
-    //         ArchiveHandle *AH = (ArchiveHandle *) fout;
-    //         fprintf(idx_fp, "-- === INDEXES AND CONSTRAINTS ===\n\n");
+        FILE *idx_fp = fopen(index_filename, "w");
+        if (idx_fp) 
+        {
+            ArchiveHandle *AH = (ArchiveHandle *) fout;
+            fprintf(idx_fp, "-- === INDEXES AND CONSTRAINTS ===\n\n");
 
-    //         TocEntry *te;
-    //         for (te = AH->toc->next; te != AH->toc; te = te->next)
-    //         {
-    //             if (te->section == SECTION_POST_DATA)
-    //             {
-    //                 if (te->defn && te->defn[0] != '\0')
-    //                 {
-    //                     fprintf(idx_fp, "%s\n\n", te->defn);
-    //                 }
+
+            TocEntry *te;
+            for (te = AH->toc->next; te != AH->toc; te = te->next)
+            {
+                if (te->section == SECTION_POST_DATA)
+                {
+                    if (te->defn && te->defn[0] != '\0')
+                    {
+                        fprintf(idx_fp, "%s\n\n", te->defn);
+                    }
                     
 
-    //             }
-    //         }
+                }
+            }
 
-    //         fflush(idx_fp);
-    //         fclose(idx_fp);
-    //         pg_log_info("Indexes are succesfully dumped");
-    //     } else {
-	// 		pg_log_error("Cannot open file to write indexes");
-	// 	}
-    // }
+            fflush(idx_fp);
+            fclose(idx_fp);
+            pg_log_info("Indexes are succesfully dumped");
+        } else {
+			pg_log_error("Cannot open file to write indexes");
+		}
+    }
 	CloseArchive(fout);
     
 	pg_log_debug("Schema exported");
     return 0;
 }
 
+static void
+help(const char *progname)
+{
+	printf(_("%s dumps a database schema as a .sql script or to other formats.\n\n"), progname);
+	printf(_("Usage:\n"));
+
+	printf(_("  --dbname <DBNAME>                        Name of database to dump\n"));
+	printf(_("  --username <USERNAME>                    Postgres database username\n"));
+	printf(_("  --host <HOST>                            Database host\n"));
+	printf(_("  --port <PORT>                            Database port\n"));
+	printf(_("  --schema-file <SCHEMA_FILENAME>          Name of file where schema will be exported (without indexes)\n"));
+	printf(_("  --stats-file <STATS_FILENAME>            Name of file where stats will be exported\n"));
+	printf(_("  --explainfile <EXPLAIN FILENAME>         Name of file where EXPLAIN result will be exported\n"));
+	printf(_("  --explainfile-analyze \n   <EXPLAIN ANALZYE FILENAME>              Name of file where EXPLAIN ANALYZE result will be exported\n"));
+	printf(_("  --query <QUERY_TEXT>                     Text of query by which export will be executed\n"));
+	printf(_("  --query-file <QUERY_FILE>                Name of file containing SQL query by which exported will be executed\n"));
+	printf(_("  --constr-file <CONSTRAINTS_FILENAME>     Name of .csv file where information about constraints will be exported\n"));
+	printf(_("  --index-file <INDEX_FILENAME>            Name of file where indexes will be exported as SQL script\n"));
+	printf(_("  --no-checks                              Don't export CHECK constraints\n"));
+	printf(_("  --no-exts                                Don't export extensions\n"));
+	
+}
 
 static void
 expand_schema_name_patterns(Archive *fout,
