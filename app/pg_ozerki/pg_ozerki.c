@@ -7,6 +7,7 @@
 #include "getopt_long.h" 
 #include "catalog/pg_class.h"
 #include "port.h"
+#include <cyaml/cyaml.h>
 
 #define BATCH_SIZE 1024
 
@@ -209,6 +210,49 @@ void get_query_from_file(char* filename, PQExpBuffer query) {
 	fclose(fp);
 }
 
+static const cyaml_schema_field_t config_fields_schema[] = {
+    CYAML_FIELD_STRING_PTR("dbname", CYAML_FLAG_POINTER,
+        ozerki_config_t, dbname, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("username", CYAML_FLAG_POINTER,
+        ozerki_config_t, username, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("host", CYAML_FLAG_POINTER,
+        ozerki_config_t, host, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("port", CYAML_FLAG_DEFAULT,
+        ozerki_config_t, port, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("schema-file", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, schema_file, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("query", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, query, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("explainfile", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, explain_file, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("explainfile-analyze", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, explain_file_analyze, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("stats-file", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, stats_file, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("query-file", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, query_file, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("constr-file", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, constr_file, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_STRING_PTR("index-file", CYAML_FLAG_POINTER | CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, index_file, 0, CYAML_UNLIMITED),
+    CYAML_FIELD_BOOL("no-checks", CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, no_checks),
+    CYAML_FIELD_BOOL("no-exts", CYAML_FLAG_OPTIONAL,
+        ozerki_config_t, no_exts),
+    CYAML_FIELD_END
+};
+
+static const cyaml_schema_value_t config_schema = {
+    CYAML_VALUE_MAPPING(CYAML_FLAG_POINTER,
+        ozerki_config_t, config_fields_schema),
+};
+
+static const cyaml_config_t cyaml_config = {
+    .log_fn = cyaml_log,   
+	.mem_fn = cyaml_mem,         
+    .log_level = CYAML_LOG_WARNING, 
+};
+
 int main(int argc, char** argv) {
     int			c;
 	const char *filename = NULL;
@@ -283,6 +327,16 @@ int main(int argc, char** argv) {
 				exit(1);
 	}
 
+	ozerki_config_t *config;
+	if (argc > 1) {
+		cyaml_err_t err = cyaml_load_file(argv[1], &cyaml_config,
+										&config_schema, (void **) &config, NULL);
+
+		if (err != CYAML_OK) {
+			fprintf(stderr, "ERROR: %s\n", cyaml_strerror(err));
+			exit(1);
+		}
+	}
 	InitDumpOptions(&dopt);
 	archiveMode = archModeWrite;
 	archiveFormat = archNull;
@@ -291,91 +345,69 @@ int main(int argc, char** argv) {
 	
 	dopt.schemaOnly = true;
 	dopt.include_everything = true;
-	static struct option long_options[] = {
+	
+	
+	if (config->dbname)
+		dopt.cparams.dbname = pg_strdup(config->dbname);
+
+	if (config->username)
+		dopt.cparams.username = pg_strdup(config->username);
 		
+	if (config->host)
+		dopt.cparams.pghost = pg_strdup(config->host);
 
-		/*
-		 * the following options don't have an equivalent short option letter
-		 */
-		{"dbname", required_argument, NULL, DBNAME},
-		{"username", required_argument, NULL, USERNAME},
-		{"host", required_argument, NULL, HOST},
-		{"port", required_argument, NULL, PORT},
-		{"schema-file", required_argument, NULL, SCHEMA_FILE},
-		{"query", required_argument, NULL, QUERY},
-		{"explainfile", required_argument, NULL, EXPLAINFILE},
-		{"explainfile-analyze", required_argument, NULL, EXPLAINFILE_ANALZYE},
-		{"stats-file", required_argument, NULL, STATS_FILE},
-		{"no-checks", no_argument, NULL, NO_CHECKS},
-		{"no-exts", no_argument, NULL, NO_EXTS},
-		{"query-file", required_argument, NULL, QUERY_FILE},
-		{"constr-file", required_argument, NULL, CONSTRAINTS_FILE},
-		{"index-file", required_argument, NULL, INDEX_FILE},
-		{NULL, 0, NULL, 0}
-	};
-
-	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vwWxZ:",
-							long_options, &optindex)) != -1)
-	{
-		switch (c)
-		{
-			case DBNAME:
-				dopt.cparams.dbname = pg_strdup(optarg);
-				break;
-			case USERNAME:
-				dopt.cparams.username = pg_strdup(optarg);
-				break;
-			case HOST:
-				dopt.cparams.pghost = pg_strdup(optarg);
-				break;
-			case PORT:
-				dopt.cparams.pgport = pg_strdup(optarg);
-				break;
-			case SCHEMA_FILE:
-				dump_schema = true;
-				filename = pg_strdup(optarg);
-				break;
-			case QUERY:
-				by_query = true;
-				dump_query = pg_strdup(optarg);
-				break;
-			case EXPLAINFILE:
-				dump_explain = true;
-				explain_file = pg_strdup(optarg);
-				break;
-			case EXPLAINFILE_ANALZYE:
-				dump_explain_analyze = true;
-				explain_file_analyze = pg_strdup(optarg);
-				break;
-			case STATS_FILE:
-				dump_stat = true;
-				stats_file = pg_strdup(optarg);
-				break;
-			case NO_CHECKS:
-				no_checks = true;
-				break;
-			case NO_EXTS:
-				no_exts = true;
-				break;
-			case QUERY_FILE:
-				query_file = true;
-				query_filename = pg_strdup(optarg);
-				break;
-			case CONSTRAINTS_FILE:
-				constraints_file = true;
-				constraints_filename = pg_strdup(optarg);
-				break;
-			case INDEX_FILE:
-				index_file = true;
-				index_filename = pg_strdup(optarg);
-				break;
-			default:
-				/* getopt_long already emitted a complaint */
-				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
-				exit(1);
-		}
+	if (config->port)
+		dopt.cparams.pgport = pg_strdup(config->port);
+	
+	if (config->schema_file) {
+		dump_schema = true;
+		filename = pg_strdup(config->schema_file);
 	}
 
+	if (config->query) {
+		by_query = true;
+		dump_query = pg_strdup(config->query);
+	}
+
+	if (config->explain_file) {
+		dump_explain = true;
+		explain_file = pg_strdup(config->explain_file);
+	}
+
+	if (config->explain_file_analyze) {
+		dump_explain_analyze = true;
+		explain_file_analyze = pg_strdup(config->explain_file_analyze);
+	}
+
+	if (config->stats_file) {
+		dump_stat = true;
+		stats_file = pg_strdup(config->stats_file);
+	}
+	
+	if (config->no_checks) {
+		no_checks = true;
+
+	}
+
+	if (config->no_exts) {
+		no_exts = true;
+	}
+
+	if (config->query_file) {
+		query_file = true;
+		query_filename = pg_strdup(config->query_file);
+	}
+
+	if (config->constr_file) {
+		constraints_file = true;
+		constraints_filename = pg_strdup(config->constr_file);
+	}
+	if (config->index_file) {
+		index_file = true;
+		index_filename = pg_strdup(config->index_file);
+	}
+	
+		
 	
 
     if (by_query && query_file) {
@@ -517,7 +549,7 @@ int main(int argc, char** argv) {
 	ropt->schemaOnly = dopt.schemaOnly;
 	ropt->if_exists = dopt.if_exists;
 	ropt->column_inserts = dopt.column_inserts;
-	ropt->dumpSections = SECTION_PRE_DATA | SECTION_DATA | SECTION_POST_DATA;
+	ropt->dumpSections = SECTION_PRE_DATA | SECTION_DATA;
 	ropt->aclsSkip = dopt.aclsSkip;
 	ropt->superuser = dopt.outputSuperuser;
 	ropt->createDB = dopt.outputCreateDB;
@@ -558,6 +590,7 @@ int main(int argc, char** argv) {
         if (idx_fp) 
         {
             ArchiveHandle *AH = (ArchiveHandle *) fout;
+			AH->FH = idx_fp;
             fprintf(idx_fp, "-- === INDEXES AND CONSTRAINTS ===\n\n");
 
 
@@ -592,22 +625,22 @@ static void
 help(const char *progname)
 {
 	printf(_("%s dumps a database schema as a .sql script or to other formats.\n\n"), progname);
-	printf(_("Usage:\n"));
-
-	printf(_("  --dbname <DBNAME>                        Name of database to dump\n"));
-	printf(_("  --username <USERNAME>                    Postgres database username\n"));
-	printf(_("  --host <HOST>                            Database host\n"));
-	printf(_("  --port <PORT>                            Database port\n"));
-	printf(_("  --schema-file <SCHEMA_FILENAME>          Name of file where schema will be exported (without indexes)\n"));
-	printf(_("  --stats-file <STATS_FILENAME>            Name of file where stats will be exported\n"));
-	printf(_("  --explainfile <EXPLAIN FILENAME>         Name of file where EXPLAIN result will be exported\n"));
-	printf(_("  --explainfile-analyze \n   <EXPLAIN ANALZYE FILENAME>              Name of file where EXPLAIN ANALYZE result will be exported\n"));
-	printf(_("  --query <QUERY_TEXT>                     Text of query by which export will be executed\n"));
-	printf(_("  --query-file <QUERY_FILE>                Name of file containing SQL query by which exported will be executed\n"));
-	printf(_("  --constr-file <CONSTRAINTS_FILENAME>     Name of .csv file where information about constraints will be exported\n"));
-	printf(_("  --index-file <INDEX_FILENAME>            Name of file where indexes will be exported as SQL script\n"));
-	printf(_("  --no-checks                              Don't export CHECK constraints\n"));
-	printf(_("  --no-exts                                Don't export extensions\n"));
+	printf(_("Usage: ./pg_ozerki <path_to_YAML_config_file>\n"));
+	printf(_("YAML fields:\n"));
+	printf(_("  dbname <DBNAME>                        Name of database to dump\n"));
+	printf(_("  username <USERNAME>                    Postgres database username\n"));
+	printf(_("  host <HOST>                            Database host\n"));
+	printf(_("  port <PORT>                            Database port\n"));
+	printf(_("  schema-file <SCHEMA_FILENAME>          Name of file where schema will be exported (without indexes)\n"));
+	printf(_("  stats-file <STATS_FILENAME>            Name of file where stats will be exported\n"));
+	printf(_("  explainfile <EXPLAIN FILENAME>         Name of file where EXPLAIN result will be exported\n"));
+	printf(_("  explainfile-analyze \n   <EXPLAIN ANALZYE FILENAME>              Name of file where EXPLAIN ANALYZE result will be exported\n"));
+	printf(_("  query <QUERY_TEXT>                     Text of query by which export will be executed\n"));
+	printf(_("  query-file <QUERY_FILE>                Name of file containing SQL query by which exported will be executed\n"));
+	printf(_("  constr-file <CONSTRAINTS_FILENAME>     Name of .csv file where information about constraints will be exported\n"));
+	printf(_("  index-file <INDEX_FILENAME>            Name of file where indexes will be exported as SQL script\n"));
+	printf(_("  no-checks                              Don't export CHECK constraints\n"));
+	printf(_("  no-exts                                Don't export extensions\n"));
 	
 }
 
