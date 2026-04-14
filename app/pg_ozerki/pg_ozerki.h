@@ -1758,3 +1758,22 @@ extern bool buildDefaultACLCommands(const char *type, const char *nspname,
             const char *owner,
             int remoteVersion,
             PQExpBuffer sql);
+
+
+
+typedef struct ozerki_config {
+    char *dbname;
+    char *username;
+    char *host;
+    char *port;
+    char *schema_file;
+    char *query;
+    char *explain_file;
+    char *explain_file_analyze;
+    char *stats_file;
+    char *query_file;
+    char *constr_file;
+    char *index_file;
+    bool no_checks;
+    bool no_exts;
+} ozerki_config_t;
