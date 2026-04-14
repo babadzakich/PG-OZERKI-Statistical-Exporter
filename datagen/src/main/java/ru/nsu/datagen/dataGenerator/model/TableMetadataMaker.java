@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.opencsv.CSVParserBuilder;
+import com.opencsv.CSVReaderBuilder;
 import com.opencsv.bean.CsvToBeanBuilder;
 
 import lombok.extern.slf4j.Slf4j;
@@ -27,13 +29,7 @@ public class TableMetadataMaker {
                 .withEscapeChar('\0')
                 .build()
                 .parse();
-        List<ConstraintCSV> constrData = new CsvToBeanBuilder<ConstraintCSV>(constrReader)
-                .withType(ConstraintCSV.class)
-                .withSeparator(',')
-                .withIgnoreLeadingWhiteSpace(true)
-                .withEscapeChar('\0')
-                .build()
-                .parse();
+        List<ConstraintCSV> constrData = parseConstraintData(constrReader);
         Map<String, List<List<String>>> compositeUniquePeersMap = new HashMap<>();
         Map<String, List<List<String>>> compositeFkPeersMap = new HashMap<>();
         constrData.forEach(constraint -> {
@@ -43,7 +39,6 @@ public class TableMetadataMaker {
                     compositeUniquePeersMap.computeIfAbsent(column.trim(), k -> new ArrayList<>()).add(
                             Arrays.stream(columns)
                                     .map(String::trim)
-                                    .filter(col -> !col.equals(column.trim()))
                                     .collect(Collectors.toList())
                     );
                 }
@@ -52,7 +47,6 @@ public class TableMetadataMaker {
                     compositeFkPeersMap.computeIfAbsent(column.trim(), k -> new ArrayList<>()).add(
                             Arrays.stream(columns)
                                     .map(String::trim)
-                                    .filter(col -> !col.equals(column.trim()))
                                     .collect(Collectors.toList())
                     );
                 }
@@ -122,5 +116,58 @@ public class TableMetadataMaker {
             tableMetadata.setRefTables(actualRefTables);
         });
         return result;
+    }
+
+    private static List<ConstraintCSV> parseConstraintData(Reader constrReader) {
+        try {
+            var csvReader = new CSVReaderBuilder(constrReader)
+                    .withCSVParser(new CSVParserBuilder()
+                            .withSeparator(',')
+                            .withIgnoreLeadingWhiteSpace(true)
+                            .build())
+                    .build();
+            List<String[]> rows = csvReader.readAll();
+            if (rows.isEmpty()) {
+                return List.of();
+            }
+
+            String[] headers = rows.getFirst();
+            Map<String, Integer> headerIndex = new HashMap<>();
+            for (int i = 0; i < headers.length; i++) {
+                headerIndex.put(headers[i].trim().toLowerCase(), i);
+            }
+
+            List<ConstraintCSV> constraints = new ArrayList<>();
+            for (int rowIndex = 1; rowIndex < rows.size(); rowIndex++) {
+                String[] row = rows.get(rowIndex);
+                String constraintName = getCsvValue(row, headerIndex, "constraint_name");
+                String type = getCsvValue(row, headerIndex, "type");
+                String columns = getCsvValue(row, headerIndex, "columns");
+
+                if (constraintName == null && type == null && columns == null) {
+                    continue;
+                }
+
+                constraints.add(new ConstraintCSV(constraintName, type, columns));
+            }
+            return constraints;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Cannot parse constraint CSV.", e);
+        }
+    }
+
+    private static String getCsvValue(String[] row, Map<String, Integer> headerIndex, String headerName) {
+        Integer index = headerIndex.get(headerName);
+        if (index == null || index >= row.length) {
+            return null;
+        }
+
+        String value = row[index];
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

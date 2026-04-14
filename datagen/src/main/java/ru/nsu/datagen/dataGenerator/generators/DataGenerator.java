@@ -88,7 +88,7 @@ public class DataGenerator {
             Set<String> generatedColumns) {
         for (ColumnMetadata column : table.getColumns().values()) {
             if (column.isForeignKey() && !generatedColumns.contains(column.getName())) {
-                if (!column.getCompositeForeignPeers().isEmpty()) {
+                if (!(column.getCompositeForeignPeers().size() == 1)) {
                     List<ColumnMetadata> foreignKeysMultiple = column.getCompositeForeignPeers().getFirst()
                             .stream().map(foreignPeer -> table.getColumns().get(foreignPeer.split("\\.")[2]))
                             .toList();
@@ -118,7 +118,7 @@ public class DataGenerator {
             for (ColumnMetadata column : table.getColumns().values()) {
                 if ((column.isUnique() || column.isPrimaryKey()) && !generatedColumns.contains(column.getName())) {
                     List<ColumnMetadata> uniqueList = new ArrayList<>();
-                    if (column.getCompositeUniquePeers() != null && !column.getCompositeUniquePeers().isEmpty()) {
+                    if (!(column.getCompositeUniquePeers().size() == 1)) {
                         column.getCompositeUniquePeers().getFirst().stream() // TODO: Поддержка пересекающихся уникальных ключей
                                 .map(col -> table.getColumns().get(col.split("\\.")[2]))
                                 .forEach(uniqueList::add);
