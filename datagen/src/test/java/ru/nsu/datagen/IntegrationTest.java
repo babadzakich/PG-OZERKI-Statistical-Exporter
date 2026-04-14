@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -104,12 +105,15 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("timetable/timetable.yaml")
+    @ConfigFile("Base/config.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
-        String indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
+        String indexPath = null;
+        if (config.getIndexPath() != null) {
+            indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
+        }
         String constraintPath = Paths.get(classLoader.getResource(config.getCONSTRAINT_PATH()).toURI()).toString();
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
@@ -122,7 +126,14 @@ public class IntegrationTest {
             DatabaseDataGenerator.generateData(importedData, dataSource, executorService, 1000);
             System.out.println("✓ Генерация данных завершена");
 
-            Importer.importSchemas(indexPath, conn.createStatement());
+            Optional.ofNullable(indexPath).ifPresent(path -> {
+                try {
+                    Importer.importSchemas(path, conn.createStatement());
+                } catch (SQLException e) {
+                    log.error("Failed to import indexes from SQL file.", e);
+                    throw new RuntimeException(e);
+                }
+            });
             // Проверка целостности данных и ограничений
             for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);

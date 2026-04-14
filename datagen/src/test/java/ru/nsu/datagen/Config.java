@@ -66,7 +66,7 @@ public class Config {
             this.DB_NAME = (String) configMap.get("dbName");
             this.SCHEMA_PATH = (String) configMap.get("schema");
             this.STATS_PATH = (String) configMap.get("statistic");
-            this.CONSTRAINT_PATH = (String) configMap.get("constraint_path");
+            this.CONSTRAINT_PATH = (String) configMap.get("constraints_path");
             this.tables = databases;
             this.queryPath = (String) configMap.get("query_path");
             this.sourcePlanPath = (String) configMap.get("source_plan_path");
