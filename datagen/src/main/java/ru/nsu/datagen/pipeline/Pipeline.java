@@ -38,7 +38,7 @@ public class Pipeline {
         ExecutorService generationExecutor = java.util.concurrent.Executors.newFixedThreadPool(args.generationThreadPoolSize);
 
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
-            Map<String, TableMetadata> rawImportedData = Importer.startImport(args.schemaPath, args.statPath, dataSource.getConnection());
+            Map<String, TableMetadata> rawImportedData = Importer.startImport(args.schemaPath, args.statPath, args.constraintFile, dataSource.getConnection());
             DatabaseDataGenerator.generateData(rawImportedData, dataSource, generationExecutor, args.batchSize);
         } catch (Exception e) {
             log.error("Pipeline failed: ", e);

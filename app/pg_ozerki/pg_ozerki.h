@@ -1676,6 +1676,7 @@ extern bool no_checks;
 extern bool no_exts;
 QueryDependencies* InitQueryDependencies();
 void export_stats(PGconn* conn, const char* export_filename);
+void export_constraints(PGconn* conn, const char* export_filename);
 
 void get_explain(PGconn* conn, const char *query, char* filename, bool analyze);
 
@@ -1747,3 +1748,32 @@ selectDumpablePublicationObject(DumpableObject *dobj, Archive *fout);
 
 DumpId
 createDumpId(void);
+
+
+extern int ahprintf(ArchiveHandle *AH, const char *fmt,...) pg_attribute_printf(2, 3);
+extern void ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH);
+extern void mark_schemas_for_dump(TableInfo *tblinfo, int numTables);
+extern bool buildDefaultACLCommands(const char *type, const char *nspname,
+            const char *acls, const char *acldefault,
+            const char *owner,
+            int remoteVersion,
+            PQExpBuffer sql);
+
+
+
+typedef struct ozerki_config {
+    char *dbname;
+    char *username;
+    char *host;
+    char *port;
+    char *schema_file;
+    char *query;
+    char *explain_file;
+    char *explain_file_analyze;
+    char *stats_file;
+    char *query_file;
+    char *constr_file;
+    char *index_file;
+    bool no_checks;
+    bool no_exts;
+} ozerki_config_t;

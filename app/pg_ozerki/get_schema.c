@@ -34,7 +34,7 @@
 
 
 
-const char *progname = "pg_ozerki";
+const char *progname;
 
 const CatalogId nilCatalogId = {0, 0};
 

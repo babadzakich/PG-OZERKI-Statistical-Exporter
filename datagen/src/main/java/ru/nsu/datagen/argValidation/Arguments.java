@@ -38,4 +38,10 @@ public class Arguments {
 
     @Parameter(names = "-help", help = true)
     public boolean help;
+
+    @Parameter(names = "-indexes")
+    public String indexFile;
+
+    @Parameter(names = "-constraints", validateWith=FilePath.class)
+    public String constraintFile;
 }

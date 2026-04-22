@@ -32,7 +32,16 @@ OBJS = \
 	dump.o \
 	query.o \
 	stat_export.o \
-	plan_export.o
+	plan_export.o \
+	constraint_export.o
+
+
+CYAML_CFLAGS = $(shell pkg-config --cflags libcyaml)
+CYAML_LIBS = $(shell pkg-config --libs libcyaml)
+
+override CPPFLAGS := $(CYAML_CFLAGS) -I$(libpq_srcdir) $(CPPFLAGS)
+
+LIBS += $(CYAML_LIBS)
 
 all: pg_ozerki
 
@@ -53,6 +62,7 @@ installcheck:
 
 uninstall:
 	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, pg_ozerki$(X))
+
 
 clean distclean:
 	rm -f pg_ozerki$(X) $(OBJS) pg_ozerki.o

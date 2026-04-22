@@ -1,20 +1,26 @@
 package ru.nsu.datagen.importer;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Map;
+
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 
-import java.io.*;
-import java.sql.*;
-import java.util.Map;
-
 @Slf4j
 public class Importer {
-    static public Map<String, TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, Connection conn) {
+    static public Map<String, TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, String constraintsDataPath, Connection conn) {
         try {
             Statement statement = conn.createStatement();
             importSchemas(schemasScriptPath, statement);
-            return importStatistic(statisticDataPath);
+            return importStatistic(statisticDataPath, constraintsDataPath);
         } catch (ImporterException e) {
             log.error("Importer exception occurred.", e);
             throw e;
@@ -24,20 +30,24 @@ public class Importer {
         }
     }
 
-    static private Map<String, TableMetadata> importStatistic(String path) {
-        if (!new File(path).exists()) {
-            throw new ImporterException("There is no import statistic file " + path );
+    static private Map<String, TableMetadata> importStatistic(String statPath, String constrPath) {
+        if (!new File(statPath).exists()) {
+            throw new ImporterException("There is no import statistic file " + statPath );
+        }
+        if (!new File(constrPath).exists()) {
+            throw new ImporterException("There is no import constraints file " + constrPath );
         }
         try {
-            FileReader filereader = new FileReader(path);
-            return TableMetadataMaker.processTableMetadata(filereader);
+            FileReader filereader = new FileReader(statPath);
+            FileReader constrReader = new FileReader(constrPath);
+            return TableMetadataMaker.processTableMetadata(filereader, constrReader);
         } catch (RuntimeException | IOException e) {
             log.error("Cannot import statistic from CSV file.", e);
             throw new ImporterException("Cannot import statistic from CSV file.");
         }
     }
 
-    static private void importSchemas(String path, Statement statement) throws ImporterException {
+    static public void importSchemas(String path, Statement statement) throws ImporterException {
         if (!new File(path).exists()) {
             throw new ImporterException("There is no import schemas script " + path);
         }

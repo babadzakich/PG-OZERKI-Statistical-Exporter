@@ -2,6 +2,8 @@ schema: big/big_schema.sql
 statistic: big/big_stats.csv
 query_path: big/big_query.sql
 source_plan_path: big/big_explain.json
+thread_count: 1
+index_path: big/big_indexes.sql
 tables:
   - name: airports_data
     schema: bookings

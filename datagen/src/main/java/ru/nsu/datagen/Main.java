@@ -55,6 +55,8 @@ public class Main {
             if (args.password == null) args.password = configArgs.password;
             if (args.schemaPath == null) args.schemaPath = configArgs.schemaPath;
             if (args.statPath == null) args.statPath = configArgs.statPath;
+            if (args.indexFile == null) args.indexFile = configArgs.indexFile;
+            if (args.constraintFile == null) args.constraintFile = configArgs.constraintFile;
             args.batchSize = configArgs.batchSize != null ? configArgs.batchSize : args.batchSize;
             args.generationThreadPoolSize = configArgs.generationThreadPoolSize != null ? configArgs.generationThreadPoolSize : args.generationThreadPoolSize;
             args.connectionPoolSize = configArgs.connectionPoolSize != null ? configArgs.connectionPoolSize : args.connectionPoolSize;
@@ -70,6 +72,8 @@ public class Main {
         if (args.password == null) missing.append("-passwd ");
         if (args.schemaPath == null) missing.append("-schema ");
         if (args.statPath == null) missing.append("-stat ");
+        if (args.indexFile == null) missing.append("-indexes ");
+        if (args.constraintFile == null) missing.append("-constraints ");
 
         if (!missing.isEmpty()) {
             throw new IllegalArgumentException("Missing required arguments: " + missing);

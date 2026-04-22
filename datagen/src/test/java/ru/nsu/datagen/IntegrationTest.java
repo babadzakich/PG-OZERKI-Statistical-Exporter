@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -60,6 +61,7 @@ public class IntegrationTest {
             hikariConfig.setJdbcUrl(postgres.getJdbcUrl());
             hikariConfig.setUsername(postgres.getUsername());
             hikariConfig.setPassword(postgres.getPassword());
+            hikariConfig.setMaximumPoolSize(32);
             dataSource = new HikariDataSource(hikariConfig);
             try (Connection conn = dataSource.getConnection();
                  Statement stmt = conn.createStatement()) {
@@ -103,15 +105,19 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("big/big.yaml")
+    @ConfigFile("Base/config.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
-
+        String indexPath = null;
+        if (config.getIndexPath() != null) {
+            indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
+        }
+        String constraintPath = Paths.get(classLoader.getResource(config.getCONSTRAINT_PATH()).toURI()).toString();
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
-            Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, conn);
+            Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, constraintPath, conn);
             assertNotNull(importedData, "Импортированные данные не должны быть null");
             assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
@@ -120,6 +126,14 @@ public class IntegrationTest {
             DatabaseDataGenerator.generateData(importedData, dataSource, executorService, 1000);
             System.out.println("✓ Генерация данных завершена");
 
+            Optional.ofNullable(indexPath).ifPresent(path -> {
+                try {
+                    Importer.importSchemas(path, conn.createStatement());
+                } catch (SQLException e) {
+                    log.error("Failed to import indexes from SQL file.", e);
+                    throw new RuntimeException(e);
+                }
+            });
             // Проверка целостности данных и ограничений
             for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);
