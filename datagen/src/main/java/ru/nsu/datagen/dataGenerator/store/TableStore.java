@@ -7,6 +7,7 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.math.BigDecimal;
 import java.sql.*;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -154,8 +155,46 @@ public class TableStore {
                 conn.commit();
             }
         } catch (SQLException e) {
-            log.error("Failed to store data in table {}: {}", tableMetadata.getTableName(), e.getMessage());
+            logSqlException(tableMetadata, queryString, e);
             throw e;
+        }
+    }
+
+    private void logSqlException(TableMetadata tableMetadata, String queryString, SQLException e) {
+        log.error(
+                "Failed to store data in table {}. query='{}', exceptionType={}, sqlState={}, errorCode={}, message={}",
+                tableMetadata.getTableName(),
+                queryString,
+                e.getClass().getName(),
+                e.getSQLState(),
+                e.getErrorCode(),
+                e.getMessage(),
+                e
+        );
+
+        if (e instanceof BatchUpdateException batchException) {
+            log.error(
+                    "Batch execution details for table {}: updateCounts={}",
+                    tableMetadata.getTableName(),
+                    Arrays.toString(batchException.getUpdateCounts())
+            );
+        }
+
+        SQLException nextException = e.getNextException();
+        int nextIndex = 1;
+        while (nextException != null) {
+            log.error(
+                    "Next SQL exception #{} for table {}: exceptionType={}, sqlState={}, errorCode={}, message={}",
+                    nextIndex,
+                    tableMetadata.getTableName(),
+                    nextException.getClass().getName(),
+                    nextException.getSQLState(),
+                    nextException.getErrorCode(),
+                    nextException.getMessage(),
+                    nextException
+            );
+            nextException = nextException.getNextException();
+            nextIndex++;
         }
     }
 

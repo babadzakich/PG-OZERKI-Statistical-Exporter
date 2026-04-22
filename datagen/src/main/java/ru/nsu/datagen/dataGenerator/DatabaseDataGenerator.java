@@ -54,7 +54,7 @@ public class DatabaseDataGenerator {
                                         int createdAmount = 0;
                                         while (createdAmount < table.getRecordCount()) {
                                             int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
-                                            Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate);
+                                            Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, createdAmount, toGenerate);
                                             generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
                                                     generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
                                             );
@@ -62,7 +62,15 @@ public class DatabaseDataGenerator {
                                                 tableStore.storeTable(table, generatedTableData);
                                                 createdAmount += toGenerate;
                                             } catch (SQLException e) {
-                                                log.debug("Failed to store table: {}", table.getTableName(), e);
+                                                log.error(
+                                                        "Failed to store batch for table {} from offset {} with size {}. sqlState={}, message={}",
+                                                        table.getTableName(),
+                                                        createdAmount,
+                                                        toGenerate,
+                                                        e.getSQLState(),
+                                                        e.getMessage(),
+                                                        e
+                                                );
                                             }
                                         }
                                     }, executorService)).toList();

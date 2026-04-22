@@ -35,7 +35,8 @@ public class DataGenerator {
 
     public Map<String, List<Object>> generateBatchTableData(
             TableMetadata table,
-            Map<String, List<Object>> existingData,
+            Map<String, List<Object>> existingData, 
+            int offset,
             int batchSize) {
                 return null;
             }
