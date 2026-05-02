@@ -1,9 +1,10 @@
 schema: timetable/timetable_schema.sql
 statistic: timetable/timetable_stats.csv
 query_path: timetable/timetable_query.sql
-source_plan_path: timetable/timetable_join.json
+source_plan_path: timetable/timetable_explain.json
 thread_count: 8
 index_path: timetable/timetable_indexes.sql
+constraints_path: timetable/timetable_constr.csv
 tables:
   - name: airports_data
     schema: bookings
