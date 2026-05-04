@@ -2,6 +2,8 @@ schema: flights/flights_schema.sql
 statistic: flights/flights_stats.csv
 query_path: flights/flights_query.sql
 source_plan_path: flights/flights.json
+constraints_path: flights/flight_constr.csv
+index_path: flights/flight_indexes.sql
 thread_count: 1
 tables:
   - name: segments
