@@ -1,12 +1,12 @@
 package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
-import net.datafaker.Faker;
-import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import lombok.extern.slf4j.Slf4j;
+import net.datafaker.Faker;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
 @Slf4j
 public class IntegerValueGenerator extends ValueGeneratorAC {
@@ -52,13 +52,15 @@ public class IntegerValueGenerator extends ValueGeneratorAC {
 
         long range = (long) right - (long) left;
         if (range >= count - 1) {
-            for (int i = values.size(); i < count; i++) {
-                int toAdd = left + i;
-                if (!existingValues.isEmpty() && existingValues.getFirst() == toAdd){
+            int candidate = left;
+
+            while (values.size() < count) {
+                if (!existingValues.isEmpty() && existingValues.getFirst() == candidate) {
                     existingValues.removeFirst();
-                    continue;
+                } else {
+                    values.add(candidate);
                 }
-                values.add(left + i);
+                candidate++;
             }
         } else {
             log.warn("Requested count {} exceeds the number of unique values in the given range ({} to {}), adding more than right border", count, left, right);

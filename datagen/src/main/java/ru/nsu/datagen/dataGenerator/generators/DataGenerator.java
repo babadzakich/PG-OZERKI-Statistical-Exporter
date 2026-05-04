@@ -118,13 +118,9 @@ public class DataGenerator {
             for (ColumnMetadata column : table.getColumns().values()) {
                 if ((column.isUnique() || column.isPrimaryKey()) && !generatedColumns.contains(column.getName())) {
                     List<ColumnMetadata> uniqueList = new ArrayList<>();
-                    if (!(column.getCompositeUniquePeers().size() == 1)) {
-                        column.getCompositeUniquePeers().getFirst().stream() // TODO: Поддержка пересекающихся уникальных ключей
-                                .map(col -> table.getColumns().get(col.split("\\.")[2]))
-                                .forEach(uniqueList::add);
-                    } else {
-                        uniqueList.add(column);
-                    }
+                    column.getCompositeUniquePeers().getFirst().stream() // TODO: Поддержка пересекающихся уникальных ключей
+                            .map(col -> table.getColumns().get(col.split("\\.")[2]))
+                            .forEach(uniqueList::add);
                     log.info("Generating unique key for columns: {}", uniqueList.stream().map(ColumnMetadata::getName).toList());
                     // Собираем дерево обратных зависимостей для каждой unique-колонки
                     Map<String, List<ReferencingTreeNode>> referencingTrees = new HashMap<>();
