@@ -9,157 +9,239 @@ import java.util.concurrent.ThreadLocalRandom;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFactory;
-import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
-import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.HistogrammGenerationResults;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.McvGenerationResults;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
 @Slf4j
 public class StatTypeBasedGenerator implements NormalValueGenerator {
+    private final ColumnMetadata columnMetadata;
+    private final List<Object> mcvs;
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
+    private final ValueGenerator generator;
 
-    @Override
-    public List<Object> generateValues(ColumnMetadata columnMetadata, int batchSize) {
-        log.info("Generating batch of {} values for column: {}", batchSize, columnMetadata.getName());
-        if (columnMetadata.getNdistinct() == -1) {
-            log.debug("Using SimpleUniqueGenerator for column: {}, because ndistinct = -1", columnMetadata.getName());
-            UniqueKeyGenerator generator = new SimpleUniqueGenerator(List.of(columnMetadata), columnMetadata.getRecordCount(), null, null);
-            return generator.generate();
-        }
-        Set<Object> objectSet = new HashSet<>();
+    public StatTypeBasedGenerator(ColumnMetadata columnMetadata) {
+        this.columnMetadata = columnMetadata;
+        this.mcvs = new ArrayList<>(columnMetadata.getMcv().keySet());
+        this.generator = ValueGeneratorFactory.createValueGenerator(columnMetadata);
+    }
 
-        long requiredUniqueCount = columnMetadata.getNdistinct() < 0
-            ? (long)(Math.abs(columnMetadata.getNdistinct()) * columnMetadata.getRecordCount())
-            : (long)columnMetadata.getNdistinct();
-        log.debug("Generating {} unique values for column {} where ndistinct = {}", requiredUniqueCount, columnMetadata.getName(), columnMetadata.getNdistinct());
-        List<Object> values = new ArrayList<>();
-        int recordCount = columnMetadata.getRecordCount();
-        log.debug("Total record count for column {}: {}", columnMetadata.getName(), recordCount);
-        double nullPercentage = columnMetadata.getNullPercentage();
-        log.debug("Null percentage for column {}: {}", columnMetadata.getName(), nullPercentage);
-
-        log.debug("Processing MCVs for column {}", columnMetadata.getName());
-        for (Object mvcValue : columnMetadata.getMcv().keySet()) {
-            objectSet.add(mvcValue);
-            double freq = columnMetadata.getMcv().get(mvcValue);
-            long mvcCount = Math.round(freq * recordCount);
-            log.trace("Adding MVC value: {} with frequency: {} resulting in count: {}", mvcValue, freq, mvcCount);
-            for (long j = 0; j < mvcCount; j++) {
-                values.add(mvcValue);
-            }
-        }
-
-        int nullCount = (int)(recordCount * (nullPercentage / 100.0));
-        log.debug("Adding {} null values for column {}", nullCount, columnMetadata.getName());
-        for (int i = 0; i < nullCount; i++) {
+    private int generateNulls(int offset, int batchSize, List<Object> values) {
+        int nullCount = columnMetadata.getNullFrac() * columnMetadata.getRecordCount() > 0 ? (int) Math.round(columnMetadata.getNullFrac() * columnMetadata.getRecordCount()) : 0;
+        int addedNulls = Math.min(offset + batchSize, nullCount);
+        for (int i = offset; i < addedNulls; i++) {
             values.add(null);
         }
+        return addedNulls - offset;
+    }
 
-        long mvcCount = objectSet.size();
-        long hasNulls = nullPercentage > 0 ? 1 : 0;
-        long remainingUniqueCount = requiredUniqueCount - mvcCount - hasNulls;
-        long remainingValueCount = recordCount - values.size();
-        log.debug("Remaining unique count to generate for column {}: {}", columnMetadata.getName(), remainingUniqueCount);
-        log.debug("Remaining value count to fill for column {}: {}", columnMetadata.getName(), remainingValueCount);
+    private McvGenerationResults generateMCVs(int batchSize, int currentMcvIndex, int currentMcvGeneratedCount, List<Object> values) {
+        int generated = values.size();
+        int added = 0;
+        for (int i = currentMcvIndex; i < mcvs.size(); i++) {
+            int start = 0;
+            if (i == currentMcvIndex) {
+                start = currentMcvGeneratedCount;
+            }
 
-        ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(columnMetadata);
+            double freq = columnMetadata.getMcv().get(mcvs.get(i));
+            int mcvCount = (int) Math.round(freq * columnMetadata.getRecordCount());
+            
+            int leftInThisMcv = mcvCount - start;
+            int batchLeft = batchSize - values.size();
+            int toGenerate = Math.min(leftInThisMcv, batchLeft);
 
-        int histogramBuckets = columnMetadata.getHistogramm().size() - 1;
-
-        if (histogramBuckets > 0 && remainingUniqueCount > 0 && remainingValueCount > 0) {
-            log.debug("Using histogram-based generation for column {} with {} buckets", columnMetadata.getName(), histogramBuckets);
-            for (int i = 0; i < histogramBuckets; i++) {
-                Object lowerBound = columnMetadata.getHistogramm().get(i);
-                Object upperBound = columnMetadata.getHistogramm().get(i + 1);
-                log.trace("Bucket {}: Lower bound = {}, Upper bound = {}", i, lowerBound, upperBound);
-
-                // Распределяем уникальные значения равномерно по бакетам с учётом остатка
-                // Например: 2002 значения на 100 бакетов = 20 + (1 если i < 2), т.е. первые 2 бакета по 21, остальные по 20
-                long baseUniqueCount = remainingUniqueCount / histogramBuckets;
-                long uniqueRemainder = remainingUniqueCount % histogramBuckets;
-                long rangeUniqueCount = baseUniqueCount + (i < uniqueRemainder ? 1 : 0);
-
-                // Распределяем общее количество значений равномерно по бакетам с учётом остатка
-                long baseValueCount = remainingValueCount / histogramBuckets;
-                long valueRemainder = remainingValueCount % histogramBuckets;
-                long rangeValueCount = baseValueCount + (i < valueRemainder ? 1 : 0);
-
-                log.trace("Bucket {}: Calculated unique count = {}, value count = {}", i, rangeUniqueCount, rangeValueCount);
-
-                // Генерируем уникальные значения для данного бакета
-                List<Object> bucketUniqueValues = new ArrayList<>();
-                bucketUniqueValues.add(lowerBound);
-                bucketUniqueValues.add(upperBound);
-
-                for (long j = 2; j < rangeUniqueCount; j++) {
-                    Object val = generator.generateValue(lowerBound, upperBound);
-                    int attempts = 0;
-                    while (!objectSet.add(val) && attempts < 10000) {
-                        val = generator.generateValue(lowerBound, upperBound);
-                        attempts++;
-                    }
-                    if (attempts < 10000) {
-                        bucketUniqueValues.add(val);
-                    }
+            for (int j = 0; j < toGenerate; j++) {
+                values.add(mcvs.get(i));
+            }
+            added += toGenerate;
+            if (generated + added >= batchSize) {
+                if (start + toGenerate >= mcvCount) {
+                    return new McvGenerationResults(i + 1, 0, added);
                 }
-                log.trace("Bucket {}: Generated {} unique values: {}", i, bucketUniqueValues.size(), bucketUniqueValues);
-
-                // Заполняем values случайными значениями из сгенерированных уникальных
-                if (!bucketUniqueValues.isEmpty()) {
-                    log.trace("Bucket {}: Filling {} values from unique values", i, rangeValueCount);
-                    for (int j = i == 0 ? 0 : 1; j < rangeUniqueCount; j++) {
-                        values.add(bucketUniqueValues.get(j));
-                    }
-                    log.trace("Bucket {}: Added {} unique values, now filling remaining {} values", i, rangeUniqueCount, rangeValueCount - rangeUniqueCount);
-                    for (long j = rangeUniqueCount; j < rangeValueCount; j++) {
-                        values.add(bucketUniqueValues.get(random.nextInt(bucketUniqueValues.size())));
-                    }
-                    log.trace("Bucket {}: Filled {} values", i, rangeValueCount);
-                } else {
-                    log.warn("Warning: Could not generate unique values for bucket {}", i);
-                }
+                return new McvGenerationResults(i, start + toGenerate, added);
             }
         }
+        return new McvGenerationResults(mcvs.size(), 0, added);
+    }
+    
+    
 
-        // Fallback: если после обработки гистограммы все еще не хватает значений
-        if (values.size() < recordCount) {
-            long missingValueCount = recordCount - values.size();
-            long missingUniqueCount = Math.min(missingValueCount, requiredUniqueCount - objectSet.size());
+    private int getMcvValueCount() {
+        return columnMetadata.getMcv().values().stream()
+                .mapToInt(freq -> (int) Math.round(freq * columnMetadata.getRecordCount()))
+                .sum();
+    }
 
-            log.debug("Generating fallback values for column {}: missingValueCount = {}, missingUniqueCount = {}", columnMetadata.getName(), missingValueCount, missingUniqueCount);
+    private HistogrammGenerationResults generateByHistogramm(int batchSize, int currentBucketIndex, int currentBucketGeneratedCount, List<Object> currentBucketUniqueValues, List<Object> values) {
+        int generated = values.size();
+        int added = 0;
+        int histogramBuckets = columnMetadata.getHistogramm().size() - 1;
+        int remainingUniqueCount = columnMetadata.getNdistinct() - mcvs.size() - (columnMetadata.getNullFrac() * columnMetadata.getRecordCount() > 0 ? 1 : 0);
+        int remainingValueCount = columnMetadata.getRecordCount() - (int) Math.round(columnMetadata.getNullFrac() * columnMetadata.getRecordCount()) - getMcvValueCount();
 
-            List<Object> fallbackUniqueValues = new ArrayList<>();
-            for (long i = 0; i < missingUniqueCount; i++) {
-                Object val = generator.generateValue();
+        for (int i = currentBucketIndex; i < histogramBuckets; i++) {
+            // Распределяем общее количество значений равномерно по бакетам с учётом остатка
+            long baseValueCount = remainingValueCount / histogramBuckets;
+            long valueRemainder = remainingValueCount % histogramBuckets;
+            long rangeValueCount = Math.min(baseValueCount + (i < valueRemainder ? 1 : 0), remainingValueCount);
+
+            if (i == currentBucketIndex && currentBucketGeneratedCount > 0) {
+                int bucketLeft = (int) Math.max(0, rangeValueCount - currentBucketGeneratedCount);
+                int batchLeft = batchSize - values.size();
+                int toGenerate = Math.min(bucketLeft, batchLeft);
+                int addedInThisBucket = 0;
+
+                if (currentBucketGeneratedCount < currentBucketUniqueValues.size()) {
+                    int uniqueLeft = currentBucketUniqueValues.size() - currentBucketGeneratedCount;
+                    int uniqueToGenerate = Math.min(toGenerate, uniqueLeft);
+                    log.trace("Resuming bucket {}: Filling {} values from unique values", i, uniqueToGenerate);
+                    for (int j = 0; j < uniqueToGenerate; j++) {
+                        values.add(currentBucketUniqueValues.get(currentBucketGeneratedCount + j));
+                    }
+                    addedInThisBucket += uniqueToGenerate;
+                    toGenerate -= uniqueToGenerate;
+                }
+                for (int j = 0; j < toGenerate; j++) {
+                    values.add(currentBucketUniqueValues.get(random.nextInt(currentBucketUniqueValues.size())));
+                }
+                addedInThisBucket += toGenerate;
+                added += addedInThisBucket;
+
+                int nextBucketGeneratedCount = currentBucketGeneratedCount + addedInThisBucket;
+                if (generated + added >= batchSize || nextBucketGeneratedCount < rangeValueCount) {
+                    return new HistogrammGenerationResults(i, nextBucketGeneratedCount, added, currentBucketUniqueValues);
+                }
+                continue;
+            }
+            Object lowerBound = columnMetadata.getHistogramm().get(i);
+            Object upperBound = columnMetadata.getHistogramm().get(i + 1);
+            log.trace("Bucket {}: Lower bound = {}, Upper bound = {}", i, lowerBound, upperBound);
+
+            // Распределяем уникальные значения равномерно по бакетам с учётом остатка
+            // Например: 2002 значения на 100 бакетов = 20 + (1 если i < 2), т.е. первые 2 бакета по 21, остальные по 20
+            long baseUniqueCount = remainingUniqueCount / histogramBuckets;
+            long uniqueRemainder = remainingUniqueCount % histogramBuckets;
+            long rangeUniqueCount = baseUniqueCount + (i < uniqueRemainder ? 1 : 0);
+
+            // Генерируем уникальные значения для данного бакета
+            Set<Object> bucketUniqueValues = new HashSet<>();
+            bucketUniqueValues.add(lowerBound);
+            bucketUniqueValues.add(upperBound);
+
+            for (long j = 2; j < rangeUniqueCount; j++) {
+                Object val = generator.generateValue(lowerBound, upperBound);
                 int attempts = 0;
-                while (!objectSet.add(val) && attempts < 10000) {
-                    val = generator.generateValue();
+                while (!columnMetadata.getMcv().keySet().contains(val) && !bucketUniqueValues.add(val) && attempts < 10000) {
+                    val = generator.generateValue(lowerBound, upperBound);
                     attempts++;
                 }
                 if (attempts < 10000) {
-                    fallbackUniqueValues.add(val);
+                    bucketUniqueValues.add(val);
                 }
             }
+            log.trace("Bucket {}: Generated {} unique values: {}", i, bucketUniqueValues.size(), bucketUniqueValues);
+            List<Object> bucketUniqueValuesList = new ArrayList<>(bucketUniqueValues);
+            // Заполняем values случайными значениями из сгенерированных уникальных
+            if (!bucketUniqueValuesList.isEmpty()) {
+                int bucketLeft = (int) rangeValueCount;
+                int batchLeft = batchSize - values.size();
+                int toGenerate = Math.min(bucketLeft, batchLeft);
+                int addedToBucket = 0;
 
-            if (!fallbackUniqueValues.isEmpty()) {
-                log.debug("Filling {} missing values from {} fallback unique values for column {}", missingValueCount, fallbackUniqueValues.size(), columnMetadata.getName());
-                for (long i = 0; i < missingValueCount; i++) {
-                    values.add(fallbackUniqueValues.get(random.nextInt(fallbackUniqueValues.size())));
+                log.trace("Bucket {}: Filling {} values from unique values", i, rangeValueCount);
+                for (int j = i == 0 ? 0 : 1; j < bucketUniqueValuesList.size() && j < toGenerate; j++) {
+                    values.add(bucketUniqueValuesList.get(j));
+                    addedToBucket++;
+                }
+                if (addedToBucket < bucketUniqueValuesList.size()) {
+                    return new HistogrammGenerationResults(i, addedToBucket, addedToBucket, bucketUniqueValuesList);
+                }
+                toGenerate -= addedToBucket;
+                log.trace("Bucket {}: Added {} unique values, now filling remaining {} values", i, rangeUniqueCount, rangeValueCount - rangeUniqueCount);
+                for (long j = 0; j < toGenerate; j++) {
+                    values.add(bucketUniqueValuesList.get(random.nextInt(bucketUniqueValuesList.size())));
+                    addedToBucket++;
+                }
+                if (addedToBucket < rangeValueCount) {
+                    return new HistogrammGenerationResults(i, addedToBucket, addedToBucket, bucketUniqueValuesList);
+                }
+                added += addedToBucket;
+                log.trace("Bucket {}: Filled {} values", i, rangeValueCount);
+            } else {
+                log.warn("Warning: Could not generate unique values for bucket {}", i);
+            }
+        }
+        return new HistogrammGenerationResults(histogramBuckets, 0, added, List.of());
+    }
+
+    private int generateRemainingValues(int batchSize, StateData stateData, List<Object> values) {
+        int generated = 0;
+        int remainingInTable = columnMetadata.getRecordCount() - stateData.getGeneratedCount() - values.size();
+        int toGenerate = Math.min(batchSize - values.size(), Math.max(0, remainingInTable));
+        
+
+        for (int i = 0; i < toGenerate; i++) {
+            values.add(generator.generateValue());
+            generated++;
+        }
+
+        return generated;
+    }
+
+    @Override
+    public List<List<Object>> generateValues(int batchSize, StateData stateData) {
+        List<Object> values = new ArrayList<>();
+        int remaining = columnMetadata.getRecordCount() - stateData.getGeneratedCount();
+        int toGenerate = Math.min(batchSize, Math.max(0, remaining));
+        
+        for (int i = 0; i < toGenerate; i++) {
+            double r = random.nextDouble();
+            if (r < stateData.getNullChance()) {
+                values.add(null);
+            } else if (stateData.getMcvAmount() > 0 && r < stateData.getMcvChances().get(stateData.getMcvAmount() - 1)) {
+                for (int j = 0; j < stateData.getMcvAmount(); j++) {
+                    if (r < stateData.getMcvChances().get(j)) {
+                        values.add(stateData.getMcvValues().get(j));
+                        break;
+                    }
                 }
             } else {
-                log.warn("Warning: Could not generate fallback unique values for column {}, filling with nulls", columnMetadata.getName());
-                for (long i = 0; i < missingValueCount; i++) {
-                    values.add(null);
+                if (columnMetadata.getHistogramm() != null && columnMetadata.getHistogramm().size() > 1) {
+                    int bucketIndex = 0;
+                    while (bucketIndex < stateData.getBucketsCounters().size() && r >= stateData.getBucketsCounters().get(bucketIndex)) {
+                        bucketIndex++;
+                    }
+                    bucketIndex = Math.min(bucketIndex, columnMetadata.getHistogramm().size() - 2);
+
+                    Object left = columnMetadata.getHistogramm().get(bucketIndex);
+                    Object right = columnMetadata.getHistogramm().get(bucketIndex + 1);
+                    values.add(generateHistogramValue(left, right));
+                } else {
+                    values.add(generator.generateValue());
                 }
             }
         }
 
-        return values;
+        stateData.advance(values.size());
+        return List.of(values);
     }
 
     @Override
-    public List<Object> generateValues(ColumnMetadata columnMetadata) {
+    public List<Object> generateValues() {
         log.info("Generating values for column: {}", columnMetadata.getName());
-        return generateValues(columnMetadata, columnMetadata.getRecordCount());
+        StateData stateData = new StateData(columnMetadata);
+        return generateValues(columnMetadata.getRecordCount(), stateData).getFirst();
+    }
+
+    private Object generateHistogramValue(Object left, Object right) {
+        Object value = generator.generateValue(left, right);
+        int attempts = 0;
+        while (columnMetadata.getMcv().containsKey(value) && attempts < 100) {
+            value = generator.generateValue(left, right);
+            attempts++;
+        }
+        return value;
     }
 }
-

@@ -5,41 +5,64 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
+import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
-import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.ColumnBatchState;
 
 @Slf4j
 public class DataGenerator {
     private final ForeignKeyGeneratorFactory fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
-    private final NormalValueGenerator normalValueGenerator = new StatTypeBasedGenerator();
     private final Map<String, TableMetadata> allTablesMap;
+    private final List<ColumnBatchState> columnBatchStates = new ArrayList<>();
 
     public DataGenerator(Map<String, TableMetadata> allTablesMap) {
         this.allTablesMap = allTablesMap;
     }
 
-    public DataGenerator(Set<TableMetadata> allTablesSet) {
+    public DataGenerator(Set<TableMetadata> allTablesSet, TableMetadata mainTable) {
         allTablesMap = allTablesSet.stream().collect(HashMap::new, (m, t) -> m.put(t.getFullName(), t), HashMap::putAll);
+    }
+
+    public void rollbackToPreviousState() {
+        columnBatchStates.forEach(ColumnBatchState::rollbackToPreviousState);
     }
 
     public Map<String, List<Object>> generateBatchTableData(
             TableMetadata table,
-            Map<String, List<Object>> existingData, 
-            int offset,
+            Map<String, List<Object>> existingData,
             int batchSize) {
-                return null;
+        ensureColumnBatchStates(table, existingData);
+        Map<String, List<Object>> columnData = new HashMap<>();
+
+        for (ColumnBatchState state : columnBatchStates) {
+            List<List<Object>> generatedValues = state.produceBatch(batchSize);
+            List<ColumnMetadata> columns = state.getColumns();
+
+            if (generatedValues.size() != columns.size()) {
+                throw new IllegalStateException(
+                        "Generator returned " + generatedValues.size()
+                                + " columns for state with " + columns.size() + " metadata columns"
+                );
             }
+
+            for (int i = 0; i < columns.size(); i++) {
+                columnData.put(columns.get(i).getName(), generatedValues.get(i));
+            }
+        }
+
+        return columnData;
+    }
     
     /**
      * Генерирует данные для таблицы
@@ -50,100 +73,111 @@ public class DataGenerator {
     public Map<String, List<Object>> generateTableData(
             TableMetadata table,
             Map<String, List<Object>> existingData) {
+                return generateBatchTableData(table, existingData, table.getRecordCount());
+            }
 
-        Map<String, List<Object>> columnData = new HashMap<>();
+    private void ensureColumnBatchStates(TableMetadata table, Map<String, List<Object>> existingData) {
+        if (!columnBatchStates.isEmpty()) {
+            return;
+        }
+
         Set<String> generatedColumns = new HashSet<>();
-
-        // Сначала генерируем UNIQUE, потом FK, потом обычные колонки
-        generateUniqueConstraint(table, columnData, existingData, generatedColumns, table.getRecordCount());
-        generateForeignKeys(table, columnData, existingData, generatedColumns, table.getRecordCount());
-        generateNormalColumns(table, columnData, generatedColumns, table.getRecordCount());
-
-        return columnData;
-    }
-
-    /**
-     * Генерирует обычные колонки (не PK, не FK)
-     */
-    private void generateNormalColumns(
-            TableMetadata table,
-            Map<String, List<Object>> columnData,
-            Set<String> generatedColumns,
-            int batchSize) {
-
         for (ColumnMetadata column : table.getColumns().values()) {
-            if (!column.isPrimaryKey() && !column.isForeignKey() && !column.isUnique()) {
-                List<Object> values = normalValueGenerator.generateValues(column);
-                columnData.put(column.getName(), values);
-                generatedColumns.add(column.getName());
+            if (generatedColumns.contains(column.getName())) {
+                continue;
             }
+
+            ColumnBatchState state;
+            if (column.isPrimaryKey() || column.isUnique() || column.getNdistinct() == -1) {
+                state = createUniqueState(table, column, existingData);
+            } else if (column.isForeignKey()) {
+                state = createForeignKeyState(table, column, existingData);
+            } else {
+                state = new ColumnBatchState(new StatTypeBasedGenerator(column), column);
+            }
+
+            columnBatchStates.add(state);
+            state.getColumns().stream().map(ColumnMetadata::getName).forEach(generatedColumns::add);
         }
     }
 
-    /**
-     * Генерирует внешние ключи
-     */
-    private void generateForeignKeys(
+    private ColumnBatchState createUniqueState(
             TableMetadata table,
-            Map<String, List<Object>> columnData,
-            Map<String, List<Object>> existingData,
-            Set<String> generatedColumns,
-            int batchSize) {
-        for (ColumnMetadata column : table.getColumns().values()) {
-            if (column.isForeignKey() && !generatedColumns.contains(column.getName())) {
-                if (!(column.getCompositeForeignPeers().size() == 1)) {
-                    List<ColumnMetadata> foreignKeysMultiple = column.getCompositeForeignPeers().getFirst()
-                            .stream().map(foreignPeer -> table.getColumns().get(foreignPeer.split("\\.")[2]))
-                            .toList();
-                    Optional<ComplexForeignKeyGenerator> generator = fkGeneratorFactory.getComplexGenerator(column);
-                    if (generator.isPresent()) {
-                        List<List<Object>> foreignKeys = generator.get().generateForeignKeys(foreignKeysMultiple, existingData);
-                        for (int i = 0; i < foreignKeysMultiple.size(); i++) {
-                            columnData.put(foreignKeysMultiple.get(i).getName(), foreignKeys.get(i));
-                        }
-                    } else {
-                        throw new IllegalArgumentException("No generator found for " + column.getName());
-                    }
-                } else {
-                    List<Object> foreignKeys = fkGeneratorFactory.getGenerator(column).generateForeignKeys(column, existingData);
-                    columnData.put(column.getName(), foreignKeys);
-                }
-                generatedColumns.add(column.getName());
-            }
+            ColumnMetadata column,
+            Map<String, List<Object>> existingData) {
+        List<ColumnMetadata> uniqueColumns = resolvePeers(table, column, column.getCompositeUniquePeers());
+        log.info("Creating batch state for unique columns: {}", uniqueColumns.stream().map(ColumnMetadata::getName).toList());
+
+        Map<String, List<ReferencingTreeNode>> referencingTrees = new HashMap<>();
+        for (ColumnMetadata uniqueColumn : uniqueColumns) {
+            referencingTrees.put(uniqueColumn.getName(), collectReferencingTree(uniqueColumn, new HashSet<>()));
         }
+
+        Map<String, List<Object>> precomputedData = new HashMap<>();
+        UniqueKeyGeneratorChooser.generate(
+                uniqueColumns,
+                precomputedData,
+                uniqueColumns.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
+                table.getRecordCount(),
+                referencingTrees,
+                existingData
+        );
+
+        return new ColumnBatchState(
+                new PrecomputedColumnGenerator(valuesForColumns(uniqueColumns, precomputedData)),
+                uniqueColumns
+        );
     }
 
-    private void generateUniqueConstraint (
-        TableMetadata table,
-        Map<String, List<Object>> columnData,
-        Map<String, List<Object>> existingData,
-        Set<String> generatedColumns,
-        int batchSize) {
-            for (ColumnMetadata column : table.getColumns().values()) {
-                if ((column.isUnique() || column.isPrimaryKey()) && !generatedColumns.contains(column.getName())) {
-                    List<ColumnMetadata> uniqueList = new ArrayList<>();
-                    if (!(column.getCompositeUniquePeers().size() == 1)) {
-                        column.getCompositeUniquePeers().getFirst().stream() // TODO: Поддержка пересекающихся уникальных ключей
-                                .map(col -> table.getColumns().get(col.split("\\.")[2]))
-                                .forEach(uniqueList::add);
-                    } else {
-                        uniqueList.add(column);
-                    }
-                    log.info("Generating unique key for columns: {}", uniqueList.stream().map(ColumnMetadata::getName).toList());
-                    // Собираем дерево обратных зависимостей для каждой unique-колонки
-                    Map<String, List<ReferencingTreeNode>> referencingTrees = new HashMap<>();
-                    for (ColumnMetadata uniqueCol : uniqueList) {
-                        List<ReferencingTreeNode> tree = collectReferencingTree(uniqueCol, new HashSet<>());
-                        referencingTrees.put(uniqueCol.getName(), tree);
-                    }
+    private ColumnBatchState createForeignKeyState(
+            TableMetadata table,
+            ColumnMetadata column,
+            Map<String, List<Object>> existingData) {
+        List<ColumnMetadata> foreignKeyColumns = resolvePeers(table, column, column.getCompositeForeignPeers());
+        List<List<Object>> values;
 
-                    if (!uniqueList.isEmpty())
-                        UniqueKeyGeneratorChooser.generate(uniqueList, columnData,
-                                uniqueList.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
-                                table.getRecordCount(), referencingTrees, existingData);
-                    uniqueList.forEach(column2 -> generatedColumns.add(column2.getName()));
-                }
-            }
+        if (foreignKeyColumns.size() > 1) {
+            ComplexForeignKeyGenerator complexGenerator = fkGeneratorFactory.getComplexGenerator(foreignKeyColumns, existingData);
+            values = complexGenerator.generateComplexForeignKeys(existingData);
+        } else {
+            ForeignKeyGenerator generator = fkGeneratorFactory.getGenerator(foreignKeyColumns, existingData);
+            values = List.of(generator.generateSimpleForeignKeys(existingData));
+        }
+
+        return new ColumnBatchState(new PrecomputedColumnGenerator(values), foreignKeyColumns);
+    }
+
+    private List<List<Object>> valuesForColumns(
+            List<ColumnMetadata> columns,
+            Map<String, List<Object>> generatedData) {
+        return columns.stream()
+                .map(column -> {
+                    List<Object> values = generatedData.get(column.getName());
+                    if (values == null) {
+                        throw new IllegalStateException("No generated values for column " + column.getName());
+                    }
+                    return values;
+                })
+                .toList();
+    }
+
+    private List<ColumnMetadata> resolvePeers(
+            TableMetadata table,
+            ColumnMetadata column,
+            List<List<String>> peerGroups) {
+        if (peerGroups == null || peerGroups.isEmpty() || peerGroups.getFirst().isEmpty()) {
+            return List.of(column);
+        }
+
+        List<ColumnMetadata> columns = peerGroups.getFirst().stream()
+                .map(peer -> {
+                    String[] parts = peer.split("\\.");
+                    return table.getColumns().get(parts[parts.length - 1]);
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        return columns.isEmpty() ? List.of(column) : columns;
     }
 
     /**

@@ -1,9 +1,11 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.*;
+import java.util.Set;
 
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGenerator;
@@ -11,6 +13,7 @@ import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFac
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
 public class SimpleUniqueGenerator implements UniqueKeyGenerator{
     private final ColumnMetadata column;
@@ -30,7 +33,9 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
 	@Override
 	public List<Object> generate() {
         if (column.isForeignKey()) {
-            return ForeignKeyGeneratorFactory.getInstance().getGenerator(column).generateForeignKeys(column, allGeneratedData);
+            return ForeignKeyGeneratorFactory.getInstance()
+                    .getGenerator(List.of(column), allGeneratedData)
+                    .generateSimpleForeignKeys(allGeneratedData);
         }
 		Map<String, List<Object>> columnData = new HashMap<>();
         generate(columnData);
@@ -42,8 +47,8 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
         if (column.isForeignKey()) {
             columnData.put(column.getName(),
                     ForeignKeyGeneratorFactory.getInstance()
-                            .getGenerator(column)
-                            .generateForeignKeys(column, allGeneratedData));
+                            .getGenerator(List.of(column), allGeneratedData)
+                            .generateSimpleForeignKeys(allGeneratedData));
             return;
         }
         String columnName = column.getName();
@@ -55,7 +60,7 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
             }
         }
 
-        if (column.getNullPercentage() > 0) {
+        if (column.getNullCount() > 0) {
             referencedValues.add(null);
         }
 
@@ -75,5 +80,21 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
         for (ReferencingTreeNode child : node.getChildren()) {
             collectReferencedValues(values, child);
         }
+    }
+
+    @Override
+    public void generate(Map<String, List<Object>> columnData, int offset, int batchSize) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'generate'");
+    }
+
+    @Override
+    public List<List<Object>> generateValues(int batchSize, StateData stateData) {
+        List<Object> values = generate();
+        int offset = stateData.getGeneratedCount();
+        int end = Math.min(offset + batchSize, values.size());
+        List<Object> batch = offset >= end ? List.of() : new ArrayList<>(values.subList(offset, end));
+        stateData.advance(batch.size());
+        return List.of(batch);
     }
 }

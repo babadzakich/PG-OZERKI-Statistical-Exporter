@@ -2,9 +2,8 @@ package ru.nsu.datagen.dataGenerator.generators.normal;
 
 import java.util.List;
 
-import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
 
-public interface NormalValueGenerator {
-    List<Object> generateValues(ColumnMetadata columnMetadata);
-    List<Object> generateValues(ColumnMetadata columnMetadata, int batchSize);
+public interface NormalValueGenerator extends  ColumnGenerator {
+    List<Object> generateValues();
 }

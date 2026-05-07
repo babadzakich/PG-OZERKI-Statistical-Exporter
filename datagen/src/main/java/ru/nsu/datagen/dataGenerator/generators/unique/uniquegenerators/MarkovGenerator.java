@@ -15,6 +15,7 @@ import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorFac
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
@@ -336,5 +337,31 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
         Collections.shuffle(pool, random);
         return pool;
+    }
+
+    @Override
+    public void generate(Map<String, List<Object>> columnData, int offset, int batchSize) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'generate'");
+    }
+
+    @Override
+    public List<List<Object>> generateValues(int batchSize, StateData stateData) {
+        Map<String, List<Object>> generatedData = new LinkedHashMap<>();
+        generate(generatedData);
+
+        int offset = stateData.getGeneratedCount();
+        List<List<Object>> batch = new ArrayList<>(columnsMetadata.size());
+        int generated = 0;
+        for (ColumnMetadata columnMetadata : columnsMetadata) {
+            List<Object> values = generatedData.get(columnMetadata.getName());
+            int end = Math.min(offset + batchSize, values.size());
+            List<Object> columnBatch = offset >= end ? List.of() : new ArrayList<>(values.subList(offset, end));
+            generated = Math.max(generated, columnBatch.size());
+            batch.add(columnBatch);
+        }
+
+        stateData.advance(generated);
+        return batch;
     }
 }
