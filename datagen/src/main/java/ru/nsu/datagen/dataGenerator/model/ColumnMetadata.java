@@ -1,6 +1,8 @@
 package ru.nsu.datagen.dataGenerator.model;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -14,13 +16,13 @@ public class ColumnMetadata {
     private final boolean isPrimaryKey;
     @Setter private boolean isForeignKey;
     private final boolean isUnique;
-    private final double nullPercentage;
+    private final double nullFrac;
     private final int recordCount;
     private final Integer maxLength;
     private final List<ForeignKeyMetadata> foreignKeyMetadata;
     private final Map<Object, Double> mcv;
     private final int avgTupleSize;
-    private final double ndistinct;
+    private final int ndistinct;
     private final boolean isArray;
     private final List<Object> histogramm;
     private final List<List<String>> compositeUniquePeers;
@@ -30,7 +32,7 @@ public class ColumnMetadata {
 
     @Builder
     public ColumnMetadata(String name, String dataType, String sourceDataType, boolean isPrimaryKey,
-                          boolean isForeignKey, boolean isUnique, double nullPercentage,
+                          boolean isForeignKey, boolean isUnique, double nullFrac,
                           int recordCount, Integer maxLength, List<ForeignKeyMetadata> foreignKeyMetadata,
                           Map<Object, Double> mcv, int avgTupleSize, double ndistinct, boolean isArray,
                           List<Object> histogramm, List<List<String>> compositeUniquePeers, List<List<String>> compositeForeignPeers,
@@ -41,14 +43,16 @@ public class ColumnMetadata {
         this.sourceDataType = dataType;
         this.isForeignKey = isForeignKey;
         this.isUnique = isUnique;
-        this.nullPercentage = nullPercentage;
+        this.nullFrac = nullFrac;
         this.recordCount = recordCount;
         this.maxLength = maxLength;
         this.foreignKeyMetadata = foreignKeyMetadata;
         this.isArray = dataType.contains("[") && !dataType.contains("char");
         this.mcv = mcv;
         this.avgTupleSize = avgTupleSize;
-        this.ndistinct = ndistinct;
+        this.ndistinct = ndistinct == -1 ? -1 : (ndistinct < 0
+            ? (int)(Math.abs(ndistinct) * recordCount)
+            : (int)ndistinct);
 
         if (isArray) {
             int pos = dataType.indexOf('[');
@@ -64,6 +68,10 @@ public class ColumnMetadata {
         this.compositeUniquePeers = compositeUniquePeers;
         this.compositeForeignPeers = compositeForeignPeers;
         this.referencingColumns = referencingColumns;
+    }
+
+    public int getNullCount() {
+        return (int) Math.round(nullFrac * recordCount);
     }
 
     @Override

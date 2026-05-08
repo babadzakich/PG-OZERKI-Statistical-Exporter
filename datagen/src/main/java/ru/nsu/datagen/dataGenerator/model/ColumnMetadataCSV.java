@@ -113,7 +113,7 @@ public class ColumnMetadataCSV {
                 .isPrimaryKey(isPk)
                 .isForeignKey(isFk)
                 .isUnique(isUnique)
-                .nullPercentage(nullPercentage)
+                .nullFrac(nullPercentage)
                 .recordCount(recordCount)
                 .maxLength(maxLength == -1 ? avgTupleSize : maxLength)
                 .foreignKeyMetadata(fkMetadata)

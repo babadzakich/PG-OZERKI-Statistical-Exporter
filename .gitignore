@@ -247,3 +247,4 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,clion,visualstudiocode,java,gradle,cmake
+pg_ozerki_app

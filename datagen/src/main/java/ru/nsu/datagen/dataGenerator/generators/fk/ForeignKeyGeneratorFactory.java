@@ -1,11 +1,13 @@
 package ru.nsu.datagen.dataGenerator.generators.fk;
 
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 import ru.nsu.datagen.dataGenerator.generators.fk.impl.OneToManyForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.fk.impl.OneToOneForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.Optional;
 
 public class ForeignKeyGeneratorFactory {
     private static final ForeignKeyGeneratorFactory foreignKeyGeneratorFactory = new ForeignKeyGeneratorFactory();
@@ -19,25 +21,34 @@ public class ForeignKeyGeneratorFactory {
     private ForeignKeyGeneratorFactory() {
         this.generators = new EnumMap<>(RelationshipType.class);
         this.complexGenerators = new EnumMap<>(RelationshipType.class);
-        registerDefaultGenerators();
     }
 
-    private void registerDefaultGenerators() {
-        generators.put(RelationshipType.ONE_TO_ONE, new OneToOneForeignKeyGenerator());
-        generators.put(RelationshipType.ONE_TO_MANY, new OneToManyForeignKeyGenerator());
-
-        complexGenerators.put(RelationshipType.ONE_TO_ONE, new OneToOneForeignKeyGenerator());
-    }
-
-    public ForeignKeyGenerator getGenerator(ColumnMetadata column) {
+    public ForeignKeyGenerator getGenerator(List<ColumnMetadata> columns, Map<String, List<Object>> allGeneratedData) {
+        if (columns.size() > 1) {
+            throw new IllegalArgumentException("Use getComplexGenerator for composite foreign keys");
+        }
+        ColumnMetadata column = columns.getFirst();
         RelationshipType relationshipType = column.getForeignKeyMetadata().getFirst().getRelationshipType();
-        ForeignKeyGenerator generator = generators.get(relationshipType);
+        ForeignKeyGenerator generator = null; 
+        switch (relationshipType) {
+            case ONE_TO_MANY -> generator = new OneToManyForeignKeyGenerator(column, allGeneratedData);
+            case ONE_TO_ONE -> generator = new OneToOneForeignKeyGenerator(column, allGeneratedData);
+        }
 
         if (generator == null) {
             throw new IllegalArgumentException("No FK generator for relationship type: " + relationshipType);
         }
 
         return generator;
+    }
+
+    public ComplexForeignKeyGenerator getComplexGenerator(List<ColumnMetadata> columns, Map<String, List<Object>> allGeneratedData) {
+        RelationshipType relationshipType = columns.getFirst().getForeignKeyMetadata().getFirst().getRelationshipType();
+        return switch (relationshipType) {
+            case ONE_TO_MANY -> new OneToManyForeignKeyGenerator(columns, allGeneratedData);
+            case ONE_TO_ONE -> new OneToOneForeignKeyGenerator(columns, allGeneratedData);
+            default -> throw new IllegalArgumentException("No complex FK generator for relationship type: " + relationshipType);
+        };
     }
 
     public Optional<ComplexForeignKeyGenerator> getComplexGenerator(ColumnMetadata column) {
