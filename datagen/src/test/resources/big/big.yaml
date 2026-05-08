@@ -2,7 +2,8 @@ schema: big/big_schema.sql
 statistic: big/big_stats.csv
 query_path: big/big_query.sql
 source_plan_path: big/big_explain.json
-thread_count: 1
+glob_store_threads: 5
+table_store_threads: 12
 index_path: big/big_indexes.sql
 constraints_path: big/big_constr.csv
 tables:

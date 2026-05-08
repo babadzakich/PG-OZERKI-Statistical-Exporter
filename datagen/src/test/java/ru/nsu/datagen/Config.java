@@ -18,7 +18,8 @@ public class Config {
     private final String CONSTRAINT_PATH;
     private final String queryPath;
     private final String sourcePlanPath;
-    private final int threadCount;
+    private final int globStoreThreads;
+    private final int tableStoreThreads;
     private final String indexPath;
 
     private final List<TableHolder> tables;
@@ -70,7 +71,8 @@ public class Config {
             this.tables = databases;
             this.queryPath = (String) configMap.get("query_path");
             this.sourcePlanPath = (String) configMap.get("source_plan_path");
-            this.threadCount = (int) configMap.get("thread_count");
+            this.globStoreThreads = (int) configMap.get("glob_store_threads");
+            this.tableStoreThreads = (int) configMap.get("table_store_threads");
             this.indexPath = (String) configMap.get("index_path");
         }
     }

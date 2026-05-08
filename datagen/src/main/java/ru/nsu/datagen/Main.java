@@ -15,7 +15,7 @@ import ru.nsu.datagen.pipeline.Pipeline;
 
 @Slf4j
 public class Main {
-    public static void main(String ... argv) throws SQLException {
+    public static void main(String ... argv) throws SQLException, IOException {
          Arguments args = new Arguments();
 
          JCommander.newBuilder().addObject(args).build().parse(argv);
@@ -59,7 +59,8 @@ public class Main {
             if (args.constraintFile == null) args.constraintFile = configArgs.constraintFile;
             args.batchSize = configArgs.batchSize != null ? configArgs.batchSize : args.batchSize;
             args.generationThreadPoolSize = configArgs.generationThreadPoolSize != null ? configArgs.generationThreadPoolSize : args.generationThreadPoolSize;
-            args.connectionPoolSize = configArgs.connectionPoolSize != null ? configArgs.connectionPoolSize : args.connectionPoolSize;
+            args.globStoreThreads = configArgs.globStoreThreads != null ? configArgs.globStoreThreads : 1;
+            args.tableStoreThreads = configArgs.tableStoreThreads != null ? configArgs.tableStoreThreads : 1;
         }
     }
 

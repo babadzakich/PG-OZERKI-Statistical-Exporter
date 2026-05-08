@@ -33,8 +33,11 @@ public class Arguments {
     @Parameter(names = "-generationThreadPoolSize")
     public Integer generationThreadPoolSize = 4;
 
-    @Parameter(names = "-connectionPoolSize")
-    public Integer connectionPoolSize = 10;
+    @Parameter(names = "-globStoreThreads")
+    public Integer globStoreThreads = 1;
+
+    @Parameter(names = "-tableStoreThreads")
+    public Integer tableStoreThreads = 1;
 
     @Parameter(names = "-help", help = true)
     public boolean help;
