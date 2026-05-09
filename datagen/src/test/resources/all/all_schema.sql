@@ -41,6 +41,7 @@ SET default_table_access_method = heap;
 
 CREATE TABLE bookings.airplanes_data (
     airplane_code character(3) NOT NULL,
+    model jsonb NOT NULL,
     range integer NOT NULL,
     speed integer NOT NULL
 );
@@ -52,6 +53,10 @@ CREATE TABLE bookings.airplanes_data (
 
 CREATE TABLE bookings.airports_data (
     airport_code character(3) NOT NULL,
+    airport_name jsonb NOT NULL,
+    city jsonb NOT NULL,
+    country jsonb NOT NULL,
+    coordinates point NOT NULL,
     timezone text NOT NULL
 );
 
@@ -88,6 +93,7 @@ CREATE TABLE bookings.flights (
 
 CREATE TABLE bookings.routes (
     route_no text NOT NULL,
+    validity tstzrange NOT NULL,
     departure_airport character(3) NOT NULL,
     arrival_airport character(3) NOT NULL,
     airplane_code character(3) NOT NULL,
@@ -132,5 +138,72 @@ CREATE TABLE bookings.tickets (
     outbound boolean NOT NULL
 );
 
+
+--
+-- PostgreSQL database dump complete
+--
+
+ALTER TABLE ONLY bookings.airplanes_data
+    ADD CONSTRAINT airplanes_data_pkey PRIMARY KEY (airplane_code);
+
+
+ALTER TABLE ONLY bookings.airports_data
+    ADD CONSTRAINT airports_data_pkey PRIMARY KEY (airport_code);
+
+
+ALTER TABLE ONLY bookings.bookings
+    ADD CONSTRAINT bookings_pkey PRIMARY KEY (book_ref);
+
+
+ALTER TABLE ONLY bookings.flights
+    ADD CONSTRAINT flights_pkey PRIMARY KEY (flight_id);
+
+
+ALTER TABLE ONLY bookings.flights
+    ADD CONSTRAINT flights_route_no_scheduled_departure_key UNIQUE (route_no, scheduled_departure);
+
+
+ALTER TABLE ONLY bookings.seats
+    ADD CONSTRAINT seats_pkey PRIMARY KEY (airplane_code, seat_no);
+
+
+ALTER TABLE ONLY bookings.segments
+    ADD CONSTRAINT segments_pkey PRIMARY KEY (ticket_no, flight_id);
+
+
+ALTER TABLE ONLY bookings.tickets
+    ADD CONSTRAINT tickets_book_ref_passenger_id_outbound_key UNIQUE (book_ref, passenger_id, outbound);
+
+
+ALTER TABLE ONLY bookings.tickets
+    ADD CONSTRAINT tickets_pkey PRIMARY KEY (ticket_no);
+
+
+ALTER TABLE ONLY bookings.routes
+    ADD CONSTRAINT routes_airplane_code_fkey FOREIGN KEY (airplane_code) REFERENCES airplanes_data(airplane_code);
+
+
+ALTER TABLE ONLY bookings.routes
+    ADD CONSTRAINT routes_arrival_airport_fkey FOREIGN KEY (arrival_airport) REFERENCES airports_data(airport_code);
+
+
+ALTER TABLE ONLY bookings.routes
+    ADD CONSTRAINT routes_departure_airport_fkey FOREIGN KEY (departure_airport) REFERENCES airports_data(airport_code);
+
+
+ALTER TABLE ONLY bookings.seats
+    ADD CONSTRAINT seats_airplane_code_fkey FOREIGN KEY (airplane_code) REFERENCES airplanes_data(airplane_code) ON DELETE CASCADE;
+
+
+ALTER TABLE ONLY bookings.segments
+    ADD CONSTRAINT segments_flight_id_fkey FOREIGN KEY (flight_id) REFERENCES flights(flight_id);
+
+
+ALTER TABLE ONLY bookings.segments
+    ADD CONSTRAINT segments_ticket_no_fkey FOREIGN KEY (ticket_no) REFERENCES tickets(ticket_no);
+
+
+ALTER TABLE ONLY bookings.tickets
+    ADD CONSTRAINT tickets_book_ref_fkey FOREIGN KEY (book_ref) REFERENCES bookings(book_ref);
 
 

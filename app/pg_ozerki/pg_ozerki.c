@@ -524,7 +524,6 @@ int main(int argc, char** argv) {
 
 	ArchiveHandle *AH = (ArchiveHandle *) fout;
 	
-	FILE *main_fp = AH->FH;
 
 	for (i = 0; i < numObjs; i++){
 		
@@ -577,11 +576,32 @@ int main(int argc, char** argv) {
 	SetArchiveOptions(fout, &dopt, ropt);
 	ProcessArchiveRestoreOptions(fout);
 	
-
+	
 	RestoreArchive(fout);
 	
 	fflush(AH->FH);
-
+	FILE* main_fp = fopen(filename, "a");
+	if (!main_fp) {
+		pg_log_error("cannot open file %s to write constraints", filename);
+		exit(1);
+	}
+	TocEntry *te;
+    for (te = AH->toc->next; te != AH->toc; te = te->next)
+    {
+        if (te->section == SECTION_POST_DATA && strcmp(te->desc, "INDEX") != 0)
+        {
+			
+            if (te->defn && te->defn[0] != '\0') {
+				pg_log_info("%s", te->defn);
+                fprintf(main_fp, "%s\n\n", te->defn);
+			}
+            else {
+                _printTocEntry(fout, te, false);
+			 } 
+        }
+    }
+	
+	fclose(main_fp);
     if (index_file && index_filename)
     {
         pg_log_info("Exporting indexes to: %s", index_filename);
@@ -591,7 +611,7 @@ int main(int argc, char** argv) {
         {
             ArchiveHandle *AH = (ArchiveHandle *) fout;
 			AH->FH = idx_fp;
-            fprintf(idx_fp, "-- === INDEXES AND CONSTRAINTS ===\n\n");
+            fprintf(idx_fp, "-- === INDEXES ===\n\n");
 
 
             TocEntry *te;
@@ -599,11 +619,12 @@ int main(int argc, char** argv) {
             {
                 if (te->section == SECTION_POST_DATA)
                 {
-                    if (te->defn && te->defn[0] != '\0')
-                    {
-                        fprintf(idx_fp, "%s\n\n", te->defn);
-                    }
-                    
+					if (strcmp("INDEX", te->desc) == 0) {
+						if (te->defn && te->defn[0] != '\0')
+						{
+							fprintf(idx_fp, "%s\n\n", te->defn);
+						}
+					}
 
                 }
             }

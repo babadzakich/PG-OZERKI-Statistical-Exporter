@@ -121,4 +121,26 @@ CREATE VIEW bookings.timetable AS
      JOIN airports_data arr ON ((arr.airport_code = r.arrival_airport)));
 
 
+--
+-- Name: airports_data airports_data_pkey; Type: CONSTRAINT; Schema: bookings; Owner: -
+--
+
+ALTER TABLE ONLY bookings.airports_data
+    ADD CONSTRAINT airports_data_pkey PRIMARY KEY (airport_code);
+
+
+--
+-- Name: flights flights_pkey; Type: CONSTRAINT; Schema: bookings; Owner: -
+--
+
+ALTER TABLE ONLY bookings.flights
+    ADD CONSTRAINT flights_pkey PRIMARY KEY (flight_id);
+
+
+--
+-- Name: flights flights_route_no_scheduled_departure_key; Type: CONSTRAINT; Schema: bookings; Owner: -
+--
+
+ALTER TABLE ONLY bookings.flights
+    ADD CONSTRAINT flights_route_no_scheduled_departure_key UNIQUE (route_no, scheduled_departure);
 

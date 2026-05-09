@@ -1,5 +1,6 @@
 package ru.nsu.datagen.pipeline;
 
+import java.io.IOException;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -15,14 +16,14 @@ import ru.nsu.datagen.importer.Importer;
 
 @Slf4j
 public class Pipeline {
-    static public void startPipeline(Arguments args) throws SQLException {
+    static public void startPipeline(Arguments args) throws SQLException, IOException {
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl("jdbc:postgresql://" + args.host + ":" + args.port + "/" + args.dbname + "?currentSchema=bookings&reWriteBatchedInserts=true");
         hikariConfig.setUsername(args.user);
         hikariConfig.setPassword(args.password);
 
         // Connection pool configuration for optimal performance
-        hikariConfig.setMaximumPoolSize(args.connectionPoolSize);
+        hikariConfig.setMaximumPoolSize(args.globStoreThreads * args.tableStoreThreads);
         hikariConfig.setMinimumIdle(5);
         hikariConfig.setConnectionTimeout(30000);
         hikariConfig.setIdleTimeout(600000);
@@ -39,7 +40,7 @@ public class Pipeline {
 
         try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
             Map<String, TableMetadata> rawImportedData = Importer.startImport(args.schemaPath, args.statPath, args.constraintFile, dataSource.getConnection());
-            DatabaseDataGenerator.generateData(rawImportedData, dataSource, generationExecutor, args.batchSize);
+            DatabaseDataGenerator.generateData(rawImportedData, dataSource, generationExecutor, args.batchSize, args.globStoreThreads, args.tableStoreThreads);
         } catch (Exception e) {
             log.error("Pipeline failed: ", e);
             throw e;

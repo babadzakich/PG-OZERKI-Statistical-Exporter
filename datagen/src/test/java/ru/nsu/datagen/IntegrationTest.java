@@ -105,12 +105,15 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("Base/config.yaml")
+    @ConfigFile("all/all.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
         String statsPath = Paths.get(classLoader.getResource(config.getSTATS_PATH()).toURI()).toString();
         String indexPath = null;
+        int globStoreThreads = config.getGlobStoreThreads();
+        int tableStoreThreads = config.getTableStoreThreads();
+        int batchSize = config.getBatchSize();
         if (config.getIndexPath() != null) {
             indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
         }
@@ -118,12 +121,13 @@ public class IntegrationTest {
         try (Connection conn = dataSource.getConnection()) {
             // Импорт схемы и статистики
             Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, constraintPath, conn);
+
             assertNotNull(importedData, "Импортированные данные не должны быть null");
             assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, 1000);
+            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, batchSize, globStoreThreads, tableStoreThreads);
             System.out.println("✓ Генерация данных завершена");
 
             Optional.ofNullable(indexPath).ifPresent(path -> {
