@@ -7,18 +7,16 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
-import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
+import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
 @Slf4j
-public class OneToManyForeignKeyGenerator implements ForeignKeyGenerator, ComplexForeignKeyGenerator {
+public class OneToManyForeignKeyGenerator implements ColumnGenerator {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
     private final List<ColumnMetadata> columnMetadatas;
     private final List<List<Object>> intersection;
     private final List<Object> usefulData;
-
 
     public OneToManyForeignKeyGenerator(ColumnMetadata columnMetadata, Map<String, List<Object>> allGeneratedData) {
         this.columnMetadatas = List.of(columnMetadata);
@@ -64,17 +62,14 @@ public class OneToManyForeignKeyGenerator implements ForeignKeyGenerator, Comple
 
         for (int i = 1; i < parentTableCount; i++) {
             var fk = columnMetadatas.getFirst().getForeignKeyMetadata().get(i);
-            int psize =  allGeneratedData.get(fk.getReferencedSchema() + "." +  fk.getReferencedTable() + "." + fk.getReferencedColumn()).size();
+            int psize = allGeneratedData.get(fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn()).size();
 
             List<List<Object>> currentSet = new ArrayList<>();
             for (int j = 0; j < psize; j++) {
                 List<Object> data = new ArrayList<>(columnMetadatas.size());
                 for (ColumnMetadata column : columnMetadatas) {
                     var currentFk = column.getForeignKeyMetadata().get(i);
-                    String currentRefSchema = currentFk.getReferencedSchema();
-                    String currentRefTable = currentFk.getReferencedTable();
-                    String currentRefColumn = currentFk.getReferencedColumn();
-                    String currentRefKey = currentRefSchema + '.' + currentRefTable + '.' + currentRefColumn;
+                    String currentRefKey = currentFk.getReferencedSchema() + '.' + currentFk.getReferencedTable() + '.' + currentFk.getReferencedColumn();
                     data.add(allGeneratedData.get(currentRefKey).get(j));
                 }
                 currentSet.add(data);
@@ -85,83 +80,48 @@ public class OneToManyForeignKeyGenerator implements ForeignKeyGenerator, Comple
         if (this.intersection.isEmpty()) {
             throw new RuntimeException("Пересечение кортежей для composite FK пусто");
         }
-    } 
+    }
 
     @Override
     public List<List<Object>> generateValues(int batchSize, StateData stateData) {
-        int offset = stateData.getGeneratedCount();
-        log.info("Generating batch of {} values from {} for column: {}", batchSize, offset, columnMetadatas.stream().map(ColumnMetadata::getName).collect(Collectors.toList()));
-        List<List<Object>> result = new ArrayList<>();
-        for (int i = 0; i < columnMetadatas.size(); i++) {
-            result.add(new ArrayList<>());
+        if (columnMetadatas.size() == 1) {
+            return List.of(generateSimple(batchSize, stateData));
         }
-
-        int remaining = columnMetadatas.getFirst().getRecordCount() - offset;
-        int toGenerate = Math.min(batchSize, Math.max(0, remaining));
-        for (int i = 0; i < toGenerate; i++) {
-            if (columnMetadatas.size() > 1) {
-                List<Object> tuple = intersection.get(random.nextInt(intersection.size()));
-                for (int j = 0; j < columnMetadatas.size(); j++) {
-                    result.get(j).add(tuple.get(j));
-                }
-            } else {
-                result.getFirst().add(usefulData.get(random.nextInt(usefulData.size())));
-            }
-        }
-
-        stateData.advance(toGenerate);
-        return result;
+        return generateComplex(batchSize, stateData);
     }
 
-    @Override
-    public List<Object> generateSimpleForeignKeys(Map<String, List<Object>> allGeneratedData) {
+    private List<Object> generateSimple(int batchSize, StateData stateData) {
         ColumnMetadata columnMetadata = columnMetadatas.getFirst();
-        log.info("Generating database 1-M foreign keys for columns {}", columnMetadata.getName());
-        
-        
-
-        int recordCount = columnMetadata.getRecordCount();
-        List<Object> foreignKeys = new ArrayList<>();
-
-        columnMetadata.getMcv().forEach((mcv, freq) -> {
-            usefulData.remove(mcv);
-            long mvcCount = Math.round(freq * columnMetadata.getRecordCount());
-            for (long j = 0; j < mvcCount; j++) {
-                foreignKeys.add(mcv);
+        log.info("Generating 1-M foreign keys for column {}", columnMetadata.getName());
+        List<Object> data = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            double r = random.nextDouble();
+            if (r < columnMetadata.getNullFrac())
+                data.add(null);
+            else {
+                data.add(generateNonNull(stateData, r));
             }
-            log.trace("Adding MVC value: {} with frequency: {} resulting in count: {}", mcv, freq, mvcCount);
-        });
-
-        int nullPercentage = columnMetadata.getNullCount();
-        for (int i = 0; i < nullPercentage; i++) {
-            foreignKeys.add(null);
         }
-
-        if (nullPercentage > 0) {
-            usefulData.remove(null);
-        }
-
-        List<Object> refValues = new ArrayList<>(usefulData);
-
-        for (int i = foreignKeys.size(); i < recordCount; i++) {
-            foreignKeys.add(refValues.get(random.nextInt(refValues.size())));
-        }
-
-        return foreignKeys;
+        return data;
     }
 
-    @Override
-    public List<List<Object>> generateComplexForeignKeys(Map<String, List<Object>> allGeneratedData) {
-        int recordCount = columnMetadatas.getFirst().getRecordCount();
-        
-        List<List<Object>> validTuples = new ArrayList<>(this.intersection);
+    private Object generateNonNull(StateData stateData, double r) {
+        for (int j = 0; j < stateData.getMcvValues().size(); j++) {
+            if (r < stateData.getMcvChances().get(j)) {
+                return stateData.getMcvValues().get(j);
+            }
+        }
+        return usefulData.get(random.nextInt(usefulData.size()));
+    }
 
+    private List<List<Object>> generateComplex(int batchSize, StateData stateData) {
+        int recordCount = columnMetadatas.getFirst().getRecordCount();
         List<List<Object>> result = new ArrayList<>(columnMetadatas.size());
         for (int j = 0; j < columnMetadatas.size(); j++) {
             result.add(new ArrayList<>(recordCount));
         }
-        for (int i = 0; i < recordCount; i++) {
-            List<Object> tuple = validTuples.get(random.nextInt(validTuples.size()));
+        for (int i = 0; i < batchSize; i++) {
+            List<Object> tuple = intersection.get(random.nextInt(intersection.size()));
             for (int j = 0; j < columnMetadatas.size(); j++) {
                 result.get(j).add(tuple.get(j));
             }

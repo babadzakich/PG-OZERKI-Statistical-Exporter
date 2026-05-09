@@ -18,7 +18,7 @@ import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 @Data
 public class StateData {
     private int generatedCount;
-    private final double nullChance;
+    private double nullChance;
 
     private final int mcvAmount;
     private final List<Double> mcvChances;
@@ -72,4 +72,5 @@ public class StateData {
     public void advance(int generated) {
         this.generatedCount += generated;
     }
+    public void dropNull() {this.nullChance = 0.0;}
 }

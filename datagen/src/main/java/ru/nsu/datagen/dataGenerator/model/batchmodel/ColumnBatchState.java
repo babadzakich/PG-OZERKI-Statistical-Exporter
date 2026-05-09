@@ -4,7 +4,6 @@ import java.util.List;
 
 import lombok.Getter;
 import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
-import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.NormalValueGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
@@ -33,10 +32,10 @@ public class ColumnBatchState {
         this.prevStateData = null;
     }
 
-    public ColumnBatchState(ComplexForeignKeyGenerator valueGenerator, List<ColumnMetadata> compositePeers) {
+    public ColumnBatchState(ColumnGenerator valueGenerator, ColumnMetadata columnMetadata) {
         this.valueGenerator = valueGenerator;
-        this.columns = compositePeers;
-        this.curStateData = new StateData();
+        this.columns = List.of(columnMetadata);
+        this.curStateData = new StateData(columnMetadata);
         this.prevStateData = null;
     }
 
