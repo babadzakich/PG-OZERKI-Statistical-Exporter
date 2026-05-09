@@ -35,7 +35,8 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
         if (column.isForeignKey()) {
             return ForeignKeyGeneratorFactory.getInstance()
                     .getGenerator(List.of(column), allGeneratedData)
-                    .generateSimpleForeignKeys(allGeneratedData);
+                    .generateValues(column.getRecordCount(), new StateData(column))
+                    .getFirst();
         }
 		Map<String, List<Object>> columnData = new HashMap<>();
         generate(columnData);
@@ -48,7 +49,8 @@ public class SimpleUniqueGenerator implements UniqueKeyGenerator{
             columnData.put(column.getName(),
                     ForeignKeyGeneratorFactory.getInstance()
                             .getGenerator(List.of(column), allGeneratedData)
-                            .generateSimpleForeignKeys(allGeneratedData));
+                            .generateValues(column.getRecordCount(), new StateData(column))
+                            .getFirst());
             return;
         }
         String columnName = column.getName();

@@ -7,25 +7,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
-import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
+import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
 @Slf4j
-public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, ComplexForeignKeyGenerator {
+public class OneToOneForeignKeyGenerator implements ColumnGenerator {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
     private final List<ColumnMetadata> columnMetadatas;
-    private final List<List<Object>> intersection;
+    private List<List<Object>> intersection;
     private final List<Object> usefulData;
 
     public OneToOneForeignKeyGenerator(ColumnMetadata columnMetadata, Map<String, List<Object>> allGeneratedData) {
         this.columnMetadatas = List.of(columnMetadata);
         this.usefulData = buildSimpleIntersection(columnMetadata, allGeneratedData);
-        this.intersection = usefulData.stream().map(List::of).collect(Collectors.toList());
+        this.intersection = usefulData.stream().map(List::of).collect(java.util.stream.Collectors.toList());
 
         int nonNullCount = columnMetadata.getRecordCount() - columnMetadata.getNullCount();
         if (this.usefulData.size() < nonNullCount) {
@@ -46,44 +44,62 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, Complex
         }
     }
 
-    public OneToOneForeignKeyGenerator(List<ColumnMetadata> columnMetadatas) {
-        this.columnMetadatas = columnMetadatas;
-        this.usefulData = null;
-        this.intersection = List.of();
-    }
-
     @Override
     public List<List<Object>> generateValues(int batchSize, StateData stateData) {
-        int offset = stateData.getGeneratedCount();
-        log.info(
-                "Generating batch of {} values from {} for columns: {}",
-                batchSize,
-                offset,
-                columnMetadatas.stream().map(ColumnMetadata::getName).collect(Collectors.toList())
-        );
+        if (columnMetadatas.size() == 1) {
+            return List.of(generateSimple(batchSize, stateData));
+        }
+        return generateComplex(batchSize);
+    }
 
-        List<List<Object>> result = new ArrayList<>();
-        for (int i = 0; i < columnMetadatas.size(); i++) {
-            result.add(new ArrayList<>());
+    private List<Object> generateSimple(int batchSize, StateData stateData) {
+        ColumnMetadata columnMetadata = columnMetadatas.getFirst();
+        log.info("Generating 1-1 foreign keys for column {}", columnMetadata.getName());
+        List<Object> data = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            double r = random.nextDouble();
+            if (r < stateData.getNullChance()) {
+                data.add(null);
+                stateData.dropNull();
+            }
+            else {
+                data.add(generateNonNull(stateData, r));
+            }
+        }
+        return data;
+    }
+
+    private Object generateNonNull(StateData stateData, double r) {
+        for (int j = 0; j < stateData.getMcvValues().size(); j++) {
+            if (r < stateData.getMcvChances().get(j)) {
+                stateData.getMcvChances().remove(j);
+                return stateData.getMcvValues().remove(j);
+            }
+        }
+        int index = random.nextInt(usefulData.size());
+        return usefulData.remove(index);
+    }
+
+    private List<List<Object>> generateComplex(int batchSize) {
+        int recordCount = columnMetadatas.getFirst().getRecordCount();
+        List<List<Object>> validTuples = intersection.subList(0, batchSize);
+
+        if (validTuples.size() < recordCount) {
+            throw new RuntimeException("Not enough unique referenced tuples for 1-1 relationship. Needed: "
+                    + recordCount + ", available: " + validTuples.size());
         }
 
-        int remaining = columnMetadatas.getFirst().getRecordCount() - offset;
-        int toGenerate = Math.min(batchSize, Math.max(0, remaining));
-        if (columnMetadatas.size() > 1) {
-            int end = Math.min(offset + toGenerate, intersection.size());
-            for (int i = offset; i < end; i++) {
-                List<Object> tuple = intersection.get(i);
-                for (int j = 0; j < columnMetadatas.size(); j++) {
-                    result.get(j).add(tuple.get(j));
-                }
+        Collections.shuffle(validTuples, random);
+        intersection = intersection.subList(batchSize, intersection.size());
+
+        List<List<Object>> result = new ArrayList<>(columnMetadatas.size());
+        for (int j = 0; j < columnMetadatas.size(); j++) {
+            result.add(new ArrayList<>(batchSize));
+        }
+        for (List<Object> tuple : validTuples) {
+            for (int j = 0; j < columnMetadatas.size(); j++) {
+                result.get(j).add(tuple.get(j));
             }
-            stateData.advance(Math.max(0, end - offset));
-        } else {
-            int end = Math.min(offset + toGenerate, usefulData.size());
-            for (int i = offset; i < end; i++) {
-                result.getFirst().add(usefulData.get(i));
-            }
-            stateData.advance(Math.max(0, end - offset));
         }
         return result;
     }
@@ -149,69 +165,5 @@ public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, Complex
             tuple.add(allGeneratedData.get(refKey).get(rowIndex));
         }
         return tuple;
-    }
-
-    @Override
-    public List<Object> generateSimpleForeignKeys(Map<String, List<Object>> allGeneratedData) {
-        ColumnMetadata columnMetadata = columnMetadatas.getFirst();
-        log.info("Generating database 1-1 foreign keys for column {}", columnMetadata.getName());
-
-        int recordCount = columnMetadata.getRecordCount();
-        List<Object> foreignKeys = new ArrayList<>();
-        List<Object> availableValues = new ArrayList<>(usefulData);
-
-        columnMetadata.getMcv().forEach((mcv, freq) -> {
-            long mcvCount = Math.round(freq * columnMetadata.getRecordCount());
-            if (mcvCount > 1) {
-                throw new RuntimeException("MCV value duplicates are not allowed for 1-1 relationship: " + mcv);
-            }
-            if (mcvCount == 1) {
-                if (!availableValues.remove(mcv)) {
-                    throw new RuntimeException("MCV value is not present in referenced values for 1-1 FK: " + mcv);
-                }
-                foreignKeys.add(mcv);
-            }
-            log.trace("Adding MCV value: {} with frequency: {} resulting in count: {}", mcv, freq, mcvCount);
-        });
-
-        for (int i = 0; i < columnMetadata.getNullCount(); i++) {
-            foreignKeys.add(null);
-        }
-        availableValues.remove(null);
-
-        int requiredValues = recordCount - foreignKeys.size();
-        if (availableValues.size() < requiredValues) {
-            throw new RuntimeException("Not enough unique referenced values for 1-1 relationship. Needed: "
-                    + requiredValues + ", available: " + availableValues.size());
-        }
-
-        Collections.shuffle(availableValues, random);
-        foreignKeys.addAll(availableValues.subList(0, requiredValues));
-        return foreignKeys;
-    }
-
-    @Override
-    public List<List<Object>> generateComplexForeignKeys(Map<String, List<Object>> allGeneratedData) {
-        int recordCount = columnMetadatas.getFirst().getRecordCount();
-        List<List<Object>> validTuples = new ArrayList<>(this.intersection);
-
-        if (validTuples.size() < recordCount) {
-            throw new RuntimeException("Not enough unique referenced tuples for 1-1 relationship. Needed: "
-                    + recordCount + ", available: " + validTuples.size());
-        }
-
-        Collections.shuffle(validTuples, random);
-        validTuples = validTuples.subList(0, recordCount);
-
-        List<List<Object>> result = new ArrayList<>(columnMetadatas.size());
-        for (int j = 0; j < columnMetadatas.size(); j++) {
-            result.add(new ArrayList<>(recordCount));
-        }
-        for (List<Object> tuple : validTuples) {
-            for (int j = 0; j < columnMetadatas.size(); j++) {
-                result.get(j).add(tuple.get(j));
-            }
-        }
-        return result;
     }
 }

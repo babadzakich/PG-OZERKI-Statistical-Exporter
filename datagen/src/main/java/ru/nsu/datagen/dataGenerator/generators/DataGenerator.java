@@ -9,9 +9,8 @@ import java.util.Objects;
 import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
-import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
+import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
@@ -134,17 +133,11 @@ public class DataGenerator {
             ColumnMetadata column,
             Map<String, List<Object>> existingData) {
         List<ColumnMetadata> foreignKeyColumns = resolvePeers(table, column, column.getCompositeForeignPeers());
-        List<List<Object>> values;
-
-        if (foreignKeyColumns.size() > 1) {
-            ComplexForeignKeyGenerator complexGenerator = fkGeneratorFactory.getComplexGenerator(foreignKeyColumns, existingData);
-            values = complexGenerator.generateComplexForeignKeys(existingData);
-        } else {
-            ForeignKeyGenerator generator = fkGeneratorFactory.getGenerator(foreignKeyColumns, existingData);
-            values = List.of(generator.generateSimpleForeignKeys(existingData));
+        ColumnGenerator generator = fkGeneratorFactory.getGenerator(foreignKeyColumns, existingData);
+        if (foreignKeyColumns.size() == 1) {
+            return new ColumnBatchState(generator, foreignKeyColumns.getFirst());
         }
-
-        return new ColumnBatchState(new PrecomputedColumnGenerator(values), foreignKeyColumns);
+        return new ColumnBatchState(generator, foreignKeyColumns);
     }
 
     private List<List<Object>> valuesForColumns(
