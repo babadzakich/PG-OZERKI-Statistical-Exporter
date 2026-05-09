@@ -41,7 +41,6 @@ SET default_table_access_method = heap;
 
 CREATE TABLE bookings.airplanes_data (
     airplane_code character(3) NOT NULL,
-    model jsonb NOT NULL,
     range integer NOT NULL,
     speed integer NOT NULL
 );
@@ -53,10 +52,6 @@ CREATE TABLE bookings.airplanes_data (
 
 CREATE TABLE bookings.airports_data (
     airport_code character(3) NOT NULL,
-    airport_name jsonb NOT NULL,
-    city jsonb NOT NULL,
-    country jsonb NOT NULL,
-    coordinates point NOT NULL,
     timezone text NOT NULL
 );
 
@@ -93,7 +88,6 @@ CREATE TABLE bookings.flights (
 
 CREATE TABLE bookings.routes (
     route_no text NOT NULL,
-    validity tstzrange NOT NULL,
     departure_airport character(3) NOT NULL,
     arrival_airport character(3) NOT NULL,
     airplane_code character(3) NOT NULL,
