@@ -176,6 +176,7 @@ public class TableStore {
             String number = whereClause.replaceAll(".*line\\s+(\\d+).*", "$1");
             return Integer.parseInt(number);
         } catch (Exception e) {
+            System.err.println("catched exception during parsing " + e.getMessage());
             return -1;
         }
     }

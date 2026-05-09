@@ -21,6 +21,7 @@ public class Config {
     private final int globStoreThreads;
     private final int tableStoreThreads;
     private final String indexPath;
+    private final int batchSize;
 
     private final List<TableHolder> tables;
 
@@ -74,6 +75,7 @@ public class Config {
             this.globStoreThreads = (int) configMap.get("glob_store_threads");
             this.tableStoreThreads = (int) configMap.get("table_store_threads");
             this.indexPath = (String) configMap.get("index_path");
+            this.batchSize = (int) configMap.get("batch_size");
         }
     }
 

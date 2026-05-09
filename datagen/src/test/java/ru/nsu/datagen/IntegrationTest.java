@@ -105,7 +105,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("big/big.yaml")
+    @ConfigFile("all/all.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
@@ -113,6 +113,7 @@ public class IntegrationTest {
         String indexPath = null;
         int globStoreThreads = config.getGlobStoreThreads();
         int tableStoreThreads = config.getTableStoreThreads();
+        int batchSize = config.getBatchSize();
         if (config.getIndexPath() != null) {
             indexPath = Paths.get(classLoader.getResource(config.getIndexPath()).toURI()).toString();
         }
@@ -126,7 +127,7 @@ public class IntegrationTest {
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, 50000, globStoreThreads, tableStoreThreads);
+            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, batchSize, globStoreThreads, tableStoreThreads);
             System.out.println("✓ Генерация данных завершена");
 
             Optional.ofNullable(indexPath).ifPresent(path -> {
