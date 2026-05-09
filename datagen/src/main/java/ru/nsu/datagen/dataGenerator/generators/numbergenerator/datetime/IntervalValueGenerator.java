@@ -34,12 +34,12 @@ public class IntervalValueGenerator extends ValueGeneratorAC {
 
                 return randomPeriod.toString() + randomDuration.toString().substring(1);
             } catch (IllegalArgumentException e) {
-                log.error("Failed to parse interval borders: {}", e.getMessage());
+                log.error("Failed to parse interval borders: {}, falling back to defaults", e.getMessage());
             }
         } else {
             log.warn("Invalid border types for {} value generation: {} and {}, using default values", this.getClass(), leftBorder.getClass(), rightBorder.getClass());
         }
-        return null;
+        return generateValue(DEFAULT_MIN, DEFAULT_MAX);
     }
 
     private Interval parseInterval(String durationStr) {
