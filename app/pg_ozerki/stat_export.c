@@ -13,6 +13,19 @@ void export_stats(PGconn* conn, const char* export_filename) {
         pg_log_error("Could not open file for stats export");
         return;
     }
+    PQExpBuffer intervalQuery;
+    intervalQuery = createPQExpBuffer();
+    appendPQExpBuffer(intervalQuery, "SET intervalstyle='iso_8601'");
+    PGresult* intervalRes = PQexec(conn, intervalQuery->data);
+    ExecStatusType interval_res_status = PQresultStatus(intervalRes);
+
+    
+    if (interval_res_status != PGRES_COMMAND_OK) {
+        pg_log_error("SET interavalstyle='iso_8601' command has failed with result: %s", PQresultErrorMessage(intervalRes));
+    }
+
+    destroyPQExpBuffer(intervalQuery);
+    PQclear(intervalRes);
     PQExpBuffer statQuery;
     statQuery = createPQExpBuffer();
     
