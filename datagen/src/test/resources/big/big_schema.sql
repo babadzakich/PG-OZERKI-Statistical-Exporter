@@ -19,9 +19,13 @@ ALTER SYSTEM SET default_statistics_target = 100;
 ALTER SYSTEM SET effective_cache_size = '8192028kB';
 ALTER SYSTEM SET random_page_cost = 4;
 ALTER SYSTEM SET seq_page_cost = 1;
+ALTER SYSTEM SET parallel_tuple_cost = 0.1;
+ALTER SYSTEM SET parallel_setup_cost = 1000;
+ALTER SYSTEM SET jit = off;
 SET client_min_messages = warning;
 SET row_security = off;
 
+SELECT pg_reload_conf();
 --
 -- Name: bookings; Type: SCHEMA; Schema: -; Owner: -
 --
