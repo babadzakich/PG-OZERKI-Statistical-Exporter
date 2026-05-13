@@ -3363,6 +3363,7 @@ char* get_planner_settings(Archive* AH){
             
 	}
 
+	appendPQExpBuffer(buf, "SELECT pg_reload_conf();\n");
 	char* ret = pg_strdup(buf->data);
 	return ret;
 }
