@@ -2,23 +2,19 @@ package ru.nsu.datagen.dataGenerator.store;
 
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
-import org.postgresql.util.PSQLException;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.sql.*;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import org.postgresql.util.PGobject;
 import org.postgresql.core.BaseConnection;
@@ -45,14 +41,11 @@ public class TableStore {
 
 
 
-    public Map<String, Object> storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
+    public int storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
         int batchRecords = generatedTableData.values().iterator().next().size();
-        System.err.println("Batch records: " + batchRecords);
-        if (batchRecords == 0) return null;
+        if (batchRecords == 0) return 0;
 
-        int subBatchSize = (batchRecords + parallelism - 1) / parallelism;
-
-        subBatchSize = Math.max(1, subBatchSize);
+        int subBatchSize = Math.max(1, (batchRecords + parallelism - 1) / parallelism);
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             AtomicInteger totalStored = new AtomicInteger(0);
@@ -60,7 +53,7 @@ public class TableStore {
 
             log.info("Starting COPY store for table {} using Virtual Threads", tableMetadata.getTableName());
 
-            List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();
+            List<CompletableFuture<Integer>> futures = new ArrayList<>();
 
             for (int i = 0; i < batchRecords; i += subBatchSize) {
                 final int startIdx = i;
@@ -70,62 +63,50 @@ public class TableStore {
                     try {
                         return processCopyChunk(tableMetadata, generatedTableData, startIdx, endIdx, totalStored, lastReportedPercent);
                     } catch (Exception e) {
-
                         throw new RuntimeException("Error in virtual thread during COPY", e);
                     }
                 }, executor));
             }
 
-            for (CompletableFuture<Map<String, Object>> future : futures) {
+            int total = 0;
+            for (CompletableFuture<Integer> future : futures) {
                 try {
-                    Map<String, Object> badRow = future.join();
-                    if (badRow != null) {
-                        return badRow;
-                    }
+                    total += future.join();
                 } catch (CompletionException e) {
                     if (e.getCause() instanceof SQLException sqlEx) throw sqlEx;
                     throw new SQLException("Error during parallel COPY", e.getCause());
                 }
             }
-            log.info("100% of batch stored in table {}, total {} rows", tableMetadata.getTableName(), batchRecords);
-            return null;
+            log.info("Stored {}/{} rows in table {}", total, batchRecords, tableMetadata.getTableName());
+            return total;
         } catch (CompletionException e) {
             throw new SQLException("Parallel COPY failed in virtual threads", e.getCause());
         }
     }
 
 
-    private Map<String, Object> processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
-                                                 int start, int end, AtomicInteger counter, AtomicInteger lastReportedPercent) throws Exception {
-
-
+    private int processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
+                                int start, int end, AtomicInteger counter, AtomicInteger lastReportedPercent) throws Exception {
         String columns = String.join(", ", tableMetadata.getColumns().keySet());
         String copySql = String.format("COPY %s (%s) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL 'NULL_MARKER')",
                 tableMetadata.getNamespace() + "." + tableMetadata.getTableName(), columns);
 
-
         StringBuilder csvBuffer = new StringBuilder();
         List<String> colNames = new ArrayList<>(tableMetadata.getColumns().keySet());
-
 
         for (int i = start; i < end; i++) {
             for (int j = 0; j < colNames.size(); j++) {
                 Object value = data.get(colNames.get(j)).get(i);
                 ColumnMetadata meta = tableMetadata.getColumns().get(colNames.get(j));
                 csvBuffer.append(formatForCsv(value, meta));
-
                 if (j < colNames.size() - 1) csvBuffer.append(",");
             }
             csvBuffer.append("\n");
         }
 
-
         try (Connection conn = dataSource.getConnection()) {
-
             BaseConnection pgConn = conn.unwrap(BaseConnection.class);
-
             CopyManager copyManager = new CopyManager(pgConn);
-
 
             try {
                 copyManager.copyIn(copySql, new StringReader(csvBuffer.toString()));
@@ -133,40 +114,14 @@ public class TableStore {
                 int total = counter.addAndGet(added);
                 log.debug("Chunk {}-{} copied. Total: {}", start, end, total);
                 reportCopyProgress(total, tableMetadata.getRecordCount(), tableMetadata.getTableName(), lastReportedPercent);
-                return null;
+                return added;
             } catch (SQLException e) {
-                if (e instanceof org.postgresql.util.PSQLException pgEx) {
-                    var serverError = pgEx.getServerErrorMessage();
-                    if (serverError != null) {
-
-                        System.err.println(serverError);
-
-                        System.err.println("getWhere" + serverError.getWhere());
-                        int lineInError = parseLineNumber(serverError.getWhere());
-                        System.err.println("linInError: " + lineInError);
-
-
-                        if (lineInError > 0) {
-                            int absoluteIndex = start + (lineInError - 1);
-                            System.err.println(absoluteIndex +  " " + start + " " + lineInError);
-                            Map<String, Object> badRow = new HashMap<>();
-                            for (String colName : tableMetadata.getColumns().keySet()) {
-                                badRow.put(colName, data.get(colName).get(absoluteIndex));
-                            }
-
-                            log.error("!!! Constraint Violation detected !!!");
-                            log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), serverError.getConstraint());
-                            log.error("Row number in chunk: {}, Absolute index: {}", lineInError, absoluteIndex);
-                            log.error("Culprit Row Data: {}", badRow);
-                            return badRow;
-                        }
-                    }
+                if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
+                    log.warn("Constraint violation in table {}, chunk {}-{}: {}", tableMetadata.getTableName(), start, end, e.getMessage());
+                    return 0;
                 }
                 throw e;
             }
-
-
-
         }
     }
 

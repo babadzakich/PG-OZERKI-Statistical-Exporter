@@ -10,10 +10,10 @@ import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
-import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
@@ -24,10 +24,6 @@ public class DataGenerator {
     private final ForeignKeyGeneratorFactory fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
     private final Map<String, TableMetadata> allTablesMap;
     private final List<ColumnBatchState> columnBatchStates = new ArrayList<>();
-
-    public DataGenerator(Map<String, TableMetadata> allTablesMap) {
-        this.allTablesMap = allTablesMap;
-    }
 
     public DataGenerator(Set<TableMetadata> allTablesSet, TableMetadata mainTable) {
         allTablesMap = allTablesSet.stream().collect(HashMap::new, (m, t) -> m.put(t.getFullName(), t), HashMap::putAll);
@@ -112,11 +108,18 @@ public class DataGenerator {
             referencingTrees.put(uniqueColumn.getName(), collectReferencingTree(uniqueColumn, new HashSet<>()));
         }
 
+        if (uniqueColumns.size() > 1) {
+            return new ColumnBatchState(
+                    new MarkovGenerator(uniqueColumns, table.getRecordCount(), referencingTrees, existingData),
+                    uniqueColumns
+            );
+        }
+
         Map<String, List<Object>> precomputedData = new HashMap<>();
         UniqueKeyGeneratorChooser.generate(
                 uniqueColumns,
                 precomputedData,
-                uniqueColumns.size() > 1 ? GeneratorsTypes.MARKOV : GeneratorsTypes.SIMPLE,
+                GeneratorsTypes.SIMPLE,
                 table.getRecordCount(),
                 referencingTrees,
                 existingData

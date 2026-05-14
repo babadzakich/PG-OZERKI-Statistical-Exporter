@@ -3,10 +3,8 @@ package ru.nsu.datagen.dataGenerator;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.*;
 
@@ -29,6 +27,7 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
+    private static final int MAX_EMPTY_BATCH_COUNT = 1000;
     public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads) throws IOException {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph(tableMetadataList);
@@ -54,19 +53,29 @@ public class DatabaseDataGenerator {
                                             DataGenerator dataGenerator = new DataGenerator(component, table);
                                             log.info("Generate table: {}", table.getTableName());
                                             int createdAmount = 0;
+                                            int emptyBatchCount = 0;
                                             while (createdAmount < table.getRecordCount()) {
                                                 int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
                                                 Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate);
-                                                generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
-                                                        generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
-                                                );
                                                 try {
-                                                    tableStore.storeTable(table, generatedTableData, tableStoreThreads);
-                                                    createdAmount += toGenerate;
+                                                    int stored = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
+                                                    createdAmount += stored;
+                                                    if (stored > 0) {
+                                                        generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
+                                                                generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
+                                                        );
+                                                    }
+                                                    if (stored == 0) {
+                                                        if (++emptyBatchCount > MAX_EMPTY_BATCH_COUNT) {
+                                                            log.error("Прервана генерация таблицы {}: {} пустых батчей подряд", table.getTableName(), emptyBatchCount);
+                                                            break;
+                                                        }
+                                                    } else {
+                                                        emptyBatchCount = 0;
+                                                    }
                                                 } catch (SQLException e) {
-                                                    dataGenerator.rollbackToPreviousState();
                                                     log.warn(
-                                                            "Failed to store batch for table {} from offset {} with size {}. sqlState={}, message={}",
+                                                            "SQL error storing batch for table {} at offset {}, size {}. sqlState={}, message={}",
                                                             table.getTableName(),
                                                             createdAmount,
                                                             toGenerate,
@@ -79,6 +88,9 @@ public class DatabaseDataGenerator {
                                         } catch (InterruptedException e) {
                                             log.error("Error in table {}: {}", table.getTableName(), e.getMessage());
                                             throw new RuntimeException(e);
+                                        } catch (RuntimeException e) {
+                                            log.error("Unexpected error generating table {}: {}", table.getTableName(), e.getMessage(), e);
+                                            throw e;
                                         } finally {
                                             globalSemaphore.release();
                                         }

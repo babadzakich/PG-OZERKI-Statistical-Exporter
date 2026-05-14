@@ -42,7 +42,7 @@ public class ColumnBatchState {
     public ColumnBatchState(ColumnGenerator valueGenerator, List<ColumnMetadata> columns) {
         this.valueGenerator = valueGenerator;
         this.columns = columns;
-        this.curStateData = new StateData();
+        this.curStateData = new StateData(columns);
         this.prevStateData = null;
     }
 

@@ -198,19 +198,19 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
         
         for (int i = 0; i < toGenerate; i++) {
             double r = random.nextDouble();
-            if (r < stateData.getNullChance()) {
+            if (r < stateData.getNullChances()[0]) {
                 values.add(null);
-            } else if (stateData.getMcvAmount() > 0 && r < stateData.getMcvChances().get(stateData.getMcvAmount() - 1)) {
-                for (int j = 0; j < stateData.getMcvAmount(); j++) {
-                    if (r < stateData.getMcvChances().get(j)) {
-                        values.add(stateData.getMcvValues().get(j));
+            } else if (!stateData.getMcvChances().getFirst().chances().isEmpty() && (r < stateData.getMcvChances().getFirst().chances().getLast())) {
+                for (int j = 0; j < stateData.getMcvChances().getFirst().chances().size(); j++) {
+                    if (r < stateData.getMcvChances().getFirst().chances().get(j)) {
+                        values.add(stateData.getMcvChances().getFirst().values().get(j));
                         break;
                     }
                 }
             } else {
                 if (columnMetadata.getHistogramm() != null && columnMetadata.getHistogramm().size() > 1) {
                     int bucketIndex = 0;
-                    while (bucketIndex < stateData.getBucketsCounters().size() && r >= stateData.getBucketsCounters().get(bucketIndex)) {
+                    while (bucketIndex < stateData.getBucketsCounters().getFirst().size() && r >= stateData.getBucketsCounters().getFirst().get(bucketIndex)) {
                         bucketIndex++;
                     }
                     bucketIndex = Math.min(bucketIndex, columnMetadata.getHistogramm().size() - 2);

@@ -58,9 +58,9 @@ public class OneToOneForeignKeyGenerator implements ColumnGenerator {
         List<Object> data = new ArrayList<>();
         for (int i = 0; i < batchSize; i++) {
             double r = random.nextDouble();
-            if (r < stateData.getNullChance()) {
+            if (r < stateData.getNullChances()[0]) {
                 data.add(null);
-                stateData.dropNull();
+                stateData.dropNull(0);
             }
             else {
                 data.add(generateNonNull(stateData, r));
@@ -70,10 +70,10 @@ public class OneToOneForeignKeyGenerator implements ColumnGenerator {
     }
 
     private Object generateNonNull(StateData stateData, double r) {
-        for (int j = 0; j < stateData.getMcvValues().size(); j++) {
-            if (r < stateData.getMcvChances().get(j)) {
-                stateData.getMcvChances().remove(j);
-                return stateData.getMcvValues().remove(j);
+        for (int j = 0; j < stateData.getMcvChances().getFirst().chances().size(); j++) {
+            if (r < stateData.getMcvChances().getFirst().chances().get(j)) {
+                stateData.getMcvChances().getFirst().chances().remove(j);
+                return stateData.getMcvChances().getFirst().values().remove(j);
             }
         }
         int index = random.nextInt(usefulData.size());
