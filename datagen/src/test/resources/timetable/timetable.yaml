@@ -1,8 +1,10 @@
 schema: timetable/timetable_schema.sql
 statistic: timetable/timetable_stats.csv
 query_path: timetable/timetable_query.sql
-source_plan_path: timetable/timetable_explain.json
-thread_count: 8
+source_plan_path: timetable/timetable_explain_view.json
+glob_store_threads: 5
+table_store_threads: 12
+batch_size: 50000
 index_path: timetable/timetable_indexes.sql
 constraints_path: timetable/timetable_constr.csv
 tables:
@@ -13,11 +15,11 @@ tables:
       - airport_code
   - name: flights
     schema: bookings
-    expectedCount: 21758
+    expectedCount: 135571
     uniques:
       - [route_no, scheduled_departure]
     pk:
       - flight_id
   - name: routes
     schema: bookings
-    expectedCount: 1162
+    expectedCount: 7242

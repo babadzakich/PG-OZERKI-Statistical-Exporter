@@ -19,6 +19,7 @@ ALTER SYSTEM SET default_statistics_target = 100;
 ALTER SYSTEM SET effective_cache_size = '6553618kB';
 ALTER SYSTEM SET random_page_cost = 4;
 ALTER SYSTEM SET seq_page_cost = 1;
+SELECT pg_reload_conf();
 SET client_min_messages = warning;
 SET row_security = off;
 
