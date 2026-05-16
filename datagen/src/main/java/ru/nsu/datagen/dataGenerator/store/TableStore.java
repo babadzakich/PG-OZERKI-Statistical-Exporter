@@ -2,6 +2,7 @@ package ru.nsu.datagen.dataGenerator.store;
 
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
+import org.postgresql.util.PSQLException;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
@@ -11,6 +12,7 @@ import java.sql.*;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -42,11 +44,13 @@ public class TableStore {
 
 
     public int storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
+        System.err.println("storeTable call #1");
         int batchRecords = generatedTableData.values().iterator().next().size();
+        System.err.println("Batch Records: " + batchRecords);
         if (batchRecords == 0) return 0;
+        System.err.println("storeTable call #2");
 
         int subBatchSize = Math.max(1, (batchRecords + parallelism - 1) / parallelism);
-
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             AtomicInteger totalStored = new AtomicInteger(0);
             AtomicInteger lastReportedPercent = new AtomicInteger(-1);
@@ -91,47 +95,98 @@ public class TableStore {
         String copySql = String.format("COPY %s (%s) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL 'NULL_MARKER')",
                 tableMetadata.getNamespace() + "." + tableMetadata.getTableName(), columns);
 
-        StringBuilder csvBuffer = new StringBuilder();
         List<String> colNames = new ArrayList<>(tableMetadata.getColumns().keySet());
 
+        List<Integer> remainingIndices = new ArrayList<>();
         for (int i = start; i < end; i++) {
-            for (int j = 0; j < colNames.size(); j++) {
-                Object value = data.get(colNames.get(j)).get(i);
-                ColumnMetadata meta = tableMetadata.getColumns().get(colNames.get(j));
-                csvBuffer.append(formatForCsv(value, meta));
-                if (j < colNames.size() - 1) csvBuffer.append(",");
-            }
-            csvBuffer.append("\n");
+            remainingIndices.add(i);
         }
 
-        try (Connection conn = dataSource.getConnection()) {
-            BaseConnection pgConn = conn.unwrap(BaseConnection.class);
-            CopyManager copyManager = new CopyManager(pgConn);
+        int totalAdded = 0;
 
-            try {
-                copyManager.copyIn(copySql, new StringReader(csvBuffer.toString()));
-                int added = end - start;
-                int total = counter.addAndGet(added);
-                log.debug("Chunk {}-{} copied. Total: {}", start, end, total);
-                reportCopyProgress(total, tableMetadata.getRecordCount(), tableMetadata.getTableName(), lastReportedPercent);
-                return added;
-            } catch (SQLException e) {
-                if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
-                    log.warn("Constraint violation in table {}, chunk {}-{}: {}", tableMetadata.getTableName(), start, end, e.getMessage());
-                    return 0;
+        while (!remainingIndices.isEmpty()) {
+            StringBuilder csvBuffer = new StringBuilder();
+
+            for (int idx : remainingIndices) {
+                for (int j = 0; j < colNames.size(); j++) {
+                    Object value = data.get(colNames.get(j)).get(idx);
+                    ColumnMetadata meta = tableMetadata.getColumns().get(colNames.get(j));
+                    csvBuffer.append(formatForCsv(value, meta));
+                    if (j < colNames.size() - 1) csvBuffer.append(",");
                 }
-                throw e;
+                csvBuffer.append("\n");
+            }
+
+            try (Connection conn = dataSource.getConnection()) {
+                BaseConnection pgConn = conn.unwrap(BaseConnection.class);
+                CopyManager copyManager = new CopyManager(pgConn);
+
+                try {
+                    copyManager.copyIn(copySql, new StringReader(csvBuffer.toString()));
+
+                    int added = remainingIndices.size();
+                    int total = counter.addAndGet(added);
+                    log.debug("Chunk sub-part successfully copied. Added: {}, Total: {}", added, total);
+
+                    reportCopyProgress(total, tableMetadata.getRecordCount(), tableMetadata.getTableName(), lastReportedPercent);
+
+                    totalAdded += added;
+                    break;
+
+                } catch (SQLException e) {
+
+                    if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
+                        PSQLException pgEx = (PSQLException) e;
+                        log.warn("Constraint violation in table {}, retrying without bad row. Error: {}",
+                                tableMetadata.getTableName(), e.getMessage());
+
+                        int lineInError = parseLineNumber(pgEx.getServerErrorMessage().getWhere());
+
+
+                        if (lineInError > 0 && lineInError <= remainingIndices.size()) {
+
+                            int badAbsoluteIndex = remainingIndices.get(lineInError - 1);
+
+
+                            Map<String, Object> badRow = new HashMap<>();
+                            for (String colName : tableMetadata.getColumns().keySet()) {
+                                badRow.put(colName, data.get(colName).get(badAbsoluteIndex));
+                            }
+
+                            log.error("!!! Constraint Violation detected and SKIPPED !!!");
+                            log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), pgEx.getServerErrorMessage().getConstraint());
+                            log.error("Row number in current attempt: {}, Absolute index: {}", lineInError, badAbsoluteIndex);
+                            log.error("Culprit Row Data: {}", badRow);
+
+
+                            remainingIndices.remove(lineInError - 1);
+
+
+                        } else {
+                            log.error("Postgres reported lineInError={}, but current remaining size is {}. Cannot recover.",
+                                    lineInError, remainingIndices.size());
+                            throw e;
+                        }
+                    } else {
+                        
+                        throw e;
+                    }
+                }
             }
         }
+
+        return totalAdded;
     }
 
     private int parseLineNumber(String whereClause) {
         if (whereClause == null || !whereClause.contains("line")) return -1;
         try {
+            log.warn("whereClause = {}", whereClause);
             String number = whereClause.replaceAll(".*line\\s+(\\d+).*", "$1");
+            log.warn("number = {}", number);
             return Integer.parseInt(number);
         } catch (Exception e) {
-            System.err.println("catched exception during parsing " + e.getMessage());
+            System.err.println("catched exception during parsing " + e.getMessage() + " " + e.getCause());
             return -1;
         }
     }

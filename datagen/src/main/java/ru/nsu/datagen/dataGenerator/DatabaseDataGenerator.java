@@ -2,10 +2,7 @@ package ru.nsu.datagen.dataGenerator;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 
 import com.zaxxer.hikari.HikariDataSource;
@@ -27,7 +24,7 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    private static final int MAX_EMPTY_BATCH_COUNT = 1000;
+    private static final int MAX_EMPTY_BATCH_COUNT = 10;
     public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads) throws IOException {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph(tableMetadataList);
@@ -56,10 +53,21 @@ public class DatabaseDataGenerator {
                                             int emptyBatchCount = 0;
                                             while (createdAmount < table.getRecordCount()) {
                                                 int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
+                                                System.err.println("toGenerate = " + toGenerate);
+
                                                 Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate);
                                                 try {
+                                                    //System.err.println("generatedTableData size = " + generatedTableData.get("status").size());
+                                                    Set<String> colNames = generatedTableData.keySet();
+                                                    if (emptyBatchCount >= 0 && Objects.equals(table.getTableName(), "flights")) {
+                                                        for (String colName : colNames) {
+                                                            System.err.println("colname " + colName + " size = " + generatedTableData.get(colName).size());
+                                                        }
+                                                    }
                                                     int stored = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
                                                     createdAmount += stored;
+                                                    log.warn("CREATED_AMOUNT = {}", createdAmount);
+                                                    log.warn("STORED = {}", stored);
                                                     if (stored > 0) {
                                                         generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
                                                                 generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
