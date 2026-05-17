@@ -193,10 +193,10 @@ public class StatTypeBasedGenerator implements NormalValueGenerator {
     @Override
     public List<List<Object>> generateValues(int batchSize, StateData stateData) {
         List<Object> values = new ArrayList<>();
-        int remaining = columnMetadata.getRecordCount() - stateData.getGeneratedCount();
-        int toGenerate = Math.min(batchSize, Math.max(0, remaining));
+
+
         
-        for (int i = 0; i < toGenerate; i++) {
+        for (int i = 0; i < batchSize; i++) {
             double r = random.nextDouble();
             if (r < stateData.getNullChances()[0]) {
                 values.add(null);

@@ -24,7 +24,7 @@ TODO:
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    private static final int MAX_EMPTY_BATCH_COUNT = 10;
+    private static final int MAX_EMPTY_BATCH_COUNT = 1000;
     public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads) throws IOException {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph(tableMetadataList);
@@ -65,6 +65,7 @@ public class DatabaseDataGenerator {
                                                         }
                                                     }
                                                     int stored = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
+                                                    dataGenerator.removeUnaddedColumns(toGenerate - stored);
                                                     createdAmount += stored;
                                                     log.warn("CREATED_AMOUNT = {}", createdAmount);
                                                     log.warn("STORED = {}", stored);

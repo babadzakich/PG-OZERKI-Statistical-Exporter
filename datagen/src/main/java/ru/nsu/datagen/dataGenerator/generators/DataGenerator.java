@@ -29,8 +29,8 @@ public class DataGenerator {
         allTablesMap = allTablesSet.stream().collect(HashMap::new, (m, t) -> m.put(t.getFullName(), t), HashMap::putAll);
     }
 
-    public void rollbackToPreviousState() {
-        columnBatchStates.forEach(ColumnBatchState::rollbackToPreviousState);
+    public void removeUnaddedColumns(int size) {
+        columnBatchStates.forEach(column -> column.getCurStateData().setGeneratedCount(column.getCurStateData().getGeneratedCount() - size));
     }
 
     public Map<String, List<Object>> generateBatchTableData(
