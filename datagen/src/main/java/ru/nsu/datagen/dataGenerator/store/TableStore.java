@@ -11,10 +11,7 @@ import java.math.BigDecimal;
 import java.sql.*;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -43,11 +40,11 @@ public class TableStore {
 
 
 
-    public int storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
+    public List<Map<String, Object>> storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
         System.err.println("storeTable call #1");
         int batchRecords = generatedTableData.values().iterator().next().size();
         System.err.println("Batch Records: " + batchRecords);
-        if (batchRecords == 0) return 0;
+        if (batchRecords == 0) return null;
         System.err.println("storeTable call #2");
 
         int subBatchSize = Math.max(1, (batchRecords + parallelism - 1) / parallelism);
@@ -57,7 +54,7 @@ public class TableStore {
 
             log.info("Starting COPY store for table {} using Virtual Threads", tableMetadata.getTableName());
 
-            List<CompletableFuture<Integer>> futures = new ArrayList<>();
+            List<CompletableFuture<List<Map<String, Object>>>> futures = new ArrayList<>();
 
             for (int i = 0; i < batchRecords; i += subBatchSize) {
                 final int startIdx = i;
@@ -72,25 +69,26 @@ public class TableStore {
                 }, executor));
             }
 
-            int total = 0;
-            for (CompletableFuture<Integer> future : futures) {
+            List<Map<String, Object>> allBadRows = new ArrayList<>();
+            for (CompletableFuture<List<Map<String, Object>>> future : futures) {
                 try {
-                    total += future.join();
+                    allBadRows.addAll(future.join());
                 } catch (CompletionException e) {
                     if (e.getCause() instanceof SQLException sqlEx) throw sqlEx;
                     throw new SQLException("Error during parallel COPY", e.getCause());
                 }
             }
+            int total = batchRecords - allBadRows.size();
             log.info("Stored {}/{} rows in table {}", total, batchRecords, tableMetadata.getTableName());
-            return total;
+            return allBadRows;
         } catch (CompletionException e) {
             throw new SQLException("Parallel COPY failed in virtual threads", e.getCause());
         }
     }
 
 
-    private int processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
-                                int start, int end, AtomicInteger counter, AtomicInteger lastReportedPercent) throws Exception {
+    private List<Map<String, Object>> processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
+                                                       int start, int end, AtomicInteger counter, AtomicInteger lastReportedPercent) throws Exception {
         String columns = String.join(", ", tableMetadata.getColumns().keySet());
         String copySql = String.format("COPY %s (%s) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL 'NULL_MARKER')",
                 tableMetadata.getNamespace() + "." + tableMetadata.getTableName(), columns);
@@ -101,6 +99,7 @@ public class TableStore {
         for (int i = start; i < end; i++) {
             remainingIndices.add(i);
         }
+        List<Map<String, Object>> failedRows = new ArrayList<>();
 
         int totalAdded = 0;
 
@@ -137,8 +136,8 @@ public class TableStore {
 
                     if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
                         PSQLException pgEx = (PSQLException) e;
-                        log.warn("Constraint violation in table {}, retrying without bad row. Error: {}",
-                                tableMetadata.getTableName(), e.getMessage());
+                        //log.warn("Constraint violation in table {}, retrying without bad row. Error: {}",
+                        //        tableMetadata.getTableName(), e.getMessage());
 
                         int lineInError = parseLineNumber(pgEx.getServerErrorMessage().getWhere());
 
@@ -153,12 +152,12 @@ public class TableStore {
                                 badRow.put(colName, data.get(colName).get(badAbsoluteIndex));
                             }
 
-                            log.error("!!! Constraint Violation detected and SKIPPED !!!");
-                            log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), pgEx.getServerErrorMessage().getConstraint());
+                            //log.error("!!! Constraint Violation detected and SKIPPED !!!");
+                            //log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), pgEx.getServerErrorMessage().getConstraint());
                             log.error("Row number in current attempt: {}, Absolute index: {}", lineInError, badAbsoluteIndex);
-                            log.error("Culprit Row Data: {}", badRow);
+                            //log.error("Culprit Row Data: {}", badRow);
 
-
+                            failedRows.add(badRow);
                             remainingIndices.remove(lineInError - 1);
 
 
@@ -175,15 +174,15 @@ public class TableStore {
             }
         }
 
-        return totalAdded;
+        return failedRows;
     }
 
     private int parseLineNumber(String whereClause) {
         if (whereClause == null || !whereClause.contains("line")) return -1;
         try {
-            log.warn("whereClause = {}", whereClause);
+            //log.warn("whereClause = {}", whereClause);
             String number = whereClause.replaceAll(".*line\\s+(\\d+).*", "$1");
-            log.warn("number = {}", number);
+            //log.warn("number = {}", number);
             return Integer.parseInt(number);
         } catch (Exception e) {
             System.err.println("catched exception during parsing " + e.getMessage() + " " + e.getCause());
