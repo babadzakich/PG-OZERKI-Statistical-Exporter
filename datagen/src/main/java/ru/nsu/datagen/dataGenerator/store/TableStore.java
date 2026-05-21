@@ -137,8 +137,8 @@ public class TableStore {
 
                     if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
                         PSQLException pgEx = (PSQLException) e;
-                        log.warn("Constraint violation in table {}, retrying without bad row. Error: {}",
-                                tableMetadata.getTableName(), e.getMessage());
+//                        log.warn("Constraint violation in table {}, retrying without bad row. Error: {}",
+//                                tableMetadata.getTableName(), e.getMessage());
 
                         int lineInError = parseLineNumber(pgEx.getServerErrorMessage().getWhere());
 
@@ -153,10 +153,10 @@ public class TableStore {
                                 badRow.put(colName, data.get(colName).get(badAbsoluteIndex));
                             }
 
-                            log.error("!!! Constraint Violation detected and SKIPPED !!!");
-                            log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), pgEx.getServerErrorMessage().getConstraint());
-                            log.error("Row number in current attempt: {}, Absolute index: {}", lineInError, badAbsoluteIndex);
-                            log.error("Culprit Row Data: {}", badRow);
+//                            log.error("!!! Constraint Violation detected and SKIPPED !!!");
+//                            log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), pgEx.getServerErrorMessage().getConstraint());
+//                            log.error("Row number in current attempt: {}, Absolute index: {}", lineInError, badAbsoluteIndex);
+//                            log.error("Culprit Row Data: {}", badRow);
 
 
                             remainingIndices.remove(lineInError - 1);
@@ -181,9 +181,9 @@ public class TableStore {
     private int parseLineNumber(String whereClause) {
         if (whereClause == null || !whereClause.contains("line")) return -1;
         try {
-            log.warn("whereClause = {}", whereClause);
+//            log.warn("whereClause = {}", whereClause);
             String number = whereClause.replaceAll(".*line\\s+(\\d+).*", "$1");
-            log.warn("number = {}", number);
+//            log.warn("number = {}", number);
             return Integer.parseInt(number);
         } catch (Exception e) {
             System.err.println("catched exception during parsing " + e.getMessage() + " " + e.getCause());

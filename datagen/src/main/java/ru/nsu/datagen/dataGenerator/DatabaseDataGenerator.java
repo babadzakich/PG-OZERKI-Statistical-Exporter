@@ -67,8 +67,8 @@ public class DatabaseDataGenerator {
                                                     int stored = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
                                                     dataGenerator.removeUnaddedColumns(toGenerate - stored);
                                                     createdAmount += stored;
-                                                    log.warn("CREATED_AMOUNT = {}", createdAmount);
-                                                    log.warn("STORED = {}", stored);
+//                                                    log.warn("CREATED_AMOUNT = {}", createdAmount);
+//                                                    log.warn("STORED = {}", stored);
                                                     if (stored > 0) {
                                                         generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
                                                                 generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
@@ -83,15 +83,15 @@ public class DatabaseDataGenerator {
                                                         emptyBatchCount = 0;
                                                     }
                                                 } catch (SQLException e) {
-                                                    log.warn(
-                                                            "SQL error storing batch for table {} at offset {}, size {}. sqlState={}, message={}",
-                                                            table.getTableName(),
-                                                            createdAmount,
-                                                            toGenerate,
-                                                            e.getSQLState(),
-                                                            e.getMessage(),
-                                                            e
-                                                    );
+//                                                    log.warn(
+//                                                            "SQL error storing batch for table {} at offset {}, size {}. sqlState={}, message={}",
+//                                                            table.getTableName(),
+//                                                            createdAmount,
+//                                                            toGenerate,
+//                                                            e.getSQLState(),
+//                                                            e.getMessage(),
+//                                                            e
+//                                                    );
                                                 }
                                             }
                                         } catch (InterruptedException e) {

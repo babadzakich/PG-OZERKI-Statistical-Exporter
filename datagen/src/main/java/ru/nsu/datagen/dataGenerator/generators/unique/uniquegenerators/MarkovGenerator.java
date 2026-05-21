@@ -1,13 +1,6 @@
 package ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 import lombok.extern.slf4j.Slf4j;
@@ -21,17 +14,22 @@ import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
     private static final int MARKOV_MAX_ATTEMPTS_PER_ITEM = 200;
+    private static final double SPACE_SAFETY_FACTOR = 10.0;
 
     private final List<ColumnMetadata> columnsMetadata;
     private final int recordCount;
     private final Map<String, List<ReferencingTreeNode>> referencingTrees;
     private final Map<String, List<Object>> existingData;
-    private final ThreadLocalRandom random = ThreadLocalRandom.current();
+    private final Random random = new Random();
 
-    // Lazily initialized per-column value distributions
     private List<List<Object>> colValues;
     private List<double[]> colCumWeights;
-    private List<Integer> colMcvCounts; // used to preserve MCV weights on expansion
+    private List<Integer> colMcvCounts;
+    private int safeTargetPerColumn;
+    private List<List<Object>> mandatoryValues;
+
+    private record FkGroupDist(List<Integer> colIndices, List<List<Object>> tuples) {}
+    private List<FkGroupDist> fkGroups = Collections.emptyList();
 
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
                            Map<String, List<ReferencingTreeNode>> referencingTrees,
@@ -40,6 +38,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         this.referencingTrees = referencingTrees;
         this.recordCount = recordCount;
         this.existingData = allGeneratedData;
+        initDistributions();
+        this.mandatoryValues = buildMandatoryValues();
     }
 
     @Override
@@ -65,17 +65,10 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     @Override
     public List<List<Object>> generateValues(int batchSize, StateData stateData) {
-        if (colValues == null) {
-            initDistributions();
-            stateData.setMandatoryValues(buildMandatoryValues());
-        }
-
         Set<List<Object>> localSeen = new LinkedHashSet<>();
 
-        // Seed batch with mandatory values distributed proportionally across all batches
-        seedMandatoryRows(stateData.getGeneratedCount(), batchSize, stateData.getMandatoryValues(), localSeen);
+        seedMandatoryRows(stateData.getGeneratedCount(), batchSize, mandatoryValues, localSeen);
 
-        // Fill remaining slots with weighted random sampling
         generateRows(batchSize, localSeen);
 
         if (localSeen.size() < batchSize) {
@@ -119,11 +112,23 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         int attempts = 0;
         int maxAttempts = target * MARKOV_MAX_ATTEMPTS_PER_ITEM;
         while (localSeen.size() < target && attempts < maxAttempts) {
-            List<Object> row = new ArrayList<>(columnsMetadata.size());
-            for (int j = 0; j < columnsMetadata.size(); j++) {
-                row.add(sampleColumn(j));
+            Object[] rowArr = new Object[columnsMetadata.size()];
+            boolean[] filled = new boolean[columnsMetadata.size()];
+
+            for (FkGroupDist group : fkGroups) {
+                List<Object> tuple = group.tuples().get(random.nextInt(group.tuples().size()));
+                for (int k = 0; k < group.colIndices().size(); k++) {
+                    int colIdx = group.colIndices().get(k);
+                    rowArr[colIdx] = tuple.get(k);
+                    filled[colIdx] = true;
+                }
             }
-            localSeen.add(row);
+
+            for (int j = 0; j < columnsMetadata.size(); j++) {
+                if (!filled[j]) rowArr[j] = sampleColumn(j);
+            }
+
+            localSeen.add(Arrays.asList(rowArr));
             attempts++;
         }
     }
@@ -140,12 +145,103 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     // --- Distribution initialization ---
 
     private void initDistributions() {
-        colValues = new ArrayList<>(columnsMetadata.size());
-        colCumWeights = new ArrayList<>(columnsMetadata.size());
-        colMcvCounts = new ArrayList<>(columnsMetadata.size());
-        for (int colIdx = 0; colIdx < columnsMetadata.size(); colIdx++) {
+        int numCols = columnsMetadata.size();
+        safeTargetPerColumn = (int) Math.ceil(
+                Math.pow((double) recordCount * SPACE_SAFETY_FACTOR, 1.0 / numCols));
+
+        colValues = new ArrayList<>(numCols);
+        colCumWeights = new ArrayList<>(numCols);
+        colMcvCounts = new ArrayList<>(numCols);
+        for (int colIdx = 0; colIdx < numCols; colIdx++) {
             buildColDist(colIdx);
         }
+
+        fkGroups = buildFkGroups();
+
+        double logSpace = colValues.stream().mapToDouble(v -> Math.log(v.size())).sum();
+        if (logSpace < Math.log(recordCount)) {
+            log.warn("Пространство комбинаций ({}) меньше recordCount ({}), скорее всего из-за FK-ограничений — " +
+                    "будет сгенерировано меньше строк чем запрошено",
+                    (long) Math.exp(logSpace), recordCount);
+        }
+    }
+
+    private List<FkGroupDist> buildFkGroups() {
+        List<FkGroupDist> groups = new ArrayList<>();
+        Set<Integer> assigned = new HashSet<>();
+
+        for (int i = 0; i < columnsMetadata.size(); i++) {
+            if (assigned.contains(i)) continue;
+            ColumnMetadata col = columnsMetadata.get(i);
+            if (!col.isForeignKey()) continue;
+            List<List<String>> peers = col.getCompositeForeignPeers();
+            if (peers == null || peers.isEmpty() || peers.getFirst().isEmpty()) continue;
+
+            List<String> peerGroup = peers.getFirst();
+            List<Integer> groupIndices = new ArrayList<>();
+            for (int j = 0; j < columnsMetadata.size(); j++) {
+                String name = columnsMetadata.get(j).getName();
+                for (String peer : peerGroup) {
+                    if (peer.endsWith("." + name)) {
+                        groupIndices.add(j);
+                        break;
+                    }
+                }
+            }
+
+            if (groupIndices.size() > 1) {
+                assigned.addAll(groupIndices);
+                List<List<Object>> tuples = buildFkGroupTuples(groupIndices);
+                if (!tuples.isEmpty()) {
+                    groups.add(new FkGroupDist(groupIndices, tuples));
+                    log.debug("FK группа: колонки {}, {} уникальных кортежей",
+                            groupIndices.stream().map(k -> columnsMetadata.get(k).getName()).toList(),
+                            tuples.size());
+                }
+            }
+        }
+        return groups;
+    }
+
+    private List<List<Object>> buildFkGroupTuples(List<Integer> groupIndices) {
+        List<List<Object>> parentColumnData = new ArrayList<>();
+
+        for (int colIdx : groupIndices) {
+            ColumnMetadata col = columnsMetadata.get(colIdx);
+            List<String> peerGroup = col.getCompositeForeignPeers().getFirst();
+
+            int selfPos = -1;
+            for (int i = 0; i < peerGroup.size(); i++) {
+                if (peerGroup.get(i).endsWith("." + col.getName())) {
+                    selfPos = i;
+                    break;
+                }
+            }
+            if (selfPos < 0 || selfPos >= col.getForeignKeyMetadata().size()) {
+                log.warn("Не удалось определить FK позицию для колонки {}", col.getName());
+                return Collections.emptyList();
+            }
+
+            var fkMeta = col.getForeignKeyMetadata().get(selfPos);
+            String refKey = fkMeta.getReferencedSchema() + '.' + fkMeta.getReferencedTable() + '.' + fkMeta.getReferencedColumn();
+            List<Object> data = existingData.get(refKey);
+            if (data == null || data.isEmpty()) {
+                log.warn("Нет данных родителя для FK колонки {} (ключ {})", col.getName(), refKey);
+                return Collections.emptyList();
+            }
+            parentColumnData.add(data);
+        }
+
+        int rowCount = parentColumnData.get(0).size();
+        Set<List<Object>> seen = new LinkedHashSet<>();
+        for (int i = 0; i < rowCount; i++) {
+            List<Object> tuple = new ArrayList<>(groupIndices.size());
+            for (List<Object> colData : parentColumnData) {
+                tuple.add(i < colData.size() ? colData.get(i) : null);
+            }
+            seen.add(tuple);
+        }
+        return new ArrayList<>(seen);
     }
 
     private void buildColDist(int colIdx) {
@@ -186,7 +282,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 colMeta.getName(), values.size(), mcv.size(), nonMcvCandidates.size());
     }
 
-    private List<List<Object>> buildMandatoryValues() {
+    private List<List<Object>>  buildMandatoryValues() {
         List<List<Object>> result = new ArrayList<>(columnsMetadata.size());
         for (ColumnMetadata colMeta : columnsMetadata) {
             Set<Object> seen = new HashSet<>();
@@ -263,7 +359,8 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     private void addGeneratedCandidates(ColumnMetadata colMeta, Set<Object> seen, List<Object> candidates) {
         double nd = colMeta.getNdistinct();
-        int target = (int) (nd < 0 ? -nd * recordCount : nd);
+        int statsTarget = (int) (nd < 0 ? -nd * recordCount : nd);
+        int target = Math.max((int) (statsTarget * 1.2), safeTargetPerColumn);
         int toAdd = Math.max(0, target - seen.size());
         if (toAdd == 0) return;
 
