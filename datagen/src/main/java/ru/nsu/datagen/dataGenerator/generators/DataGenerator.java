@@ -14,6 +14,7 @@ import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
@@ -115,18 +116,8 @@ public class DataGenerator {
             );
         }
 
-        Map<String, List<Object>> precomputedData = new HashMap<>();
-        UniqueKeyGeneratorChooser.generate(
-                uniqueColumns,
-                precomputedData,
-                GeneratorsTypes.SIMPLE,
-                table.getRecordCount(),
-                referencingTrees,
-                existingData
-        );
-
         return new ColumnBatchState(
-                new PrecomputedColumnGenerator(valuesForColumns(uniqueColumns, precomputedData)),
+                new SimpleUniqueGenerator(uniqueColumns, table.getRecordCount(), referencingTrees, existingData),
                 uniqueColumns
         );
     }
