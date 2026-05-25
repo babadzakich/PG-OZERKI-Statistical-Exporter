@@ -59,8 +59,9 @@ public class Main {
             if (args.constraintFile == null) args.constraintFile = configArgs.constraintFile;
             args.batchSize = configArgs.batchSize != null ? configArgs.batchSize : args.batchSize;
             args.generationThreadPoolSize = configArgs.generationThreadPoolSize != null ? configArgs.generationThreadPoolSize : args.generationThreadPoolSize;
-            args.globStoreThreads = configArgs.globStoreThreads != null ? Math.min(Runtime.getRuntime().availableProcessors(), configArgs.globStoreThreads) : 1;
-            args.tableStoreThreads = configArgs.tableStoreThreads != null ? configArgs.tableStoreThreads : 1;
+            args.globStoreThreads = configArgs.globStoreThreads != null ? Math.min(Runtime.getRuntime().availableProcessors(), configArgs.globStoreThreads) :
+                    Math.min(Runtime.getRuntime().availableProcessors(), args.globStoreThreads);
+            args.tableStoreThreads = configArgs.tableStoreThreads != null ? configArgs.tableStoreThreads : args.tableStoreThreads;
         }
     }
 

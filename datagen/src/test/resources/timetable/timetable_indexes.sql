@@ -4,7 +4,6 @@
 -- Name: routes_departure_airport_lower_idx; Type: INDEX; Schema: bookings; Owner: -
 --
 
-CREATE INDEX routes_departure_airport_lower_idx ON bookings.routes USING btree (departure_airport);
 
 
 --

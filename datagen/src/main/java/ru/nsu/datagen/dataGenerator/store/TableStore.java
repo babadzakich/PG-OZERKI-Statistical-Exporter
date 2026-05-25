@@ -68,6 +68,7 @@ public class TableStore {
                     try {
                         return processCopyChunk(tableMetadata, generatedTableData, startIdx, endIdx, totalStored, lastReportedPercent);
                     } catch (Exception e) {
+                        System.err.println(e.getMessage());
                         throw new RuntimeException("Error in virtual thread during COPY", e);
                     }
                 }, executor));
@@ -81,6 +82,7 @@ public class TableStore {
                     total += r.stored();
                     allFailed.addAll(r.failedIndices());
                 } catch (CompletionException e) {
+                    System.err.println(e.getMessage());
                     if (e.getCause() instanceof SQLException sqlEx) throw sqlEx;
                     throw new SQLException("Error during parallel COPY", e.getCause());
                 }
@@ -100,7 +102,12 @@ public class TableStore {
                 tableMetadata.getNamespace() + "." + tableMetadata.getTableName(), columns);
 
         List<String> colNames = new ArrayList<>(tableMetadata.getColumns().keySet());
-
+        //System.err.println("ACT_DEP + " + data.get("actual_departure"));
+//        for (Object obj : data.get("actual_departure")) {
+//            if (obj != null) {
+//                System.err.println("NOT NULL");
+//            }
+//        }
         List<Integer> remainingIndices = new ArrayList<>();
         for (int i = start; i < end; i++) {
             remainingIndices.add(i);
@@ -235,59 +242,9 @@ public class TableStore {
         return s;
     }
 
-    private void processChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
-                              int start, int end, AtomicInteger totalCounter, int logStep) throws SQLException {
 
-        String query = getQueryString(tableMetadata);
 
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
 
-            try (Statement st = conn.createStatement()) {
-                st.execute("SET search_path TO public, bookings");
-            }
-
-            try (PreparedStatement pstmnt = conn.prepareStatement(query)) {
-                int localBatchCount = 0;
-
-                for (int i = start; i < end; i++) {
-                    int colIdx = 1;
-                    for (String columnName : tableMetadata.getColumns().keySet()) {
-                        Object value = data.get(columnName).get(i);
-                        ColumnMetadata meta = tableMetadata.getColumns().get(columnName);
-                        setParameter(pstmnt, colIdx++, value, meta, conn);
-                    }
-
-                    pstmnt.addBatch();
-                    localBatchCount++;
-
-                    if (localBatchCount % BATCHSIZE == 0) {
-                        pstmnt.executeBatch();
-                        reportProgress(totalCounter, BATCHSIZE, logStep, tableMetadata.getTableName());
-                    }
-                }
-
-                pstmnt.executeBatch();
-                int remaining = localBatchCount % BATCHSIZE;
-                if (remaining > 0 || localBatchCount < BATCHSIZE) {
-                    reportProgress(totalCounter, (localBatchCount % BATCHSIZE == 0 && localBatchCount > 0) ? 0 : localBatchCount % BATCHSIZE, logStep, tableMetadata.getTableName());
-                }
-
-                conn.commit();
-            } catch (SQLException e) {
-                conn.rollback();
-                throw e;
-            }
-        }
-    }
-
-    private void reportProgress(AtomicInteger counter, int delta, int step, String tableName) {
-        int current = counter.addAndGet(delta);
-
-        if (step > 0 && current % step < delta) {
-            log.info("Progress for {}: ~{} rows stored", tableName, current);
-        }
-    }
 
     private void reportCopyProgress(int current, int total, String tableName, AtomicInteger lastReportedPercent) {
         int percent = (int) ((current * 100.0) / total);
@@ -302,96 +259,5 @@ public class TableStore {
         }
     }
 
-    private String getQueryString(TableMetadata tableMetadata) {
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append("INSERT INTO ");
-        stringBuilder.append(tableMetadata.getTableName());
-        stringBuilder.append(" (");
-        int i = 1;
-        for (String columnName : tableMetadata.getColumns().keySet()) {
-            stringBuilder.append(columnName);
-            if (i++ < tableMetadata.getColumns().size()) {
-                stringBuilder.append(", ");
-            }
-        }
-        stringBuilder.append(") VALUES (");
-        for (i = 1; i <= tableMetadata.getColumns().size(); i++) {
-            stringBuilder.append("?");
-            if (i < tableMetadata.getColumns().size()) {
-                stringBuilder.append(", ");
-            }
-        }
-        stringBuilder.append(")");
-        log.info("Insert data in table {}", tableMetadata.getTableName());
-        log.debug("Insert query: {}", stringBuilder);
-        return stringBuilder.toString();
-    }
 
-    private void setParameter(PreparedStatement pstmnt, int idx, Object value, ColumnMetadata meta, Connection conn) throws SQLException {
-        String type = meta.getDataType();
-        String normalizedType = type.toLowerCase();
-
-        if (value == null) {
-            pstmnt.setNull(idx, Types.OTHER);
-            return;
-        }
-
-
-        if (meta.isArray()) {
-            String baseType = type.contains("[]") ? type.substring(0, type.indexOf("[]")) : type;
-            Array sqlArray = conn.createArrayOf(baseType, new Object[]{value});
-            pstmnt.setArray(idx, sqlArray);
-            return;
-        }
-
-
-        if (normalizedType.equals("interval") || normalizedType.contains("tstzrange") ||
-                normalizedType.contains("date") || normalizedType.contains("money")) {
-            PGobject pgObject = new PGobject();
-            pgObject.setType(normalizedType.contains("tstzrange") ? "tstzrange" :
-                    normalizedType.contains("date") ? "date" :
-                            normalizedType.contains("money") ? "money" : "interval");
-            pgObject.setValue(value.toString());
-            pstmnt.setObject(idx, pgObject);
-            return;
-        }
-
-
-        if (normalizedType.equals("time without time zone") || normalizedType.equals("time")) {
-            pstmnt.setObject(idx, value, Types.TIME);
-        } else if (normalizedType.equals("timestamp without time zone") || normalizedType.equals("timestamp")) {
-            if (value instanceof java.time.Instant instant) {
-                pstmnt.setTimestamp(idx, Timestamp.from(instant));
-            } else {
-                pstmnt.setObject(idx, value, Types.TIMESTAMP);
-            }
-        } else if (normalizedType.equals("timestamp with time zone") || normalizedType.equals("timestamptz")) {
-            if (value instanceof java.time.Instant instant) {
-                pstmnt.setObject(idx, instant, Types.TIMESTAMP_WITH_TIMEZONE);
-            } else if (value instanceof String s) {
-                PGobject pgObject = new PGobject();
-                pgObject.setType("timestamptz");
-                pgObject.setValue(s);
-                pstmnt.setObject(idx, pgObject);
-            } else {
-                pstmnt.setObject(idx, value);
-            }
-        }
-
-        else if (value instanceof String && !normalizedType.contains("char")) {
-            switch (normalizedType) {
-                case "smallint", "int2" -> pstmnt.setShort(idx, Short.parseShort((String) value));
-                case "integer", "int4" -> pstmnt.setInt(idx, Integer.parseInt((String) value));
-                case "bigint", "int8" -> pstmnt.setLong(idx, Long.parseLong((String) value));
-                case "boolean", "bool" -> pstmnt.setBoolean(idx, Boolean.parseBoolean((String) value));
-                case "decimal", "numeric" -> pstmnt.setBigDecimal(idx, new BigDecimal((String) value));
-                case "float8", "double", "double precision" -> pstmnt.setDouble(idx, Double.parseDouble((String) value));
-                case "float4", "real" -> pstmnt.setFloat(idx, Float.parseFloat((String) value));
-                case "bytea" -> pstmnt.setBytes(idx, ((String) value).getBytes());
-                default -> pstmnt.setObject(idx, value);
-            }
-        } else {
-            pstmnt.setObject(idx, value);
-        }
-    }
 }

@@ -105,7 +105,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("big/big.yaml")
+    @ConfigFile("timetable/timetable.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();
@@ -122,14 +122,6 @@ public class IntegrationTest {
             // Импорт схемы и статистики
             Map<String, TableMetadata> importedData = Importer.startImport(schemaPath, statsPath, constraintPath, conn);
 
-            assertNotNull(importedData, "Импортированные данные не должны быть null");
-            assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
-            System.out.println("✓ Импорт схемы и статистики выполнен успешно");
-            ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-            // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, batchSize, globStoreThreads, tableStoreThreads);
-            System.out.println("✓ Генерация данных завершена");
-
             Optional.ofNullable(indexPath).ifPresent(path -> {
                 try {
                     Importer.importSchemas(path, conn.createStatement());
@@ -138,6 +130,15 @@ public class IntegrationTest {
                     throw new RuntimeException(e);
                 }
             });
+            assertNotNull(importedData, "Импортированные данные не должны быть null");
+            assertFalse(importedData.isEmpty(), "Импортированные данные не должны быть пустыми");
+            System.out.println("✓ Импорт схемы и статистики выполнен успешно");
+            ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            // Генерация данных
+            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, batchSize, globStoreThreads, tableStoreThreads);
+            System.out.println("✓ Генерация данных завершена");
+
+
             // Проверка целостности данных и ограничений
             for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);

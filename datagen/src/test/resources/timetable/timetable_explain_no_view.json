@@ -6,8 +6,8 @@
       "Async Capable": false,
       "Join Type": "Inner",
       "Startup Cost": 1.01,
-      "Total Cost": 35369.91,
-      "Plan Rows": 1362978,
+      "Total Cost": 35550.40,
+      "Plan Rows": 1381027,
       "Plan Width": 95,
       "Output": ["f.flight_id", "f.route_no", "r.departure_airport", "r.arrival_airport", "f.status", "r.airplane_code", "f.scheduled_departure", "(f.scheduled_departure AT TIME ZONE dep.timezone)", "f.actual_departure", "(f.actual_departure AT TIME ZONE dep.timezone)", "f.scheduled_arrival", "(f.scheduled_arrival AT TIME ZONE arr.timezone)", "f.actual_arrival", "(f.actual_arrival AT TIME ZONE arr.timezone)"],
       "Inner Unique": false,
@@ -50,7 +50,7 @@
                   "Total Cost": 194.42,
                   "Plan Rows": 7242,
                   "Plan Width": 19,
-                  "Output": ["r.route_no", "r.validity", "r.departure_airport", "r.arrival_airport", "r.airplane_code", "r.days_of_week", "r.scheduled_time", "r.duration"]
+                  "Output": ["r.departure_airport", "r.arrival_airport", "r.airplane_code", "r.route_no"]
                 },
                 {
                   "Node Type": "Memoize",

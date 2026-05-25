@@ -1,7 +1,7 @@
 schema: timetable/timetable_schema.sql
 statistic: timetable/timetable_stats.csv
 query_path: timetable/timetable_query.sql
-source_plan_path: timetable/timetable_explain_view.json
+source_plan_path: timetable/timetable_explain_no_view.json
 glob_store_threads: 1
 table_store_threads: 1
 batch_size: 50000

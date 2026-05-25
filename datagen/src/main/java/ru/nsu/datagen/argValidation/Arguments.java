@@ -15,7 +15,7 @@ public class Arguments {
     @Parameter(names = "-user")
     public String user;
 
-    @Parameter(names = "-passwd", password = true)
+    @Parameter(names = "-passwd")
     public String password;
 
     @Parameter(names = "-schema", validateWith = FilePath.class)
