@@ -24,6 +24,10 @@ import org.postgresql.copy.CopyManager;
 
 @Slf4j
 public class TableStore {
+    public record StoreResult(int stored, List<Integer> failedIndices) {}
+
+    private record ProcessChunkResult(int stored, List<Integer> failedIndices) {}
+
     private final HikariDataSource dataSource;
     private final int BATCHSIZE = 10000;
     private final int CHUNK_SIZE = 50000;
@@ -43,12 +47,9 @@ public class TableStore {
 
 
 
-    public int storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
-        System.err.println("storeTable call #1");
+    public StoreResult storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
         int batchRecords = generatedTableData.values().iterator().next().size();
-        System.err.println("Batch Records: " + batchRecords);
-        if (batchRecords == 0) return 0;
-        System.err.println("storeTable call #2");
+        if (batchRecords == 0) return new StoreResult(0, List.of());
 
         int subBatchSize = Math.max(1, (batchRecords + parallelism - 1) / parallelism);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -57,7 +58,7 @@ public class TableStore {
 
             log.info("Starting COPY store for table {} using Virtual Threads", tableMetadata.getTableName());
 
-            List<CompletableFuture<Integer>> futures = new ArrayList<>();
+            List<CompletableFuture<ProcessChunkResult>> futures = new ArrayList<>();
 
             for (int i = 0; i < batchRecords; i += subBatchSize) {
                 final int startIdx = i;
@@ -72,24 +73,27 @@ public class TableStore {
                 }, executor));
             }
 
+            List<Integer> allFailed = new ArrayList<>();
             int total = 0;
-            for (CompletableFuture<Integer> future : futures) {
+            for (CompletableFuture<ProcessChunkResult> future : futures) {
                 try {
-                    total += future.join();
+                    ProcessChunkResult r = future.join();
+                    total += r.stored();
+                    allFailed.addAll(r.failedIndices());
                 } catch (CompletionException e) {
                     if (e.getCause() instanceof SQLException sqlEx) throw sqlEx;
                     throw new SQLException("Error during parallel COPY", e.getCause());
                 }
             }
-            log.info("Stored {}/{} rows in table {}", total, batchRecords, tableMetadata.getTableName());
-            return total;
+            log.info("Stored {}/{} rows in table {} ({} rejected)", total, batchRecords, tableMetadata.getTableName(), allFailed.size());
+            return new StoreResult(total, allFailed);
         } catch (CompletionException e) {
             throw new SQLException("Parallel COPY failed in virtual threads", e.getCause());
         }
     }
 
 
-    private int processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
+    private ProcessChunkResult processCopyChunk(TableMetadata tableMetadata, Map<String, List<Object>> data,
                                 int start, int end, AtomicInteger counter, AtomicInteger lastReportedPercent) throws Exception {
         String columns = String.join(", ", tableMetadata.getColumns().keySet());
         String copySql = String.format("COPY %s (%s) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL 'NULL_MARKER')",
@@ -102,6 +106,7 @@ public class TableStore {
             remainingIndices.add(i);
         }
 
+        List<Integer> failedIndices = new ArrayList<>();
         int totalAdded = 0;
 
         while (!remainingIndices.isEmpty()) {
@@ -137,45 +142,28 @@ public class TableStore {
 
                     if (e.getSQLState() != null && e.getSQLState().startsWith("23")) {
                         PSQLException pgEx = (PSQLException) e;
-//                        log.warn("Constraint violation in table {}, retrying without bad row. Error: {}",
-//                                tableMetadata.getTableName(), e.getMessage());
 
                         int lineInError = parseLineNumber(pgEx.getServerErrorMessage().getWhere());
 
-
                         if (lineInError > 0 && lineInError <= remainingIndices.size()) {
-
                             int badAbsoluteIndex = remainingIndices.get(lineInError - 1);
-
-
-                            Map<String, Object> badRow = new HashMap<>();
-                            for (String colName : tableMetadata.getColumns().keySet()) {
-                                badRow.put(colName, data.get(colName).get(badAbsoluteIndex));
-                            }
-
-//                            log.error("!!! Constraint Violation detected and SKIPPED !!!");
-//                            log.error("Table: {}, Constraint: {}", tableMetadata.getTableName(), pgEx.getServerErrorMessage().getConstraint());
-//                            log.error("Row number in current attempt: {}, Absolute index: {}", lineInError, badAbsoluteIndex);
-//                            log.error("Culprit Row Data: {}", badRow);
-
-
+                            log.debug("Constraint violation in table {}, skipping row at absolute index {}. Constraint: {}",
+                                    tableMetadata.getTableName(), badAbsoluteIndex, pgEx.getServerErrorMessage().getConstraint());
+                            failedIndices.add(badAbsoluteIndex);
                             remainingIndices.remove(lineInError - 1);
-
-
                         } else {
                             log.error("Postgres reported lineInError={}, but current remaining size is {}. Cannot recover.",
                                     lineInError, remainingIndices.size());
                             throw e;
                         }
                     } else {
-                        
                         throw e;
                     }
                 }
             }
         }
 
-        return totalAdded;
+        return new ProcessChunkResult(totalAdded, failedIndices);
     }
 
     private int parseLineNumber(String whereClause) {

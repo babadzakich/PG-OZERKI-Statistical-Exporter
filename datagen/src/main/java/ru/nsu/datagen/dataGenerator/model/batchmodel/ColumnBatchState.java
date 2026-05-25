@@ -28,7 +28,7 @@ public class ColumnBatchState {
     public ColumnBatchState(UniqueKeyGenerator valueGenerator, List<ColumnMetadata> compositePeers) {
         this.valueGenerator = valueGenerator;
         this.columns = compositePeers;
-        this.curStateData = new StateData();
+        this.curStateData = new StateData(compositePeers);
         this.prevStateData = null;
     }
 
@@ -53,7 +53,19 @@ public class ColumnBatchState {
     }
 
     public List<List<Object>> produceBatch(int batchSize) {
+        return produceBatch(batchSize, 0);
+    }
+
+    public List<List<Object>> produceBatch(int batchSize, int emptyBatchCount) {
         this.prevStateData = new StateData(this.curStateData);
+        this.curStateData.setEmptyBatchCount(emptyBatchCount);
         return valueGenerator.generateValues(batchSize, curStateData);
+    }
+
+    public List<List<Object>> regenerateRows(int count) {
+        if (valueGenerator instanceof UniqueKeyGenerator ukg) {
+            return ukg.regenerateRows(count);
+        }
+        return List.of();
     }
 }

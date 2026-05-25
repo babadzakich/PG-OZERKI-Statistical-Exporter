@@ -18,6 +18,7 @@ import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 @Data
 public class StateData {
     private int generatedCount;
+    private int emptyBatchCount;
     private final int columnsAmount;
 
     private double[] nullChances;
@@ -27,6 +28,7 @@ public class StateData {
     private final List<List<Double>> bucketsCounters;
 
     private List<List<Object>> mandatoryValues;
+    private Object[] simpleUniquevalues;
 
     public StateData() {
         this.generatedCount = 0;
@@ -34,6 +36,7 @@ public class StateData {
         this.columnsAmount = 0;
         this.bucketsCounters = List.of();
         this.mcvChances = List.of();
+        this.simpleUniquevalues = new Object[0];
     }
 
     public StateData(StateData other) {
@@ -43,6 +46,7 @@ public class StateData {
         this.bucketsCounters = other.bucketsCounters;
         this.mcvChances = other.mcvChances;
         this.mandatoryValues = other.mandatoryValues;
+        this.simpleUniquevalues = other.simpleUniquevalues;
     }
 
     public StateData(ColumnMetadata columnMetadata) {
