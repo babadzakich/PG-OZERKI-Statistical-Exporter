@@ -15,17 +15,32 @@ import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 public class MarkovGenerator implements UniqueKeyGenerator {
     private static final int MARKOV_MAX_ATTEMPTS_PER_ITEM = 200;
     private static final double SPACE_SAFETY_FACTOR = 10.0;
+    private static final double WEIGHT_DECAY = 0.999;
+    // Чем больше подряд пустых батчей, тем агрессивнее давим часто использованные значения.
+    // stuckFactor = 1 + emptyBatches * BOOST_PER_EMPTY масштабирует показатель decay по used[i].
+    private static final double BOOST_PER_EMPTY = 5.0;
+    // Дополнительное подавление MCV в режиме застревания (поверх decay по used).
+    private static final double MCV_SUPPRESSION_BASE = 0.5;
+    private static final int STUCK_FACTOR_EMPTY_CAP = 20;
 
     private final List<ColumnMetadata> columnsMetadata;
     private final int recordCount;
     private final Map<String, List<ReferencingTreeNode>> referencingTrees;
     private final Map<String, List<Object>> existingData;
-    private final Random random = new Random();
+    private final ThreadLocalRandom random = ThreadLocalRandom.current();
+
+    private static final int REBUILD_INTERVAL = 500;
 
     private List<List<Object>> colValues;
     private List<double[]> colCumWeights;
+    private List<double[]> colOrigWeights;
+    private List<int[]> colUsedCounts;
+    private List<Map<Object, Integer>> colValueIndex;
     private List<Integer> colMcvCounts;
     private int safeTargetPerColumn;
+    private int dirtyCount;
+    private int lastEmptyBatchSeen = -1;
+    private int currentEmptyBatches;
     private List<List<Object>> mandatoryValues;
 
     private record FkGroupDist(List<Integer> colIndices, List<List<Object>> tuples) {}
@@ -48,6 +63,14 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     }
 
     @Override
+    public List<List<Object>> regenerateRows(int count) {
+        if (count <= 0) return List.of();
+        Set<List<Object>> localSeen = new LinkedHashSet<>();
+        generateRows(count, localSeen);
+        return transposeToColumns(new ArrayList<>(localSeen));
+    }
+
+    @Override
     public void generate(Map<String, List<Object>> columnData) {
         log.info("Запуск Markov генератора для {} уникальных записей и колонок {}",
                 recordCount, columnsMetadata.stream().map(ColumnMetadata::getName).toList());
@@ -65,6 +88,18 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
     @Override
     public List<List<Object>> generateValues(int batchSize, StateData stateData) {
+        int emptyBatches = stateData.getEmptyBatchCount();
+        // Every N empty batches inject fresh non-MCV values (random samples from the histogram
+        // range) into each non-FK column. Such values are practically guaranteed to be absent
+        // from the DB so the combinations with mandatory values become insertable.
+        if (emptyBatches > 0 && emptyBatches != lastEmptyBatchSeen && emptyBatches % 5 == 0) {
+            injectFreshNonMcvValues(batchSize * 4);
+        }
+        lastEmptyBatchSeen = emptyBatches;
+        this.currentEmptyBatches = emptyBatches;
+        rebuildAllCumWeights();
+        dirtyCount = 0;
+
         Set<List<Object>> localSeen = new LinkedHashSet<>();
 
         seedMandatoryRows(stateData.getGeneratedCount(), batchSize, mandatoryValues, localSeen);
@@ -72,18 +107,82 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         generateRows(batchSize, localSeen);
 
         if (localSeen.size() < batchSize) {
-            log.debug("Пространство комбинаций исчерпано ({}/{}), расширяем non-FK колонки",
-                    localSeen.size(), batchSize);
-            expandNonFkDistributions();
-            generateRows(batchSize, localSeen);
-            if (localSeen.size() < batchSize) {
-                log.warn("Не удалось получить {} уникальных строк в батче, получено {}",
-                        batchSize, localSeen.size());
-            }
+            log.warn("Не удалось получить {} уникальных строк в батче, получено {} (emptyBatches={})",
+                    batchSize, localSeen.size(), emptyBatches);
         }
 
         stateData.advance(localSeen.size());
         return transposeToColumns(new ArrayList<>(localSeen));
+    }
+
+    private void injectFreshNonMcvValues(int countPerColumn) {
+        for (int colIdx = 0; colIdx < columnsMetadata.size(); colIdx++) {
+            if (columnsMetadata.get(colIdx).isForeignKey()) continue;
+            ColumnMetadata colMeta = columnsMetadata.get(colIdx);
+            List<Object> values = colValues.get(colIdx);
+            int sizeBefore = values.size();
+            Set<Object> seen = new HashSet<>(values);
+
+            List<Object> histogram = colMeta.getHistogramm();
+            ValueGenerator generator = ValueGeneratorFactory.createValueGenerator(colMeta);
+            List<Object> extra = new ArrayList<>(countPerColumn);
+            if (histogram != null && !histogram.isEmpty()) {
+                generator.generateValues(extra, countPerColumn, histogram.getFirst(), histogram.getLast());
+            } else {
+                generator.generateValues(extra, countPerColumn);
+            }
+            for (Object v : extra) {
+                if (seen.add(v)) values.add(v);
+            }
+            if (values.size() == sizeBefore) continue;
+
+            // recompute per-non-MCV weight against new pool size, keep MCV frequencies intact
+            int mcvCount = colMcvCounts.get(colIdx);
+            Map<Object, Double> mcv = colMeta.getMcv();
+            double mcvSum = 0.0;
+            for (int i = 0; i < mcvCount; i++) mcvSum += mcv.getOrDefault(values.get(i), 0.0);
+            int nonMcvCount = values.size() - mcvCount;
+            double perNonMcv = nonMcvCount > 0 ? Math.max(0.0, 1.0 - mcvSum) / nonMcvCount : 0.0;
+
+            double[] newOrig = new double[values.size()];
+            for (int i = 0; i < mcvCount; i++) newOrig[i] = mcv.getOrDefault(values.get(i), 0.0);
+            for (int i = mcvCount; i < values.size(); i++) newOrig[i] = perNonMcv;
+            colOrigWeights.set(colIdx, newOrig);
+
+            int[] newUsed = Arrays.copyOf(colUsedCounts.get(colIdx), values.size());
+            // freshly added values start with used=0 (already 0 from copyOf)
+            colUsedCounts.set(colIdx, newUsed);
+
+            Map<Object, Integer> valueIdx = colValueIndex.get(colIdx);
+            for (int i = sizeBefore; i < values.size(); i++) valueIdx.put(values.get(i), i);
+
+            log.debug("Колонка {}: добавлено {} свежих non-MCV значений (всего {})",
+                    colMeta.getName(), values.size() - sizeBefore, values.size());
+        }
+    }
+
+    // Адаптивный пересчёт: вес = orig * WEIGHT_DECAY^(used * stuckFactor), MCV дополнительно
+    // подавляются при застревании. Так часто использованные значения проседают экспоненциально
+    // по числу использований, а сила decay растёт с числом подряд пустых батчей —
+    // редкие комбинации выигрывают вероятность тем быстрее, чем дольше мы топчемся на месте.
+    private void rebuildAllCumWeights() {
+        int emptyBatches = Math.max(0, currentEmptyBatches);
+        double stuckFactor = 1.0 + emptyBatches * BOOST_PER_EMPTY;
+        double mcvSuppression = emptyBatches > 0
+                ? Math.pow(MCV_SUPPRESSION_BASE, Math.min(STUCK_FACTOR_EMPTY_CAP, emptyBatches))
+                : 1.0;
+        for (int j = 0; j < columnsMetadata.size(); j++) {
+            double[] orig = colOrigWeights.get(j);
+            int[] used = colUsedCounts.get(j);
+            int mcvCount = colMcvCounts.get(j);
+            List<Double> eff = new ArrayList<>(orig.length);
+            for (int i = 0; i < orig.length; i++) {
+                double w = orig[i] * Math.pow(WEIGHT_DECAY, used[i] * stuckFactor);
+                if (i < mcvCount) w *= mcvSuppression;
+                eff.add(w);
+            }
+            colCumWeights.set(j, buildCumWeights(eff));
+        }
     }
 
     private void seedMandatoryRows(int batchStart, int batchSize,
@@ -128,8 +227,24 @@ public class MarkovGenerator implements UniqueKeyGenerator {
                 if (!filled[j]) rowArr[j] = sampleColumn(j);
             }
 
-            localSeen.add(Arrays.asList(rowArr));
+            boolean added = localSeen.add(Arrays.asList(rowArr));
+            if (added) {
+                updateUsedCounts(rowArr, filled);
+                dirtyCount++;
+                if (dirtyCount >= REBUILD_INTERVAL) {
+                    rebuildAllCumWeights();
+                    dirtyCount = 0;
+                }
+            }
             attempts++;
+        }
+    }
+
+    private void updateUsedCounts(Object[] rowArr, boolean[] filled) {
+        for (int j = 0; j < columnsMetadata.size(); j++) {
+            if (filled[j]) continue;
+            Integer idx = colValueIndex.get(j).get(rowArr[j]);
+            if (idx != null) colUsedCounts.get(j)[idx]++;
         }
     }
 
@@ -142,8 +257,6 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         return values.get(Math.min(idx, values.size() - 1));
     }
 
-    // --- Distribution initialization ---
-
     private void initDistributions() {
         int numCols = columnsMetadata.size();
         safeTargetPerColumn = (int) Math.ceil(
@@ -151,16 +264,22 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
         colValues = new ArrayList<>(numCols);
         colCumWeights = new ArrayList<>(numCols);
+        colOrigWeights = new ArrayList<>(numCols);
+        colUsedCounts = new ArrayList<>(numCols);
+        colValueIndex = new ArrayList<>(numCols);
         colMcvCounts = new ArrayList<>(numCols);
+        dirtyCount = 0;
         for (int colIdx = 0; colIdx < numCols; colIdx++) {
             buildColDist(colIdx);
         }
 
         fkGroups = buildFkGroups();
 
+        expandNonFkDistributions();
+
         double logSpace = colValues.stream().mapToDouble(v -> Math.log(v.size())).sum();
         if (logSpace < Math.log(recordCount)) {
-            log.warn("Пространство комбинаций ({}) меньше recordCount ({}), скорее всего из-за FK-ограничений — " +
+            log.warn("Пространство комбинаций ({}) меньше recordCount ({}) — скорее всего из-за FK-ограничений, " +
                     "будет сгенерировано меньше строк чем запрошено",
                     (long) Math.exp(logSpace), recordCount);
         }
@@ -278,6 +397,14 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         colValues.add(values);
         colCumWeights.add(buildCumWeights(weights));
 
+        double[] origW = weights.stream().mapToDouble(Double::doubleValue).toArray();
+        colOrigWeights.add(origW);
+        colUsedCounts.add(new int[origW.length]);
+
+        Map<Object, Integer> valueIdx = new HashMap<>();
+        for (int i = 0; i < values.size(); i++) valueIdx.put(values.get(i), i);
+        colValueIndex.add(valueIdx);
+
         log.debug("Колонка {}: {} значений (mcv={}, extra={})",
                 colMeta.getName(), values.size(), mcv.size(), nonMcvCandidates.size());
     }
@@ -390,6 +517,7 @@ public class MarkovGenerator implements UniqueKeyGenerator {
 
             ColumnMetadata colMeta = columnsMetadata.get(colIdx);
             List<Object> values = colValues.get(colIdx);
+            int sizeBefore = values.size();
             Set<Object> seen = new HashSet<>(values);
             int toAdd = values.size();
 
@@ -423,6 +551,18 @@ public class MarkovGenerator implements UniqueKeyGenerator {
             }
             colCumWeights.set(colIdx, buildCumWeights(weights));
 
+            double[] newOrig = weights.stream().mapToDouble(Double::doubleValue).toArray();
+            colOrigWeights.set(colIdx, newOrig);
+
+            int[] newUsed = Arrays.copyOf(colUsedCounts.get(colIdx), values.size());
+            colUsedCounts.set(colIdx, newUsed);
+
+            Map<Object, Integer> valueIdx = colValueIndex.get(colIdx);
+            for (int i = sizeBefore; i < values.size(); i++) {
+                valueIdx.put(values.get(i), i);
+            }
+
+            dirtyCount = 0;
             log.debug("Расширена колонка {}: теперь {} уникальных значений",
                     colMeta.getName(), values.size());
         }
@@ -434,6 +574,11 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         for (int i = 0; i < weights.size(); i++) {
             cum += weights.get(i);
             cumWeights[i] = cum;
+        }
+        if (cumWeights.length > 0 && cum > 0.0) {
+            for (int i = 0; i < cumWeights.length; i++) {
+                cumWeights[i] /= cum;
+            }
         }
         if (cumWeights.length > 0) cumWeights[cumWeights.length - 1] = 1.0;
         return cumWeights;

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.LinkedHashMap;
 
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -12,6 +13,7 @@ import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
+import ru.nsu.datagen.dataGenerator.store.TableStore.StoreResult;
 
 /*
 TODO:
@@ -55,20 +57,25 @@ public class DatabaseDataGenerator {
                                                 int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
                                                 System.err.println("toGenerate = " + toGenerate);
 
-                                                Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate);
+                                                Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate, emptyBatchCount);
                                                 try {
-                                                    //System.err.println("generatedTableData size = " + generatedTableData.get("status").size());
-                                                    Set<String> colNames = generatedTableData.keySet();
-                                                    if (emptyBatchCount >= 0 && Objects.equals(table.getTableName(), "flights")) {
-                                                        for (String colName : colNames) {
-                                                            System.err.println("colname " + colName + " size = " + generatedTableData.get(colName).size());
-                                                        }
+                                                    StoreResult result = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
+                                                    int stored = result.stored();
+
+                                                    // Retry rows that failed with constraint violations by regenerating Markov columns
+                                                    List<Integer> failedIndices = new ArrayList<>(result.failedIndices());
+                                                    Map<String, List<Object>> currentBatch = generatedTableData;
+                                                    for (int retry = 0; retry < 3 && !failedIndices.isEmpty(); retry++) {
+                                                        Map<String, List<Object>> retryBatch = extractRows(currentBatch, failedIndices);
+                                                        dataGenerator.regenerateMarkovColumns(retryBatch);
+                                                        StoreResult retryResult = tableStore.storeTable(table, retryBatch, 1);
+                                                        stored += retryResult.stored();
+                                                        failedIndices = new ArrayList<>(retryResult.failedIndices());
+                                                        currentBatch = retryBatch;
                                                     }
-                                                    int stored = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
+
                                                     dataGenerator.removeUnaddedColumns(toGenerate - stored);
                                                     createdAmount += stored;
-//                                                    log.warn("CREATED_AMOUNT = {}", createdAmount);
-//                                                    log.warn("STORED = {}", stored);
                                                     if (stored > 0) {
                                                         generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
                                                                 generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
@@ -83,15 +90,8 @@ public class DatabaseDataGenerator {
                                                         emptyBatchCount = 0;
                                                     }
                                                 } catch (SQLException e) {
-//                                                    log.warn(
-//                                                            "SQL error storing batch for table {} at offset {}, size {}. sqlState={}, message={}",
-//                                                            table.getTableName(),
-//                                                            createdAmount,
-//                                                            toGenerate,
-//                                                            e.getSQLState(),
-//                                                            e.getMessage(),
-//                                                            e
-//                                                    );
+                                                    log.warn("SQL error storing batch for table {}: sqlState={}, message={}",
+                                                            table.getTableName(), e.getSQLState(), e.getMessage());
                                                 }
                                             }
                                         } catch (InterruptedException e) {
@@ -115,5 +115,15 @@ public class DatabaseDataGenerator {
 
         CompletableFuture.allOf(storeFutures.toArray(CompletableFuture[]::new)).join();
         log.info("Data generation and storage completed.");
+    }
+
+    private static Map<String, List<Object>> extractRows(Map<String, List<Object>> data, List<Integer> indices) {
+        Map<String, List<Object>> result = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Object>> entry : data.entrySet()) {
+            List<Object> col = new ArrayList<>(indices.size());
+            for (int idx : indices) col.add(entry.getValue().get(idx));
+            result.put(entry.getKey(), col);
+        }
+        return result;
     }
 }

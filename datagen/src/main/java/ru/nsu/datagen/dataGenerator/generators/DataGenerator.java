@@ -34,15 +34,42 @@ public class DataGenerator {
         columnBatchStates.forEach(column -> column.getCurStateData().setGeneratedCount(column.getCurStateData().getGeneratedCount() - size));
     }
 
+    /**
+     * Заменяет значения Markov-колонок в batchData свежесгенерированными.
+     * Остальные колонки (FK, PK, normal) остаются неизменными.
+     * Используется для точечного повтора строк, упавших с constraint violation.
+     */
+    public void regenerateMarkovColumns(Map<String, List<Object>> batchData) {
+        if (batchData.isEmpty()) return;
+        int count = batchData.values().iterator().next().size();
+        if (count == 0) return;
+        for (ColumnBatchState state : columnBatchStates) {
+            List<List<Object>> fresh = state.regenerateRows(count);
+            if (fresh.isEmpty()) continue;
+            List<ColumnMetadata> cols = state.getColumns();
+            for (int c = 0; c < cols.size() && c < fresh.size(); c++) {
+                batchData.put(cols.get(c).getName(), fresh.get(c));
+            }
+        }
+    }
+
     public Map<String, List<Object>> generateBatchTableData(
             TableMetadata table,
             Map<String, List<Object>> existingData,
             int batchSize) {
+        return generateBatchTableData(table, existingData, batchSize, 0);
+    }
+
+    public Map<String, List<Object>> generateBatchTableData(
+            TableMetadata table,
+            Map<String, List<Object>> existingData,
+            int batchSize,
+            int emptyBatchCount) {
         ensureColumnBatchStates(table, existingData);
         Map<String, List<Object>> columnData = new HashMap<>();
 
         for (ColumnBatchState state : columnBatchStates) {
-            List<List<Object>> generatedValues = state.produceBatch(batchSize);
+            List<List<Object>> generatedValues = state.produceBatch(batchSize, emptyBatchCount);
             List<ColumnMetadata> columns = state.getColumns();
 
             if (generatedValues.size() != columns.size()) {

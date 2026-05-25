@@ -105,7 +105,7 @@ public class IntegrationTest {
      * 4. Проверка целостности данных и ограничений
      */
     @Test
-    @ConfigFile("timetable/timetable.yaml")
+    @ConfigFile("big/big.yaml")
     void testFullPipelineIntegration() throws Exception {
         ClassLoader classLoader = getClass().getClassLoader();
         String schemaPath = Paths.get(classLoader.getResource(config.getSCHEMA_PATH()).toURI()).toString();

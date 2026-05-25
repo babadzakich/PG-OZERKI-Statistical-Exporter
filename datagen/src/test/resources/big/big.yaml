@@ -6,7 +6,7 @@ glob_store_threads: 5
 table_store_threads: 12
 index_path: big/big_indexes.sql
 constraints_path: big/big_constr.csv
-batch_size: 50000
+batch_size: 150000
 tables:
   - name: airports_data
     schema: bookings
