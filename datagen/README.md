@@ -23,7 +23,6 @@ java -jar ./build/libs/datagen-1.0-SNAPSHOT.jar -config <путь_к_файлу_
 * **statPath** - путь к .csv-файлу с статистикой БД
 * **indexFile** - путь к .sql-файлу с нестрогими индексами
 * **constraintFile** - путь к .csv-файлу с информацией о констрейнтах
-* **explainfile-analyze** - имя файла, куда будет экспортироваться результат EXPLAIN ANALYZE в формате json для запроса
 * **batchSize** - размер батча генерации
 * **generationPoolThreadSize** - размер пула потоков для генерации
 * **globStoreThreads** - количество потоков сохранения для всех таблиц
