@@ -53,6 +53,7 @@ public class Pipeline {
                         throw new RuntimeException(e);
                     }
                 });
+
                 try (Connection conn = dataSource.getConnection();
                      Statement stmt = conn.createStatement();
                      ResultSet rs = stmt.executeQuery("SELECT pg_reload_conf()")) {
@@ -60,6 +61,12 @@ public class Pipeline {
                     if (rs.next()) {
                         log.info("Config reloaded {}", rs.getBoolean(1));
                     }
+                }
+
+                try (Connection conn = dataSource.getConnection();
+                     Statement stmt = conn.createStatement()
+                ) {
+                    stmt.execute("ANALYZE");
                 }
             } catch (Exception e) {
                 log.error("Pipeline failed: ", e);

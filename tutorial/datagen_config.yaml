@@ -1,0 +1,13 @@
+host: localhost
+port: 5432
+user: postgres
+password: postgres
+dbname: new
+schemaPath: src_schema.sql
+statPath: src_stats.csv
+indexFile: src_indexes.sql
+constraintFile:  src_constr.csv
+batchSize: 50000
+generationThreadPoolSize: 4
+globStoreThreads: 1
+tableStoreThreads: 1
