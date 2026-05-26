@@ -838,38 +838,7 @@ tableStoreThreads: 1              # Per-table store threads
 
 ---
 
-## 10. Future Extensibility
-
-### 10.1 Planned Enhancements
-
-1. **Advanced Statistics**
-   - Column correlations
-   - Temporal patterns
-   - Data dependencies
-
-2. **Custom Data Generators**
-   - Domain-specific generators
-   - Custom patterns
-   - External data source integration
-
-3. **Distributed Generation**
-   - Multi-node data generation
-   - Cloud deployment
-   - Horizontal scaling
-
-4. **Web Interface**
-   - GUI configuration
-   - Real-time monitoring
-   - Result visualization
-
-5. **Additional Databases**
-   - MySQL support
-   - Oracle support
-   - MongoDB support
-
----
-
-## 11. Glossary
+## 10. Glossary
 
 | Term | Definition |
 |------|-----------|
