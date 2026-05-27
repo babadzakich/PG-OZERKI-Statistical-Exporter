@@ -308,7 +308,7 @@ Target PostgreSQL  (recreated schema + synthetic rows)
 
 | Компонент | Назначение |
 |---|---|
-| PostgreSQL ≥ 15 | целевая СУБД + исходники для сборки |
+| PostgreSQL ≥ 17 | целевая СУБД + исходники для сборки |
 | C99 | язык реализации |
 | libpq | клиентская библиотека PostgreSQL |
 | libyaml | парсинг YAML-конфига |
