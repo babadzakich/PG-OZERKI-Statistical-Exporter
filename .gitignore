@@ -6,8 +6,7 @@
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 *.o
-pg_ozerki
-!pg_ozerki/
+
 # User-specific stuff
 *.idea
 
@@ -247,4 +246,3 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,clion,visualstudiocode,java,gradle,cmake
-pg_ozerki_app
