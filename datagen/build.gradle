@@ -53,6 +53,15 @@ test {
 
 
 
+javadoc {
+    options.encoding    = 'UTF-8'
+    options.charSet     = 'UTF-8'
+    options.windowTitle = 'PG-OZERKI DataGen'
+    options.docTitle    = 'PG-OZERKI Statistical Exporter'
+    // Подавляем предупреждения на Lombok-сгенерированных исходниках
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
 jar {
     manifest {
         attributes 'Main-Class': 'ru.nsu.datagen.Main'

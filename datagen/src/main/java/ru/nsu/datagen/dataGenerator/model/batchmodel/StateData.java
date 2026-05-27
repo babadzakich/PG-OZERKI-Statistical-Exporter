@@ -51,7 +51,7 @@ public class StateData {
 
     public StateData(ColumnMetadata columnMetadata) {
         this.nullChances = new double[1];
-        nullChances[0] = Math.max(0.0, Math.min(1.0, columnMetadata.getNullFrac()));
+        nullChances[0] = Math.max(0.0, Math.min(1.0, columnMetadata.getNullFrac() / 100.0));
         this.generatedCount = 0;
         this.columnsAmount = 1;
         List<Object> values = columnMetadata.getMcv().keySet().stream().toList();

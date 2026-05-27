@@ -8,10 +8,15 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.io.BufferedWriter;
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.AfterAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,8 +44,8 @@ import ru.nsu.datagen.plancheck.ted.TreeEditDistance;
 /**
  * Интеграционный тест для проверки всего pipeline генерации
  * данных.
- * Использует локальную PostgreSQL БД.
- * Перед запуском теста убедитесь что БД доступна
+ * Использует Testcontainers для поднятия изолированной PostgreSQL 17, импортирует схему и статистику,
+ * генерирует данные и проверяет целостность и планы запросов.
  */
 @Slf4j
 @Testcontainers
@@ -52,6 +57,7 @@ public class IntegrationTest {
 
     private static HikariDataSource dataSource;
     private Config config;
+    private String configName;
 
     @BeforeAll
     static void beforeAll() throws SQLException {
@@ -80,6 +86,7 @@ public class IntegrationTest {
                 .map(ConfigFile::value)
                 .orElse("Base/config.yaml");
         config = new Config(configPath);
+        configName = configPath.replaceFirst("^.*/", "").replace(".yaml", "");
         try (Connection conn = dataSource.getConnection()) {
             // Очищаем БД перед тестом
             try (Statement stmt = conn.createStatement()) {
@@ -143,6 +150,9 @@ public class IntegrationTest {
             for (var dbHolder : config.getTables()) {
                 checkTableIntegrity(conn, dbHolder);
             }
+
+            // Экспорт статистики из pg_stats
+            exportPgStats(conn);
 
             // Сравнение планов запросов
             compareQueryPlans(conn, config);
@@ -298,4 +308,177 @@ public class IntegrationTest {
 //
 //        System.out.println("Совпадение плано на " + similarity + "%");
 //    }
+
+    private void exportPgStats(Connection conn) throws SQLException, IOException {
+        try (Statement analyzeStmt = conn.createStatement()) {
+            analyzeStmt.execute("ANALYZE");
+        }
+
+        if (config.getTables() == null || config.getTables().isEmpty()) {
+            return;
+        }
+
+        String tableFilter = config.getTables().stream()
+                .map(t -> "(cb.table_schema = '" + t.getSchema() + "' AND cb.table_name = '" + t.getName() + "')")
+                .collect(Collectors.joining(" OR "));
+
+        Path outputDir = Paths.get(System.getProperty("user.dir"), "build", "stats-export");
+        Files.createDirectories(outputDir);
+        Path outputFile = outputDir.resolve(configName + "_stats.csv");
+
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(buildStatsExportSql(tableFilter));
+             BufferedWriter bw = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8);
+             PrintWriter writer = new PrintWriter(bw)) {
+
+            writer.println("table_schema,table_name,column_name,data_type,row_count,null_percent,modifiers," +
+                    "composite_unique_peers,composite_fk_peers,incoming_references,max_length," +
+                    "outcoming_references,relation_types,mcv,mcv_frequencies,avg_column_width_bytes,ndistinct,hbounds");
+
+            while (rs.next()) {
+                writer.println(String.join(",",
+                        csvField(rs.getString("table_schema")),
+                        csvField(rs.getString("table_name")),
+                        csvField(rs.getString("column_name")),
+                        csvField(rs.getString("data_type")),
+                        csvField(rs.getString("row_count")),
+                        csvField(rs.getString("null_percent")),
+                        csvField(rs.getString("modifiers")),
+                        csvField(rs.getString("composite_unique_peers")),
+                        csvField(rs.getString("composite_fk_peers")),
+                        csvField(rs.getString("incoming_references")),
+                        csvField(rs.getString("max_length")),
+                        csvField(rs.getString("outcoming_references")),
+                        csvField(rs.getString("relation_types")),
+                        csvField(rs.getString("mcv")),
+                        csvField(rs.getString("mcv_frequencies")),
+                        csvField(rs.getString("avg_column_width_bytes")),
+                        csvField(rs.getString("ndistinct")),
+                        csvField(rs.getString("hbounds"))
+                ));
+            }
+        }
+
+        log.info("Exported pg_stats to {}", outputFile.toAbsolutePath());
+        System.out.println("✓ Статистика pg_stats экспортирована в " + outputFile.toAbsolutePath());
+    }
+
+    private String buildStatsExportSql(String tableFilter) {
+        return """
+                WITH
+                table_counts AS (
+                    SELECT n.nspname AS schemaname, c.relname AS table_name, c.reltuples::bigint AS row_count
+                    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                ),
+                pk_cols AS (
+                    SELECT con.conrelid, unnest(con.conkey) AS attnum
+                    FROM pg_constraint con WHERE con.contype = 'p'
+                ),
+                unique_cons AS (
+                    SELECT con.conrelid, con.conkey
+                    FROM pg_constraint con WHERE con.contype = 'u'
+                ),
+                fk_cons AS (
+                    SELECT con.conrelid, con.confrelid, con.conkey, con.confkey,
+                           src_tbl.relname AS src_table, src_ns.nspname AS src_schema,
+                           ref_tbl.relname AS ref_table, ref_ns.nspname AS ref_schema
+                    FROM pg_constraint con
+                    JOIN pg_class src_tbl ON src_tbl.oid = con.conrelid
+                    JOIN pg_namespace src_ns ON src_ns.oid = src_tbl.relnamespace
+                    JOIN pg_class ref_tbl ON ref_tbl.oid = con.confrelid
+                    JOIN pg_namespace ref_ns ON ref_ns.oid = ref_tbl.relnamespace
+                    WHERE con.contype = 'f'
+                ),
+                col_base AS (
+                    SELECT n.nspname AS table_schema, c.relname AS table_name, a.attname AS column_name,
+                           pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+                           a.attnum,
+                           CASE WHEN a.atttypid IN (1042, 1043, 25) THEN
+                               CASE WHEN a.atttypmod = -1 THEN -1 ELSE a.atttypmod - 4 END
+                           ELSE -1 END AS max_length,
+                           c.oid AS reloid
+                    FROM pg_attribute a
+                    JOIN pg_class c ON a.attrelid = c.oid
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    WHERE a.attnum > 0 AND NOT a.attisdropped AND c.relkind = 'r'
+                      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                )
+                SELECT
+                    cb.table_schema,
+                    cb.table_name,
+                    cb.column_name,
+                    cb.data_type,
+                    tc.row_count,
+                    ROUND((COALESCE(s.null_frac, 0) * 100)::numeric, 2) AS null_percent,
+                    NULLIF(TRIM(
+                        CASE WHEN EXISTS(SELECT 1 FROM pk_cols pk WHERE pk.conrelid = cb.reloid AND pk.attnum = cb.attnum) THEN 'PK ' ELSE '' END ||
+                        CASE WHEN EXISTS(SELECT 1 FROM fk_cons fk WHERE fk.conrelid = cb.reloid AND cb.attnum = ANY(fk.conkey)) THEN 'FK ' ELSE '' END ||
+                        CASE WHEN EXISTS(SELECT 1 FROM unique_cons uc WHERE uc.conrelid = cb.reloid AND cb.attnum = ANY(uc.conkey)) THEN 'UNIQUE ' ELSE '' END ||
+                        CASE WHEN EXISTS(SELECT 1 FROM pg_constraint cc WHERE cc.conrelid = cb.reloid AND cc.contype = 'c' AND cb.attnum = ANY(cc.conkey)) THEN 'CHECK' ELSE '' END
+                    ), '') AS modifiers,
+                    (SELECT string_agg(peer_ns.nspname || '.' || peer_cls.relname || '.' || peer_attr.attname, ',')
+                     FROM unique_cons uc
+                     CROSS JOIN LATERAL unnest(uc.conkey) AS peer_attnum
+                     JOIN pg_attribute peer_attr ON peer_attr.attrelid = uc.conrelid
+                                                 AND peer_attr.attnum = peer_attnum
+                                                 AND peer_attr.attname != cb.column_name
+                     JOIN pg_class peer_cls ON peer_cls.oid = uc.conrelid
+                     JOIN pg_namespace peer_ns ON peer_ns.oid = peer_cls.relnamespace
+                     WHERE uc.conrelid = cb.reloid AND cb.attnum = ANY(uc.conkey) AND array_length(uc.conkey, 1) > 1
+                    ) AS composite_unique_peers,
+                    (SELECT string_agg(fk_ns.nspname || '.' || fk_cls.relname || '.' || fk_attr.attname, ',')
+                     FROM fk_cons fk
+                     CROSS JOIN LATERAL unnest(fk.conkey) AS fk_attnum
+                     JOIN pg_attribute fk_attr ON fk_attr.attrelid = fk.conrelid
+                                               AND fk_attr.attnum = fk_attnum
+                                               AND fk_attr.attname != cb.column_name
+                     JOIN pg_class fk_cls ON fk_cls.oid = fk.conrelid
+                     JOIN pg_namespace fk_ns ON fk_ns.oid = fk_cls.relnamespace
+                     WHERE fk.conrelid = cb.reloid AND cb.attnum = ANY(fk.conkey) AND array_length(fk.conkey, 1) > 1
+                    ) AS composite_fk_peers,
+                    (SELECT string_agg(fk.src_schema || '.' || fk.src_table || '.' || ia.attname, ' ')
+                     FROM fk_cons fk
+                     JOIN pg_attribute ia ON ia.attrelid = fk.conrelid
+                       AND ia.attnum = fk.conkey[array_position(fk.confkey, cb.attnum::smallint)]
+                     WHERE fk.confrelid = cb.reloid AND cb.attnum = ANY(fk.confkey)
+                    ) AS incoming_references,
+                    cb.max_length,
+                    (SELECT fk.ref_schema || '.' || fk.ref_table || '.' || ra.attname
+                     FROM fk_cons fk
+                     JOIN pg_attribute ra ON ra.attrelid = fk.confrelid
+                       AND ra.attnum = fk.confkey[array_position(fk.conkey, cb.attnum::smallint)]
+                     WHERE fk.conrelid = cb.reloid AND cb.attnum = ANY(fk.conkey)
+                     LIMIT 1
+                    ) AS outcoming_references,
+                    (SELECT CASE
+                         WHEN (EXISTS(SELECT 1 FROM pk_cols pk WHERE pk.conrelid = cb.reloid AND pk.attnum = cb.attnum)
+                            OR EXISTS(SELECT 1 FROM unique_cons uc WHERE uc.conrelid = cb.reloid AND cb.attnum = ANY(uc.conkey)))
+                         THEN 'ONE_TO_ONE' ELSE 'ONE_TO_MANY'
+                     END
+                     FROM fk_cons fk WHERE fk.conrelid = cb.reloid AND cb.attnum = ANY(fk.conkey)
+                     LIMIT 1
+                    ) AS relation_types,
+                    s.most_common_vals::text AS mcv,
+                    s.most_common_freqs::text AS mcv_frequencies,
+                    COALESCE(s.avg_width, 0) AS avg_column_width_bytes,
+                    s.n_distinct AS ndistinct,
+                    s.histogram_bounds::text AS hbounds
+                FROM col_base cb
+                JOIN table_counts tc ON tc.schemaname = cb.table_schema AND tc.table_name = cb.table_name
+                LEFT JOIN pg_stats s ON s.schemaname = cb.table_schema
+                                     AND s.tablename = cb.table_name
+                                     AND s.attname = cb.column_name
+                WHERE \s""" + tableFilter + """
+                ORDER BY cb.table_schema, cb.table_name, cb.attnum
+                """;
+    }
+
+    private String csvField(String value) {
+        if (value == null) return "NULL";
+        if (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
 }

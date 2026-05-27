@@ -9,8 +9,12 @@ import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 
 /**
+ * Обёртка над {@link ColumnGenerator} и ассоциированными с ним колонками,
+ * хранящая текущее состояние генерации ({@link StateData}).
  *
- * @author kubicl
+ * <p>Поддерживает откат к предыдущему состоянию ({@link #rollbackToPreviousState()})
+ * на случай ошибки сохранения батча, а также точечное пересэмплирование строк
+ * с constraint violation через {@link #regenerateRows(int)}.
  */
 public class ColumnBatchState {
     private final ColumnGenerator valueGenerator;
@@ -46,16 +50,33 @@ public class ColumnBatchState {
         this.prevStateData = null;
     }
 
+    /**
+     * Откатывает текущее состояние генерации к состоянию до последнего вызова {@link #produceBatch}.
+     * Не имеет эффекта, если откат уже был выполнен или батч ещё не генерировался.
+     */
     public void rollbackToPreviousState() {
         if (this.prevStateData != null) {
             this.curStateData = this.prevStateData;
         }
     }
 
+    /**
+     * Генерирует батч с нулевым счётчиком пустых батчей.
+     *
+     * @param batchSize желаемое число строк
+     * @return список колонок (внешний) со значениями строк (внутренний)
+     */
     public List<List<Object>> produceBatch(int batchSize) {
         return produceBatch(batchSize, 0);
     }
 
+    /**
+     * Сохраняет текущее состояние и генерирует следующий батч данных.
+     *
+     * @param batchSize       желаемое число строк
+     * @param emptyBatchCount число подряд идущих батчей с нулевым результатом сохранения
+     * @return список колонок (внешний) со значениями строк (внутренний)
+     */
     public List<List<Object>> produceBatch(int batchSize, int emptyBatchCount) {
         this.prevStateData = new StateData(this.curStateData);
         this.curStateData.setEmptyBatchCount(emptyBatchCount);

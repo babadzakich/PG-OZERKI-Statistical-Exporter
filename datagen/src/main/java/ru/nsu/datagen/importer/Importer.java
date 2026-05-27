@@ -14,8 +14,30 @@ import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.model.TableMetadataMaker;
 
+/**
+ * Отвечает за импорт входных файлов в начале пайплайна.
+ *
+ * <p>Выполняет два шага:
+ * <ol>
+ *   <li>Применяет schema.sql к БД через {@link #importSchemas} (создаёт таблицы, типы, расширения).</li>
+ *   <li>Парсит stats CSV и constraints CSV в карту {@link TableMetadata} через
+ *       {@link ru.nsu.datagen.dataGenerator.model.TableMetadataMaker}.</li>
+ * </ol>
+ *
+ * <p>SQL-скрипт выполняется построчно; ошибки {@code 42P01} (relation does not exist)
+ * при DROP-операциях логируются как предупреждение и не прерывают выполнение.
+ */
 @Slf4j
 public class Importer {
+    /**
+     * Применяет схему к БД и парсит CSV-статистику.
+     *
+     * @param schemasScriptPath  путь к SQL-скрипту создания схемы
+     * @param statisticDataPath  путь к CSV-файлу со статистикой колонок
+     * @param constraintsDataPath путь к CSV-файлу с ограничениями (PK/UNIQUE/FK)
+     * @param conn               соединение с целевой БД
+     * @return карта {@code schema.tableName -> TableMetadata} для всех таблиц
+     */
     static public Map<String, TableMetadata> startImport(String schemasScriptPath, String statisticDataPath, String constraintsDataPath, Connection conn) {
         try {
             Statement statement = conn.createStatement();
@@ -47,6 +69,14 @@ public class Importer {
         }
     }
 
+    /**
+     * Выполняет SQL-скрипт из файла {@code path} через переданный {@link Statement}.
+     * Используется как для схемы, так и для индексов (после генерации данных).
+     *
+     * @param path      путь к SQL-файлу
+     * @param statement JDBC statement для выполнения
+     * @throws ImporterException если файл не найден или SQL завершился с ошибкой
+     */
     static public void importSchemas(String path, Statement statement) throws ImporterException {
         if (!new File(path).exists()) {
             throw new ImporterException("There is no import schemas script " + path);

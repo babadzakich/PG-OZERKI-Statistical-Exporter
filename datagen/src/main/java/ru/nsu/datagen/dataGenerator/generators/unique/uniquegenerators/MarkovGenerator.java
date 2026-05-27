@@ -11,6 +11,30 @@ import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
+/**
+ * Генератор уникальных комбинаций для многоколончатых UNIQUE/PK ключей.
+ *
+ * <p>Каждая колонка представлена взвешенным распределением ({@code colValues} + {@code colCumWeights}):
+ * <ul>
+ *   <li>MCV-значения получают вес из статистики PostgreSQL ({@code pg_stats.most_common_freqs}).</li>
+ *   <li>Не-MCV значения делят поровну оставшуюся вероятность ({@code 1 - sumMcvFreqs}).</li>
+ *   <li>FK-колонки берут значения только из данных родительской таблицы.</li>
+ *   <li>Не-FK колонки расширяются через {@link ValueGeneratorFactory} до {@code safeTargetPerColumn} значений.</li>
+ * </ul>
+ *
+ * <p>Алгоритм генерации батча:
+ * <ol>
+ *   <li>Принудительно вставляются «обязательные» строки ({@code mandatoryValues}) —
+ *       значения, на которые ссылаются дочерние таблицы.</li>
+ *   <li>Взвешенным сэмплингом (бинарный поиск по кумулятивным весам) генерируются строки
+ *       до {@code target}. Дубликаты отбрасываются ({@link LinkedHashSet}).</li>
+ *   <li>При застревании (много подряд пустых батчей) веса адаптивно пересчитываются:
+ *       часто используемые значения подавляются экспоненциально, инжектируются свежие не-MCV значения.</li>
+ * </ol>
+ *
+ * <p>Составные FK генерируются как кортежи ({@link FkGroupDist}) из данных родителя,
+ * чтобы гарантировать соответствие всем FK-столбцам сразу.
+ */
 @Slf4j
 public class MarkovGenerator implements UniqueKeyGenerator {
     private static final int MARKOV_MAX_ATTEMPTS_PER_ITEM = 200;
@@ -46,6 +70,12 @@ public class MarkovGenerator implements UniqueKeyGenerator {
     private record FkGroupDist(List<Integer> colIndices, List<List<Object>> tuples) {}
     private List<FkGroupDist> fkGroups = Collections.emptyList();
 
+    /**
+     * @param columnsMetadata    метаданные колонок составного ключа
+     * @param recordCount        целевое число записей в таблице
+     * @param referencingTrees   дерево обратных FK-ссылок по имени колонки (для обязательных значений)
+     * @param allGeneratedData   данные уже сгенерированных родительских таблиц (ключ: {@code schema.table.column})
+     */
     public MarkovGenerator(List<ColumnMetadata> columnsMetadata, int recordCount,
                            Map<String, List<ReferencingTreeNode>> referencingTrees,
                            Map<String, List<Object>> allGeneratedData) {
@@ -86,6 +116,18 @@ public class MarkovGenerator implements UniqueKeyGenerator {
         throw new UnsupportedOperationException("Unimplemented method 'generate'");
     }
 
+    /**
+     * Генерирует батч уникальных строк для составного ключа с взвешенным сэмплингом.
+     *
+     * <p>При наличии пустых батчей ({@code stateData.getEmptyBatchCount() > 0}) адаптирует
+     * веса: каждые 5 пустых батчей инжектирует свежие не-MCV значения через
+     * {@link #injectFreshNonMcvValues}, а при перестройке весов подавляет часто
+     * используемые значения.
+     *
+     * @param batchSize желаемое число уникальных строк
+     * @param stateData состояние: счётчик сгенерированных строк + счётчик пустых батчей
+     * @return список колонок с соответствующими значениями; длина списка = числу колонок ключа
+     */
     @Override
     public List<List<Object>> generateValues(int batchSize, StateData stateData) {
         int emptyBatches = stateData.getEmptyBatchCount();

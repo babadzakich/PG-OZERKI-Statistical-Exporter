@@ -16,10 +16,28 @@ import org.jgrapht.graph.DefaultEdge;
 
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 
+/**
+ * Граф FK-зависимостей между таблицами на основе JGraphT.
+ *
+ * <p>Используется для двух целей:
+ * <ol>
+ *   <li>{@link #getWeaklyConnectedComponents()} — разбивает граф на независимые компоненты,
+ *       которые могут генерироваться параллельно.</li>
+ *   <li>{@link #getGenerationOrder(Set)} — возвращает уровни топологической сортировки внутри
+ *       компоненты: таблицы одного уровня не зависят друг от друга и генерируются параллельно;
+ *       уровни выполняются строго последовательно (родители раньше детей).</li>
+ * </ol>
+ */
 public class DependencyGraph {
     private final Map<String, TableDependency> tableNodes;
     private final Map<String, TableMetadata> allTables;
 
+    /**
+     * Строит граф по метаданным: рёбра направлены от дочерней таблицы к родительской
+     * (по FK-ссылкам в {@link TableMetadata#getRefTables()}).
+     *
+     * @param allTables все таблицы схемы (ключ: {@code schema.tableName})
+     */
     public DependencyGraph(Map<String, TableMetadata> allTables) {    
         this.allTables = allTables;
         this.tableNodes = allTables.entrySet().stream()
@@ -32,6 +50,12 @@ public class DependencyGraph {
         });
     }
 
+    /**
+     * Возвращает слабо связанные компоненты графа зависимостей.
+     * Таблицы в разных компонентах не имеют общих FK-связей и могут генерироваться независимо.
+     *
+     * @return список компонент; каждая компонента — множество метаданных таблиц
+     */
     public List<Set<TableMetadata>> getWeaklyConnectedComponents() {
         Graph<String, DefaultEdge> tablesGraph = new DefaultDirectedGraph<>(DefaultEdge.class);
 
@@ -56,6 +80,16 @@ public class DependencyGraph {
         return result;
     }
 
+    /**
+     * Вычисляет порядок генерации таблиц внутри компоненты через топологическую сортировку (BFS по входящим степеням).
+     *
+     * <p>Таблицы с нулевой входящей степенью (нет FK-родителей внутри компоненты) образуют
+     * первый уровень. После их «обработки» входящие степени соседей уменьшаются,
+     * что открывает следующий уровень.
+     *
+     * @param component подмножество таблиц одной слабо связанной компоненты
+     * @return список уровней; таблицы одного уровня генерируются параллельно
+     */
     public List<List<TableMetadata>> getGenerationOrder(Set<TableMetadata> component) {
         Set<TableDependency> componentNodes = component.stream()
                 .map(table -> tableNodes.get(table.getFullName()))

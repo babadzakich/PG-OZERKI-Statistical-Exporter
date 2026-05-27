@@ -15,18 +15,37 @@ import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
 import ru.nsu.datagen.dataGenerator.store.TableStore.StoreResult;
 
-/*
-TODO:
-  1. написать пайплайн генерации данных
-  2. приведение импортированных данных к HashMap'е
-  3. store data from HashMap
-  -----
-  шаги пайплайна:
-  1. запустить скрипт
+/**
+ * Управляет параллельной генерацией и сохранением данных для всех таблиц.
+ *
+ * <p>Алгоритм:
+ * <ol>
+ *   <li>Строит {@link DependencyGraph} по FK-зависимостям между таблицами.</li>
+ *   <li>Разбивает граф на слабо связанные компоненты — они генерируются независимо и параллельно.</li>
+ *   <li>Внутри каждой компоненты таблицы генерируются уровнями топологической сортировки:
+ *       родительские таблицы всегда завершены до дочерних.</li>
+ *   <li>Данные каждой таблицы вставляются батчами через {@link TableStore} (PostgreSQL COPY FROM STDIN).</li>
+ *   <li>Строки, нарушающие constraint, повторно генерируются Markov-генератором (до 3 попыток).</li>
+ * </ol>
+ *
+ * <p>Сгенерированные значения FK-колонок накапливаются в {@code generatedData} (ключ:
+ * {@code schema.table.column}) и используются дочерними таблицами при создании FK-ссылок.
  */
 @Slf4j
 public class DatabaseDataGenerator {
     private static final int MAX_EMPTY_BATCH_COUNT = 1000;
+
+    /**
+     * Запускает генерацию и сохранение данных для всех таблиц из {@code tableMetadataList}.
+     *
+     * @param tableMetadataList метаданные всех таблиц (ключ: {@code schema.tableName})
+     * @param dataSource        пул соединений HikariCP
+     * @param executorService   пул потоков для параллельной генерации таблиц
+     * @param batchSize         максимальный размер одного батча генерации
+     * @param globStoreThreads  максимальное число таблиц, одновременно пишущих в БД
+     * @param tableStoreThreads число параллельных COPY-потоков на одну таблицу
+     * @throws IOException при ошибке I/O (в текущей реализации не выбрасывается)
+     */
     public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads) throws IOException {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph(tableMetadataList);

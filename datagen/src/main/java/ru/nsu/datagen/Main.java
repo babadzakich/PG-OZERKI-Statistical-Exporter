@@ -13,8 +13,26 @@ import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.argValidation.Arguments;
 import ru.nsu.datagen.pipeline.Pipeline;
 
+/**
+ * Точка входа в приложение.
+ *
+ * <p>Разбирает аргументы командной строки (или YAML-конфиг) и запускает {@link Pipeline}.
+ * Аргументы CLI всегда имеют приоритет над значениями из конфига.
+ *
+ * <p>Обязательные аргументы: {@code -host}, {@code -port}, {@code -dbname}, {@code -user},
+ * {@code -passwd}, {@code -schema}, {@code -stat}, {@code -indexes}, {@code -constraints}.
+ * Все они могут быть заданы через {@code -config <yaml-файл>}.
+ */
 @Slf4j
 public class Main {
+    /**
+     * Парсит аргументы, опционально мёржит YAML-конфиг, проверяет полноту и запускает
+     * {@link Pipeline#startPipeline}.
+     *
+     * @param argv аргументы командной строки
+     * @throws SQLException если пайплайн столкнулся с ошибкой БД
+     * @throws IOException  если конфиг или входной файл не читается
+     */
     public static void main(String ... argv) throws SQLException, IOException {
          Arguments args = new Arguments();
 

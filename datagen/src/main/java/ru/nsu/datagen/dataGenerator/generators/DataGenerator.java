@@ -20,16 +20,42 @@ import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.model.batchmodel.ColumnBatchState;
 
+/**
+ * Управляет батчевой генерацией данных для одной таблицы.
+ *
+ * <p>При первом вызове {@link #generateBatchTableData} лениво инициализирует список
+ * {@link ColumnBatchState}: для каждой колонки выбирается стратегия:
+ * <ul>
+ *   <li><b>Unique / PK</b> ({@code isPrimaryKey || isUnique || ndistinct == -1}) —
+ *       {@link ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator}
+ *       для одиночной колонки или {@link ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator}
+ *       для составного ключа.</li>
+ *   <li><b>FK</b> — генератор из {@link ForeignKeyGeneratorFactory} (one-to-one или one-to-many).</li>
+ *   <li><b>Обычная</b> — {@link ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator}
+ *       на основе null_frac, MCV и гистограммы.</li>
+ * </ul>
+ */
 @Slf4j
 public class DataGenerator {
     private final ForeignKeyGeneratorFactory fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
     private final Map<String, TableMetadata> allTablesMap;
     private final List<ColumnBatchState> columnBatchStates = new ArrayList<>();
 
+    /**
+     * @param allTablesSet все таблицы компоненты зависимостей (нужны для построения referencing-деревьев)
+     * @param mainTable    таблица, для которой будет генерироваться этот экземпляр
+     */
     public DataGenerator(Set<TableMetadata> allTablesSet, TableMetadata mainTable) {
         allTablesMap = allTablesSet.stream().collect(HashMap::new, (m, t) -> m.put(t.getFullName(), t), HashMap::putAll);
     }
 
+    /**
+     * Откатывает счётчик сгенерированных строк на {@code size} позиций назад для всех колонок.
+     * Вызывается когда часть батча не была сохранена в БД — чтобы StatTypeBasedGenerator
+     * не «потерял» эти строки из своего позиционного состояния.
+     *
+     * @param size число несохранённых строк
+     */
     public void removeUnaddedColumns(int size) {
         columnBatchStates.forEach(column -> column.getCurStateData().setGeneratedCount(column.getCurStateData().getGeneratedCount() - size));
     }
@@ -53,6 +79,14 @@ public class DataGenerator {
         }
     }
 
+    /**
+     * Генерирует очередной батч данных для таблицы (без информации о пустых батчах).
+     *
+     * @param table        метаданные целевой таблицы
+     * @param existingData уже сгенерированные данные других таблиц (ключ: {@code schema.table.column})
+     * @param batchSize    число строк в батче
+     * @return {@code columnName -> List<значений>} для всех колонок таблицы
+     */
     public Map<String, List<Object>> generateBatchTableData(
             TableMetadata table,
             Map<String, List<Object>> existingData,
@@ -60,6 +94,16 @@ public class DataGenerator {
         return generateBatchTableData(table, existingData, batchSize, 0);
     }
 
+    /**
+     * Генерирует очередной батч данных для таблицы.
+     *
+     * @param table           метаданные целевой таблицы
+     * @param existingData    уже сгенерированные данные других таблиц (ключ: {@code schema.table.column})
+     * @param batchSize       число строк в батче
+     * @param emptyBatchCount число подряд идущих батчей с нулевым числом сохранённых строк;
+     *                        передаётся в MarkovGenerator для адаптации весов
+     * @return {@code columnName -> List<значений>} для всех колонок таблицы
+     */
     public Map<String, List<Object>> generateBatchTableData(
             TableMetadata table,
             Map<String, List<Object>> existingData,
@@ -88,10 +132,11 @@ public class DataGenerator {
     }
     
     /**
-     * Генерирует данные для таблицы
-     * @param table метаданные таблицы
-     * @param existingData уже сгенерированные данные в формате: namespace.tableName.columnName -> List<значений>
-     * @return сгенерированные данные для таблицы в формате: columnName -> List<значений>
+     * Генерирует все данные для таблицы за один вызов (весь {@code recordCount} разом).
+     *
+     * @param table        метаданные таблицы
+     * @param existingData уже сгенерированные данные других таблиц (ключ: {@code schema.table.column})
+     * @return {@code columnName -> List} значений для всех колонок таблицы
      */
     public Map<String, List<Object>> generateTableData(
             TableMetadata table,

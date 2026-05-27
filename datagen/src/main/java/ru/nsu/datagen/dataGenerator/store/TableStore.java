@@ -22,8 +22,24 @@ import org.postgresql.util.PGobject;
 import org.postgresql.core.BaseConnection;
 import org.postgresql.copy.CopyManager;
 
+/**
+ * Отвечает за высокопроизводительную вставку сгенерированных данных в PostgreSQL
+ * через {@code COPY FROM STDIN} (протокол PostgreSQL COPY).
+ *
+ * <p>Батч разбивается на подчанки, каждый из которых копируется в отдельном виртуальном потоке.
+ * Строки с нарушением constraint (SQLSTATE 23xxx) изолируются по номеру строки из сообщения
+ * об ошибке Postgres и возвращаются в {@link StoreResult#failedIndices()} для повторной генерации.
+ * Все остальные SQL-ошибки пробрасываются наружу.
+ *
+ * <p><b>Требование:</b> JDBC-драйвер должен быть {@code postgresql}, так как используется
+ * {@link org.postgresql.copy.CopyManager} и {@link org.postgresql.core.BaseConnection}.
+ */
 @Slf4j
 public class TableStore {
+    /**
+     * Итог одного вызова {@link #storeTable}: сколько строк реально сохранено и
+     * абсолютные индексы строк, упавших с constraint violation.
+     */
     public record StoreResult(int stored, List<Integer> failedIndices) {}
 
     private record ProcessChunkResult(int stored, List<Integer> failedIndices) {}
@@ -47,6 +63,19 @@ public class TableStore {
 
 
 
+    /**
+     * Вставляет батч данных в таблицу через PostgreSQL COPY FROM STDIN.
+     *
+     * <p>Батч разбивается на {@code parallelism} подчанков и копируется параллельно
+     * в виртуальных потоках. Строки с нарушением constraint не прерывают вставку —
+     * они изолируются и возвращаются в {@link StoreResult#failedIndices()}.
+     *
+     * @param tableMetadata      метаданные целевой таблицы (имя, схема, колонки)
+     * @param generatedTableData данные для вставки: {@code columnName -> List<значений>}
+     * @param parallelism        число параллельных COPY-потоков
+     * @return результат с числом сохранённых строк и индексами строк с constraint violation
+     * @throws SQLException при некритической SQL-ошибке (не 23xxx), или ошибке подключения
+     */
     public StoreResult storeTable(TableMetadata tableMetadata, Map<String, List<Object>> generatedTableData, int parallelism) throws SQLException {
         int batchRecords = generatedTableData.values().iterator().next().size();
         if (batchRecords == 0) return new StoreResult(0, List.of());

@@ -14,6 +14,21 @@ import ru.nsu.datagen.dataGenerator.model.batchmodel.HistogrammGenerationResults
 import ru.nsu.datagen.dataGenerator.model.batchmodel.McvGenerationResults;
 import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
 
+/**
+ * Генератор значений для «обычных» (не-PK, не-FK, не-UNIQUE) колонок.
+ *
+ * <p>Для каждой строки батча случайным образом (равномерное [0,1)) выбирается категория:
+ * <ol>
+ *   <li><b>NULL</b> — если случайное число попадает в диапазон null_frac.</li>
+ *   <li><b>MCV</b> — если попадает в кумулятивный диапазон MCV-частот.</li>
+ *   <li><b>Гистограмма</b> — значение генерируется из соответствующего бакета гистограммы
+ *       (исключая уже перекрытые MCV-значения).</li>
+ *   <li><b>Случайное</b> — если гистограмма отсутствует.</li>
+ * </ol>
+ *
+ * <p>Шансы для каждой категории предвычислены в {@link StateData} и не пересчитываются
+ * между батчами.
+ */
 @Slf4j
 public class StatTypeBasedGenerator implements NormalValueGenerator {
     private final ColumnMetadata columnMetadata;

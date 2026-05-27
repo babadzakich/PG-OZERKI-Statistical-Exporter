@@ -18,8 +18,30 @@ import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.importer.Importer;
 
+/**
+ * Оркестрирует весь пайплайн генерации данных.
+ *
+ * <p>Последовательность шагов:
+ * <ol>
+ *   <li>Создаёт пул соединений HikariCP и пул потоков генерации.</li>
+ *   <li>Через {@link ru.nsu.datagen.importer.Importer} применяет schema.sql к БД и парсит CSV-статистику.</li>
+ *   <li>Запускает {@link ru.nsu.datagen.dataGenerator.DatabaseDataGenerator} для генерации и вставки данных.</li>
+ *   <li>Опционально выполняет indexes.sql.</li>
+ *   <li>Вызывает {@code pg_reload_conf()} и {@code ANALYZE} для актуализации планировщика.</li>
+ * </ol>
+ *
+ * <p><b>Внимание:</b> URL соединения жёстко добавляет {@code currentSchema=bookings}.
+ * При использовании другой схемы это нужно изменить здесь.
+ */
 @Slf4j
 public class Pipeline {
+    /**
+     * Запускает полный пайплайн генерации данных на основе переданных аргументов.
+     *
+     * @param args разобранные и провалидированные аргументы запуска
+     * @throws SQLException при ошибке работы с БД
+     * @throws IOException  при ошибке чтения входных файлов
+     */
     static public void startPipeline(Arguments args) throws SQLException, IOException {
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl("jdbc:postgresql://" + args.host + ":" + args.port + "/" + args.dbname + "?currentSchema=bookings&reWriteBatchedInserts=true");

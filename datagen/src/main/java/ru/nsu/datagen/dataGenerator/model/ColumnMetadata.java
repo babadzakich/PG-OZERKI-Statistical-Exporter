@@ -8,6 +8,21 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Иммутабельная модель метаданных одной колонки таблицы, построенная из stats CSV.
+ *
+ * <p>Ключевые поля:
+ * <ul>
+ *   <li>{@code mcv} — Most Common Values: {@code значение -> частота (0..1)}</li>
+ *   <li>{@code histogramm} — границы равночастотных бакетов (размер = число бакетов + 1)</li>
+ *   <li>{@code ndistinct} — число уникальных значений; {@code -1} означает «все значения уникальны»;
+ *       отрицательные дроби конвертируются в абсолютные числа через {@code |ndistinct| * recordCount}</li>
+ *   <li>{@code compositeUniquePeers} — группы колонок, образующих составной UNIQUE/PK ключ вместе с этой</li>
+ *   <li>{@code compositeForeignPeers} — группы колонок составного FK</li>
+ *   <li>{@code referencingColumns} — обратные FK-ссылки: {@code schema -> table -> [columns]},
+ *       используются для гарантии покрытия всех значений, на которые кто-то ссылается</li>
+ * </ul>
+ */
 @Getter
 public class ColumnMetadata {
     private final String name;
@@ -70,6 +85,7 @@ public class ColumnMetadata {
         this.referencingColumns = referencingColumns;
     }
 
+    /** @return абсолютное число NULL-значений для этой колонки исходя из {@code nullFrac * recordCount} */
     public int getNullCount() {
         return (int) Math.round(nullFrac * recordCount);
     }
