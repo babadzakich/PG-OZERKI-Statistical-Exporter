@@ -1,115 +1,169 @@
 package ru.nsu.datagen.dataGenerator.generators.fk.impl;
 
-import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.fk.ComplexForeignKeyGenerator;
-import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGenerator;
-import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
+
+import lombok.extern.slf4j.Slf4j;
+import ru.nsu.datagen.dataGenerator.generators.ColumnGenerator;
+import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
+import ru.nsu.datagen.dataGenerator.model.batchmodel.StateData;
+
 @Slf4j
-public class OneToOneForeignKeyGenerator implements ForeignKeyGenerator, ComplexForeignKeyGenerator {
+public class OneToOneForeignKeyGenerator implements ColumnGenerator {
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
+    private final List<ColumnMetadata> columnMetadatas;
+    private List<List<Object>> intersection;
+    private final List<Object> usefulData;
 
-    @Override
-    public List<Object> generateForeignKeys(ColumnMetadata columnMetadata,
-                                            Map<String, List<Object>> allGeneratedData) {
+    public OneToOneForeignKeyGenerator(ColumnMetadata columnMetadata, Map<String, List<Object>> allGeneratedData) {
+        this.columnMetadatas = List.of(columnMetadata);
+        this.usefulData = buildSimpleIntersection(columnMetadata, allGeneratedData);
+        this.intersection = usefulData.stream().map(List::of).collect(java.util.stream.Collectors.toList());
 
-        log.info("Generating database 1-1 foreign keys for column {}", columnMetadata.getName());
-        String refSchema = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedSchema();
-        String refTable = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedTable();
-        String refColumn = columnMetadata.getForeignKeyMetadata().getFirst().getReferencedColumn();
-        String refKey = refSchema + '.' + refTable + '.' + refColumn;
-        Set<Object> usefulData = new HashSet<>(allGeneratedData.get(refKey));
-
-        for (int i = 1; i < columnMetadata.getForeignKeyMetadata().size(); i++) {
-            refSchema = columnMetadata.getForeignKeyMetadata().get(i).getReferencedSchema();
-            refTable = columnMetadata.getForeignKeyMetadata().get(i).getReferencedTable();
-            refColumn = columnMetadata.getForeignKeyMetadata().get(i).getReferencedColumn();
-            usefulData.retainAll(allGeneratedData.get(refSchema + '.' + refTable + '.' + refColumn));
+        int nonNullCount = columnMetadata.getRecordCount() - columnMetadata.getNullCount();
+        if (this.usefulData.size() < nonNullCount) {
+            throw new RuntimeException("Not enough unique referenced values for 1-1 relationship. Needed: "
+                    + nonNullCount + ", available: " + this.usefulData.size());
         }
+    }
 
-        int recordCount = columnMetadata.getRecordCount();
-        if (usefulData.size() < recordCount) {
-            log.error("Not enough unique referenced values for 1-1 relationship. Needed: {}, available: {}. " +
-                    "Some values will be duplicated.", recordCount, usefulData.size());
-            throw new RuntimeException("Not enough unique referenced values for 1-1 relationship.");
+    public OneToOneForeignKeyGenerator(List<ColumnMetadata> columnMetadatas, Map<String, List<Object>> allGeneratedData) {
+        this.columnMetadatas = columnMetadatas;
+        this.usefulData = null;
+        this.intersection = buildComplexIntersection(columnMetadatas, allGeneratedData);
+
+        int recordCount = columnMetadatas.getFirst().getRecordCount();
+        if (this.intersection.size() < recordCount) {
+            throw new RuntimeException("Not enough unique referenced tuples for 1-1 relationship. Needed: "
+                    + recordCount + ", available: " + this.intersection.size());
         }
-
-        return usefulData.stream()
-                .collect(Collectors.collectingAndThen(Collectors.toList(), list -> {
-                    Collections.shuffle(list, random);
-                    return list.subList(0, recordCount);
-                }));
     }
 
     @Override
-    public List<List<Object>> generateForeignKeys(List<ColumnMetadata> columnMetadata,
-                                                  Map<String, List<Object>> allGeneratedData) {
-        log.info("Generating database 1-1 composite foreign keys");
-        if (columnMetadata.isEmpty()) return Collections.emptyList();
+    public List<List<Object>> generateValues(int batchSize, StateData stateData) {
+        if (columnMetadatas.size() == 1) {
+            return List.of(generateSimple(batchSize, stateData));
+        }
+        return generateComplex(batchSize);
+    }
 
-        int recordCount = columnMetadata.getFirst().getRecordCount();
-        int parentTableCount = columnMetadata.getFirst().getForeignKeyMetadata().size();
+    private List<Object> generateSimple(int batchSize, StateData stateData) {
+        ColumnMetadata columnMetadata = columnMetadatas.getFirst();
+        log.info("Generating 1-1 foreign keys for column {}", columnMetadata.getName());
+        List<Object> data = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            double r = random.nextDouble();
+            if (r < stateData.getNullChances()[0]) {
+                data.add(null);
+                stateData.dropNull(0);
+            }
+            else {
+                data.add(generateNonNull(stateData, r));
+            }
+        }
+        return data;
+    }
 
-        // Строим первый сет кортежей
-        var firstFk = columnMetadata.getFirst().getForeignKeyMetadata().getFirst();
+    private Object generateNonNull(StateData stateData, double r) {
+        for (int j = 0; j < stateData.getMcvChances().getFirst().chances().size(); j++) {
+            if (r < stateData.getMcvChances().getFirst().chances().get(j)) {
+                stateData.getMcvChances().getFirst().chances().remove(j);
+                return stateData.getMcvChances().getFirst().values().remove(j);
+            }
+        }
+        int index = random.nextInt(usefulData.size());
+        return usefulData.remove(index);
+    }
+
+    private List<List<Object>> generateComplex(int batchSize) {
+        int recordCount = columnMetadatas.getFirst().getRecordCount();
+        List<List<Object>> validTuples = intersection.subList(0, batchSize);
+
+        if (validTuples.size() < recordCount) {
+            throw new RuntimeException("Not enough unique referenced tuples for 1-1 relationship. Needed: "
+                    + recordCount + ", available: " + validTuples.size());
+        }
+
+        Collections.shuffle(validTuples, random);
+        intersection = intersection.subList(batchSize, intersection.size());
+
+        List<List<Object>> result = new ArrayList<>(columnMetadatas.size());
+        for (int j = 0; j < columnMetadatas.size(); j++) {
+            result.add(new ArrayList<>(batchSize));
+        }
+        for (List<Object> tuple : validTuples) {
+            for (int j = 0; j < columnMetadatas.size(); j++) {
+                result.get(j).add(tuple.get(j));
+            }
+        }
+        return result;
+    }
+
+    private static List<Object> buildSimpleIntersection(
+            ColumnMetadata columnMetadata,
+            Map<String, List<Object>> allGeneratedData) {
+        Set<Object> uniqueValues = new LinkedHashSet<>();
+
+        for (int i = 0; i < columnMetadata.getForeignKeyMetadata().size(); i++) {
+            var fk = columnMetadata.getForeignKeyMetadata().get(i);
+            String refKey = fk.getReferencedSchema() + '.' + fk.getReferencedTable() + '.' + fk.getReferencedColumn();
+            if (i == 0) {
+                uniqueValues.addAll(allGeneratedData.get(refKey));
+            } else {
+                uniqueValues.retainAll(allGeneratedData.get(refKey));
+            }
+        }
+
+        return new ArrayList<>(uniqueValues);
+    }
+
+    private static List<List<Object>> buildComplexIntersection(
+            List<ColumnMetadata> columnMetadatas,
+            Map<String, List<Object>> allGeneratedData) {
+        int parentTableCount = columnMetadatas.getFirst().getForeignKeyMetadata().size();
+
+        var firstFk = columnMetadatas.getFirst().getForeignKeyMetadata().getFirst();
         int parentSize = allGeneratedData.get(
                 firstFk.getReferencedSchema() + "." + firstFk.getReferencedTable() + "." + firstFk.getReferencedColumn()
         ).size();
 
         Set<List<Object>> intersection = new LinkedHashSet<>();
         for (int i = 0; i < parentSize; i++) {
-            List<Object> tuple = new ArrayList<>(columnMetadata.size());
-            for (ColumnMetadata col : columnMetadata) {
-                var fk = col.getForeignKeyMetadata().getFirst();
-                String refKey = fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn();
-                tuple.add(allGeneratedData.get(refKey).get(i));
-            }
-            intersection.add(tuple);
+            intersection.add(readTuple(columnMetadatas, allGeneratedData, 0, i));
         }
 
-        // Пересекаем с каждым следующим родителем
-        for (int tableIdx = 1; tableIdx < parentTableCount; tableIdx++) {
-            var fk0 = columnMetadata.getFirst().getForeignKeyMetadata().get(tableIdx);
-            int pSize = allGeneratedData.get(
-                    fk0.getReferencedSchema() + "." + fk0.getReferencedTable() + "." + fk0.getReferencedColumn()
+        for (int tableIndex = 1; tableIndex < parentTableCount; tableIndex++) {
+            var fk = columnMetadatas.getFirst().getForeignKeyMetadata().get(tableIndex);
+            int parentDataSize = allGeneratedData.get(
+                    fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn()
             ).size();
 
-            Set<List<Object>> currentKeys = new HashSet<>();
-            for (int i = 0; i < pSize; i++) {
-                List<Object> tuple = new ArrayList<>(columnMetadata.size());
-                for (ColumnMetadata col : columnMetadata) {
-                    var fk = col.getForeignKeyMetadata().get(tableIdx);
-                    String refKey = fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn();
-                    tuple.add(allGeneratedData.get(refKey).get(i));
-                }
-                currentKeys.add(tuple);
+            Set<List<Object>> currentSet = new LinkedHashSet<>();
+            for (int rowIndex = 0; rowIndex < parentDataSize; rowIndex++) {
+                currentSet.add(readTuple(columnMetadatas, allGeneratedData, tableIndex, rowIndex));
             }
-            intersection.retainAll(currentKeys);
+            intersection.retainAll(currentSet);
         }
 
-        if (intersection.size() < recordCount) {
-            throw new RuntimeException("Not enough unique referenced tuples for 1-1 relationship. Needed: "
-                    + recordCount + ", available: " + intersection.size());
-        }
+        return new ArrayList<>(intersection);
+    }
 
-        // Shuffled subList — без повторений (1-1)
-        List<List<Object>> validTuples = new ArrayList<>(intersection);
-        Collections.shuffle(validTuples, random);
-        validTuples = validTuples.subList(0, recordCount);
-
-        // Транспонируем: из списка кортежей в список колонок
-        List<List<Object>> result = new ArrayList<>(columnMetadata.size());
-        for (int j = 0; j < columnMetadata.size(); j++) {
-            result.add(new ArrayList<>(recordCount));
+    private static List<Object> readTuple(
+            List<ColumnMetadata> columnMetadatas,
+            Map<String, List<Object>> allGeneratedData,
+            int tableIndex,
+            int rowIndex) {
+        List<Object> tuple = new ArrayList<>(columnMetadatas.size());
+        for (ColumnMetadata column : columnMetadatas) {
+            var fk = column.getForeignKeyMetadata().get(tableIndex);
+            String refKey = fk.getReferencedSchema() + "." + fk.getReferencedTable() + "." + fk.getReferencedColumn();
+            tuple.add(allGeneratedData.get(refKey).get(rowIndex));
         }
-        for (List<Object> tuple : validTuples) {
-            for (int j = 0; j < columnMetadata.size(); j++) {
-                result.get(j).add(tuple.get(j));
-            }
-        }
-
-        return result;
+        return tuple;
     }
 }

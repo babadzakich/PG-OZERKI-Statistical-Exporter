@@ -1,125 +1,148 @@
 package ru.nsu.datagen.dataGenerator;
 
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.LinkedHashMap;
+
 import com.zaxxer.hikari.HikariDataSource;
+
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
+import ru.nsu.datagen.dataGenerator.store.TableStore.StoreResult;
 
-import java.sql.SQLException;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-
-/*
-TODO:
-  1. написать пайплайн генерации данных
-  2. приведение импортированных данных к HashMap'е
-  3. store data from HashMap
-  -----
-  шаги пайплайна:
-  1. запустить скрипт
+/**
+ * Управляет параллельной генерацией и сохранением данных для всех таблиц.
+ *
+ * <p>Алгоритм:
+ * <ol>
+ *   <li>Строит {@link DependencyGraph} по FK-зависимостям между таблицами.</li>
+ *   <li>Разбивает граф на слабо связанные компоненты — они генерируются независимо и параллельно.</li>
+ *   <li>Внутри каждой компоненты таблицы генерируются уровнями топологической сортировки:
+ *       родительские таблицы всегда завершены до дочерних.</li>
+ *   <li>Данные каждой таблицы вставляются батчами через {@link TableStore} (PostgreSQL COPY FROM STDIN).</li>
+ *   <li>Строки, нарушающие constraint, повторно генерируются Markov-генератором (до 3 попыток).</li>
+ * </ol>
+ *
+ * <p>Сгенерированные значения FK-колонок накапливаются в {@code generatedData} (ключ:
+ * {@code schema.table.column}) и используются дочерними таблицами при создании FK-ссылок.
  */
 @Slf4j
 public class DatabaseDataGenerator {
-    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, int threadCount) {
+    private static final int MAX_EMPTY_BATCH_COUNT = 1000;
+
+    /**
+     * Запускает генерацию и сохранение данных для всех таблиц из {@code tableMetadataList}.
+     *
+     * @param tableMetadataList метаданные всех таблиц (ключ: {@code schema.tableName})
+     * @param dataSource        пул соединений HikariCP
+     * @param executorService   пул потоков для параллельной генерации таблиц
+     * @param batchSize         максимальный размер одного батча генерации
+     * @param globStoreThreads  максимальное число таблиц, одновременно пишущих в БД
+     * @param tableStoreThreads число параллельных COPY-потоков на одну таблицу
+     * @throws IOException при ошибке I/O (в текущей реализации не выбрасывается)
+     */
+    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads) throws IOException {
         // Fill dependency graph
-        DependencyGraph dependencyGraph = new DependencyGraph();
-        tableMetadataList.forEach((key,value) -> dependencyGraph.addTable(value));
+        DependencyGraph dependencyGraph = new DependencyGraph(tableMetadataList);
         // Get generation order
-        dependencyGraph.buildDependencies();
-        List<TableMetadata> generationOrder = dependencyGraph.getGenerationOrder();
+        List<Set<TableMetadata>> components = dependencyGraph.getWeaklyConnectedComponents();
         // Init table store
-        TableStore tableStore = new TableStore(dataSource, threadCount);
-        // generate
-        Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
-        Map<String, Integer> referenceCounters = new ConcurrentHashMap<>();
-        tableMetadataList.forEach((tableName, table) ->
-                table.getColumns().forEach((colName, col) -> {
-                    if (col.getReferencingColumns() != null) {
-                        String key = table.getNamespace() + '.' + table.getTableName() + "." + colName;
-                        referenceCounters.put(key, col.getReferencingColumns().size());
-                    }
-                })
-        );
-        Map<String, CompletableFuture<Void>> storeFutures = new HashMap<>();
-        DataGenerator dataGenerator = new DataGenerator(tableMetadataList);
+        TableStore tableStore = new TableStore(dataSource);
+        Semaphore globalSemaphore = new Semaphore(globStoreThreads);
+        List<CompletableFuture<Void>> storeFutures = components.stream()
+                .map(component -> {
+                    List<List<TableMetadata>> generationOrder = dependencyGraph.getGenerationOrder(component);
+                    Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
 
-        for (TableMetadata table : generationOrder) {
-            log.info("Generate table: {}", table.getTableName());
-            Map<String, List<Object>> generatedTableData = dataGenerator.generateTableData(table, generatedData);
+                    CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+                    for (List<TableMetadata> level : generationOrder) {
+                        future = future.thenCompose(ignored -> {
+                            List<CompletableFuture<Void>> levelFutures = level.stream()
+                                    .map(table -> CompletableFuture.runAsync(() -> {
 
-            for (String columnName : generatedTableData.keySet()) {
-                if (table.getColumns().get(columnName).getReferencingColumns() != null) {
-                    generatedData.put(table.getNamespace() + '.' + table.getTableName() + "." + columnName, generatedTableData.get(columnName));
-                }
-            }
+                                        try {
+                                            globalSemaphore.acquire();
 
-            Runnable evictParents = () -> table.getColumns().forEach((colName, col) -> {
-                if (col.getForeignKeyMetadata() != null) {
-                    for (var fk : col.getForeignKeyMetadata()) {
-                        String parentKey = fk.getReferencedSchema() + "." +
-                                fk.getReferencedTable() + "." +
-                                fk.getReferencedColumn();
-                        referenceCounters.computeIfPresent(parentKey, (k, count) -> {
-                            int newCount = count - 1;
-                            if (newCount <= 0) {
-                                generatedData.remove(k);
-                                log.info("Evicted parent data for key: {}", k);
-                            }
-                            return newCount;
+                                            DataGenerator dataGenerator = new DataGenerator(component, table);
+                                            log.info("Generate table: {}", table.getTableName());
+                                            int createdAmount = 0;
+                                            int emptyBatchCount = 0;
+                                            while (createdAmount < table.getRecordCount()) {
+                                                int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
+                                                System.err.println("toGenerate = " + toGenerate);
+
+                                                Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate, emptyBatchCount);
+                                                try {
+                                                    StoreResult result = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
+                                                    int stored = result.stored();
+
+                                                    // Retry rows that failed with constraint violations by regenerating Markov columns
+                                                    List<Integer> failedIndices = new ArrayList<>(result.failedIndices());
+                                                    Map<String, List<Object>> currentBatch = generatedTableData;
+                                                    for (int retry = 0; retry < 3 && !failedIndices.isEmpty(); retry++) {
+                                                        Map<String, List<Object>> retryBatch = extractRows(currentBatch, failedIndices);
+                                                        dataGenerator.regenerateMarkovColumns(retryBatch);
+                                                        StoreResult retryResult = tableStore.storeTable(table, retryBatch, 1);
+                                                        stored += retryResult.stored();
+                                                        failedIndices = new ArrayList<>(retryResult.failedIndices());
+                                                        currentBatch = retryBatch;
+                                                    }
+
+                                                    dataGenerator.removeUnaddedColumns(toGenerate - stored);
+                                                    createdAmount += stored;
+                                                    if (stored > 0) {
+                                                        generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
+                                                                generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
+                                                        );
+                                                    }
+                                                    if (stored == 0) {
+                                                        if (++emptyBatchCount > MAX_EMPTY_BATCH_COUNT) {
+                                                            log.error("Прервана генерация таблицы {}: {} пустых батчей подряд", table.getTableName(), emptyBatchCount);
+                                                            break;
+                                                        }
+                                                    } else {
+                                                        emptyBatchCount = 0;
+                                                    }
+                                                } catch (SQLException e) {
+                                                    log.warn("SQL error storing batch for table {}: sqlState={}, message={}",
+                                                            table.getTableName(), e.getSQLState(), e.getMessage());
+                                                }
+                                            }
+                                        } catch (InterruptedException e) {
+                                            log.error("Error in table {}: {}", table.getTableName(), e.getMessage());
+                                            throw new RuntimeException(e);
+                                        } catch (RuntimeException e) {
+                                            log.error("Unexpected error generating table {}: {}", table.getTableName(), e.getMessage(), e);
+                                            throw e;
+                                        } finally {
+                                            globalSemaphore.release();
+                                        }
+                                    }, executorService)).toList();
+
+
+                            return CompletableFuture.allOf(levelFutures.toArray(CompletableFuture[]::new));
                         });
                     }
-                }
-            });
 
-            if (table.hasForeignKeyDependencies()) {
-                List<CompletableFuture<Void>> dependencyFutures = table.getRefTables().stream()
-                        .map(refTable -> {
-                            log.info("Generate dependency table: {}", refTable);
-                            CompletableFuture<Void> future = storeFutures.get(refTable);
-                            if (future == null) {
-                                log.error("Missing future for dependency table: {}", refTable);
-                            }
-                            return storeFutures.get(refTable);
-                        })
-                        .filter(Objects::nonNull).toList();
+                    return future;
+                }).toList(); 
 
-                storeFutures.put(table.getTableName(), CompletableFuture.allOf(
-                        dependencyFutures.toArray(new CompletableFuture[0]))
-                        .thenRunAsync(() -> storeAsync(table, tableStore, generatedTableData))
-                                .thenRun(evictParents)
-                        .handle((result, ex) -> {
-                            if (ex != null) {
-                                log.error("Exception during storing table: {}", table.getTableName(), ex);
-                                throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
-                            }
-                            return result;
-                        }));
-            } else {
-                storeFutures.put(table.getTableName(), CompletableFuture.runAsync(() -> storeAsync(table, tableStore, generatedTableData))
-                                .thenRun(evictParents)
-                    .handle((result, ex) -> {
-                        if (ex != null) {
-                            log.error("Exception during storing table: {}", table.getTableName(), ex);
-                            throw new CompletionException("Failed to store table: " + table.getTableName(), ex);
-                        }
-                        return result;
-                    }));
-            }
-        }
-        CompletableFuture.allOf(storeFutures.values().toArray(new CompletableFuture[0])).join();
+        CompletableFuture.allOf(storeFutures.toArray(CompletableFuture[]::new)).join();
         log.info("Data generation and storage completed.");
     }
 
-    private static void storeAsync(TableMetadata table, TableStore tableStore, Map<String, List<Object>> generatedTableData) {
-        log.info("Async store table: {}", table.getTableName());
-        try {
-            tableStore.storeTable(table, generatedTableData);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+    private static Map<String, List<Object>> extractRows(Map<String, List<Object>> data, List<Integer> indices) {
+        Map<String, List<Object>> result = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Object>> entry : data.entrySet()) {
+            List<Object> col = new ArrayList<>(indices.size());
+            for (int idx : indices) col.add(entry.getValue().get(idx));
+            result.put(entry.getKey(), col);
         }
+        return result;
     }
 }

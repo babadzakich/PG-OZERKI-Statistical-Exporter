@@ -15,7 +15,7 @@ public class Arguments {
     @Parameter(names = "-user")
     public String user;
 
-    @Parameter(names = "-passwd", password = true)
+    @Parameter(names = "-passwd")
     public String password;
 
     @Parameter(names = "-schema", validateWith = FilePath.class)
@@ -27,9 +27,24 @@ public class Arguments {
     @Parameter(names = "-config", validateWith = FilePath.class)
     public String configPath;
 
+    @Parameter(names = "-batchSize")
+    public Integer batchSize = 10000;
+
+    @Parameter(names = "-generationThreadPoolSize")
+    public Integer generationThreadPoolSize = 4;
+
+    @Parameter(names = "-globStoreThreads")
+    public Integer globStoreThreads = 1;
+
+    @Parameter(names = "-tableStoreThreads")
+    public Integer tableStoreThreads = 1;
+
     @Parameter(names = "-help", help = true)
     public boolean help;
 
-    @Parameter(names = "-IOthreads", help = true)
-    public int IOthreads;
+    @Parameter(names = "-indexes")
+    public String indexFile;
+
+    @Parameter(names = "-constraints", validateWith=FilePath.class)
+    public String constraintFile;
 }

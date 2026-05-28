@@ -1,12 +1,18 @@
 package ru.nsu.datagen.dataGenerator.model;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import com.opencsv.bean.CsvBindByName;
+
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
-
-import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Data
@@ -43,12 +49,8 @@ public class ColumnMetadataCSV {
     private double ndistinct;
     @CsvBindByName(column = "hbounds")
     private String hbounds;
-    @CsvBindByName(column = "composite_unique_peers")
-    private String compositePeers;
-    @CsvBindByName(column = "composite_fk_peers")
-    private String compositeFkPeers;
 
-    public ColumnMetadata transformToColumnMetadata(List<Set<String>> compositePeersList, List<Set<String>> compositeFkPeersList) {
+    public ColumnMetadata transformToColumnMetadata(List<List<String>> compositePeersList, List<List<String>> compositeFkPeersList) {
         log.debug("Start transforming column: {}.{}.{}", schemaName, tableName, columnName);
         boolean isFk = false;
         boolean isPk = false;
@@ -111,7 +113,7 @@ public class ColumnMetadataCSV {
                 .isPrimaryKey(isPk)
                 .isForeignKey(isFk)
                 .isUnique(isUnique)
-                .nullPercentage(nullPercentage)
+                .nullFrac(nullPercentage)
                 .recordCount(recordCount)
                 .maxLength(maxLength == -1 ? avgTupleSize : maxLength)
                 .foreignKeyMetadata(fkMetadata)
@@ -193,13 +195,17 @@ public class ColumnMetadataCSV {
                     currentElement.append(c);
                 }
             } else {
-                if (c == '"') {
-                    inQuote = true;
-                } else if (c == ',') {
-                    stringValues.add(currentElement.toString());
-                    currentElement.setLength(0);
-                } else {
-                    currentElement.append(c);
+                switch (c) {
+                    case '"':
+                        inQuote = true;
+                        break;
+                    case ',':
+                        stringValues.add(currentElement.toString());
+                        currentElement.setLength(0);
+                        break;
+                    default:
+                        currentElement.append(c);
+                        break;
                 }
             }
         }

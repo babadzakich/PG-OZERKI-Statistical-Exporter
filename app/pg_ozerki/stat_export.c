@@ -13,6 +13,19 @@ void export_stats(PGconn* conn, const char* export_filename) {
         pg_log_error("Could not open file for stats export");
         return;
     }
+    PQExpBuffer intervalQuery;
+    intervalQuery = createPQExpBuffer();
+    appendPQExpBuffer(intervalQuery, "SET intervalstyle='iso_8601'");
+    PGresult* intervalRes = PQexec(conn, intervalQuery->data);
+    ExecStatusType interval_res_status = PQresultStatus(intervalRes);
+
+    
+    if (interval_res_status != PGRES_COMMAND_OK) {
+        pg_log_error("SET interavalstyle='iso_8601' command has failed with result: %s", PQresultErrorMessage(intervalRes));
+    }
+
+    destroyPQExpBuffer(intervalQuery);
+    PQclear(intervalRes);
     PQExpBuffer statQuery;
     statQuery = createPQExpBuffer();
     
@@ -70,54 +83,6 @@ void export_stats(PGconn* conn, const char* export_filename) {
     "        string_agg(rel_type, ', ') AS relation_types "
     "    FROM fk_constraints "
     "    GROUP BY conrelid, src_column "
-    "), "
-    "composite_unique_info AS ( "
-    "    SELECT  "
-    "        a.attrelid, "
-    "        a.attname, "
-    "        ( "
-    "            SELECT string_agg(DISTINCT n.nspname || '.' || c.relname || '.' || a_other.attname, ', ') "
-    "            FROM ( "
-    "                SELECT unnest(conkey) as col_num, conrelid as rel_id "
-    "                FROM pg_constraint  "
-    "                WHERE contype IN ('u', 'p') AND array_length(conkey, 1) > 1 "
-    "                UNION ALL "
-    "                SELECT unnest(indkey) as col_num, indrelid as rel_id "
-    "                FROM pg_index  "
-    "                WHERE indisunique = true AND array_length(indkey, 1) > 1 "
-    "            ) sub "
-    "    JOIN pg_class c ON c.oid = sub.rel_id "
-"            JOIN pg_namespace n ON n.oid = c.relnamespace "
-    "            JOIN pg_attribute a_other ON a_other.attrelid = sub.rel_id AND a_other.attnum = sub.col_num "
-    "            WHERE sub.rel_id = a.attrelid  "
-    "              AND a_other.attname <> a.attname "
-    "              AND EXISTS ( "
-    "                  SELECT 1 FROM ( "
-    "                      SELECT conkey as keys, conrelid as rid FROM pg_constraint WHERE contype IN ('u', 'p') "
-    "                      UNION ALL "
-    "                      SELECT indkey as keys, indrelid as rid FROM pg_index WHERE indisunique = true "
-    "                  ) check_sub  "
-    "                  WHERE rid = a.attrelid AND a.attnum = ANY(keys) AND a_other.attnum = ANY(keys) "
-    "              ) "
-    "        ) as composite_unique_peers "
-    "    FROM pg_attribute a "
-    "    WHERE a.attnum > 0 AND NOT a.attisdropped "
-    "), "
-    "composite_fk_info AS ( "
-    "    SELECT  "
-    "        a.attrelid, "
-    "        a.attname, "
-    "        string_agg(DISTINCT n.nspname || '.' || c.relname || '.' || peer.attname, ', ') as peers "
-    "    FROM pg_attribute a "
-     " JOIN pg_class c ON c.oid = a.attrelid "
-   " JOIN pg_namespace n ON n.oid = c.relnamespace "
-    "    JOIN pg_constraint con ON con.conrelid = a.attrelid AND a.attnum = ANY(con.conkey) "
-    "    JOIN pg_attribute peer ON peer.attrelid = a.attrelid AND peer.attnum = ANY(con.conkey) AND peer.attnum <> a.attnum "
-    "    WHERE con.contype = 'f'  "
-    "      AND array_length(con.conkey, 1) > 1 "
-    "      AND a.attnum > 0  "
-    "      AND NOT a.attisdropped "
-    "    GROUP BY a.attrelid, a.attname "
     "), "
     "incoming_references_info AS ( "
     "    SELECT "
@@ -229,8 +194,6 @@ void export_stats(PGconn* conn, const char* export_filename) {
         "        CASE WHEN cs.is_unique > 0 OR cs.is_unique_index > 0 THEN 'UNIQUE ' ELSE '' END || "
         "        CASE WHEN cs.is_check > 0 THEN 'CHECK' ELSE '' END "
         "    ) AS modifiers, "
-        "    cui.composite_unique_peers, "
-        "    cfk.peers AS composite_fk_peers, "
         "    inc.referring_columns AS incoming_references, "
         "    cs.max_length, "
         "    out_ref.outcoming_references, "
@@ -246,9 +209,6 @@ void export_stats(PGconn* conn, const char* export_filename) {
         "LEFT JOIN pg_stats s ON s.schemaname = cs.table_schema "
         "                     AND s.tablename = cs.table_name "
         "                     AND s.attname = cs.column_name "
-        "LEFT JOIN composite_unique_info cui ON cui.attrelid = cs.table_oid "
-        "                                   AND cui.attname = cs.column_name "
-        "LEFT JOIN composite_fk_info cfk ON cfk.attrelid = cs.table_oid AND cfk.attname = cs.column_name "
         "LEFT JOIN incoming_references_info inc ON inc.target_table_oid = cs.table_oid AND inc.target_col_name = cs.column_name "
         "ORDER BY "
         "    cs.table_schema, "

@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
 import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Period;
 
@@ -33,13 +34,13 @@ public class IntervalValueGenerator extends ValueGeneratorAC {
                 Duration randomDuration = Duration.ofSeconds(faker.number().numberBetween(left.duration().getSeconds(), right.duration().getSeconds() + 1));
 
                 return randomPeriod.toString() + randomDuration.toString().substring(1);
-            } catch (IllegalArgumentException e) {
-                log.error("Failed to parse interval borders: {}", e.getMessage());
+            } catch (IllegalArgumentException | DateTimeException e) {
+                log.error("Failed to parse interval borders: {}, falling back to defaults", e.getMessage());
             }
         } else {
             log.warn("Invalid border types for {} value generation: {} and {}, using default values", this.getClass(), leftBorder.getClass(), rightBorder.getClass());
         }
-        return null;
+        return generateValue(DEFAULT_MIN, DEFAULT_MAX);
     }
 
     private Interval parseInterval(String durationStr) {
@@ -48,7 +49,7 @@ public class IntervalValueGenerator extends ValueGeneratorAC {
             log.warn("Invalid interval format, expected PnYnMnDTnHnMnS, got {}", durationStr);
             throw new IllegalArgumentException("Invalid interval format, expected PnYnMnDTnHnMnS");
         }
-        Period p = Period.parse(parts[0]);
+        Period p = parts[0].equals("P") ? Period.ZERO : Period.parse(parts[0]);
         Duration d = Duration.parse("PT" + parts[1]);
         return new Interval(p, d);
     }

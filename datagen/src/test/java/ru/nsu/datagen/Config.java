@@ -1,22 +1,27 @@
 package ru.nsu.datagen;
 
-import lombok.Getter;
-import org.yaml.snakeyaml.Yaml;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.yaml.snakeyaml.Yaml;
+
+import lombok.Getter;
+
 @Getter
 public class Config {
     private final String DB_NAME;
     private final String SCHEMA_PATH;
     private final String STATS_PATH;
+    private final String CONSTRAINT_PATH;
     private final String queryPath;
     private final String sourcePlanPath;
-    private final int threadCount;
+    private final int globStoreThreads;
+    private final int tableStoreThreads;
+    private final String indexPath;
+    private final int batchSize;
 
     private final List<TableHolder> tables;
 
@@ -63,10 +68,14 @@ public class Config {
             this.DB_NAME = (String) configMap.get("dbName");
             this.SCHEMA_PATH = (String) configMap.get("schema");
             this.STATS_PATH = (String) configMap.get("statistic");
+            this.CONSTRAINT_PATH = (String) configMap.get("constraints_path");
             this.tables = databases;
             this.queryPath = (String) configMap.get("query_path");
             this.sourcePlanPath = (String) configMap.get("source_plan_path");
-            this.threadCount = (int) configMap.get("thread_count");
+            this.globStoreThreads = (int) configMap.get("glob_store_threads");
+            this.tableStoreThreads = (int) configMap.get("table_store_threads");
+            this.indexPath = (String) configMap.get("index_path");
+            this.batchSize = (int) configMap.get("batch_size");
         }
     }
 

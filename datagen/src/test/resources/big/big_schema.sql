@@ -19,9 +19,13 @@ ALTER SYSTEM SET default_statistics_target = 100;
 ALTER SYSTEM SET effective_cache_size = '8192028kB';
 ALTER SYSTEM SET random_page_cost = 4;
 ALTER SYSTEM SET seq_page_cost = 1;
+ALTER SYSTEM SET parallel_tuple_cost = 0.1;
+ALTER SYSTEM SET parallel_setup_cost = 1000;
+ALTER SYSTEM SET jit = off;
 SET client_min_messages = warning;
 SET row_security = off;
 
+SELECT pg_reload_conf();
 --
 -- Name: bookings; Type: SCHEMA; Schema: -; Owner: -
 --
@@ -116,6 +120,12 @@ CREATE VIEW bookings.timetable AS
 -- Name: airports_data airports_data_pkey; Type: CONSTRAINT; Schema: bookings; Owner: -
 --
 
+
+
+--
+-- PostgreSQL database dump complete
+--
+
 ALTER TABLE ONLY bookings.airports_data
     ADD CONSTRAINT airports_data_pkey PRIMARY KEY (airport_code);
 
@@ -143,23 +153,6 @@ ALTER TABLE ONLY bookings.flights
 ALTER TABLE ONLY bookings.segments
     ADD CONSTRAINT segments_pkey PRIMARY KEY (ticket_no, flight_id);
 
-
---
--- Name: routes_departure_airport_lower_idx; Type: INDEX; Schema: bookings; Owner: -
---
-
-
-
---
--- Name: segments_flight_id_idx; Type: INDEX; Schema: bookings; Owner: -
---
-
-CREATE INDEX segments_flight_id_idx ON bookings.segments USING btree (flight_id);
-
-
---
--- Name: routes routes_airplane_code_fkey; Type: FK CONSTRAINT; Schema: bookings; Owner: -
---
 
 ALTER TABLE ONLY bookings.routes
     ADD CONSTRAINT routes_airplane_code_fkey FOREIGN KEY (airplane_code) REFERENCES airplanes_data(airplane_code);
@@ -195,9 +188,3 @@ ALTER TABLE ONLY bookings.segments
 
 ALTER TABLE ONLY bookings.segments
     ADD CONSTRAINT segments_ticket_no_fkey FOREIGN KEY (ticket_no) REFERENCES tickets(ticket_no);
-
-
---
--- PostgreSQL database dump complete
---
-
