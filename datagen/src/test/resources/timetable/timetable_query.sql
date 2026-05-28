@@ -12,7 +12,7 @@ SELECT f.flight_id,
        (f.scheduled_arrival AT TIME ZONE arr.timezone) AS scheduled_arrival_local,
        f.actual_arrival,
        (f.actual_arrival AT TIME ZONE arr.timezone) AS actual_arrival_local
-FROM (((flights f
-    JOIN routes r ON (((r.route_no = f.route_no))))
-    JOIN airports_data dep ON ((dep.airport_code = r.departure_airport)))
-    JOIN airports_data arr ON ((arr.airport_code = r.arrival_airport)));
+FROM (((bookings.flights f
+    JOIN bookings.routes r ON ((r.route_no = f.route_no)))
+    JOIN bookings.airports_data dep ON ((dep.airport_code = r.departure_airport)))
+    JOIN bookings.airports_data arr ON ((arr.airport_code = r.arrival_airport)));

@@ -1,0 +1,22 @@
+
+
+--
+-- Name: routes_departure_airport_lower_idx; Type: INDEX; Schema: bookings; Owner: -
+--
+
+
+
+--
+-- Name: routes routes_airplane_code_fkey; Type: FK CONSTRAINT; Schema: bookings; Owner: -
+--
+
+--ALTER TABLE ONLY bookings.routes
+--    ADD CONSTRAINT routes_airplane_code_fkey FOREIGN KEY (airplane_code) REFERENCES airplanes_data(airplane_code);
+
+
+--
+-- Name: routes routes_arrival_airport_fkey; Type: FK CONSTRAINT; Schema: bookings; Owner: -
+--
+--
+-- PostgreSQL database dump complete
+--

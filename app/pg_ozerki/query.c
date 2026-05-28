@@ -58,6 +58,8 @@ QueryDependencies* extract_tables_from_query_text(PGconn* conn, const char *quer
 
     char* yaml_plan;
 
+    
+
     explain_query = createPQExpBuffer();
 
     appendPQExpBufferStr(explain_query, "EXPLAIN (FORMAT YAML, VERBOSE) ");

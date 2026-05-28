@@ -1,0 +1,5 @@
+constraint_name,type,columns
+fk_prod_rew,FK,public.meta.product_review_id
+meta_pkey,PK,public.meta.id
+product_review_pkey,PK,public.product_review.id
+product_review_user_id_product_id_key,UNIQUE,"public.product_review.user_id, public.product_review.product_id"

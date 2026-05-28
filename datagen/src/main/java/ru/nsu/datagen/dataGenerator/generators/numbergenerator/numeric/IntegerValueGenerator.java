@@ -1,11 +1,12 @@
 package ru.nsu.datagen.dataGenerator.generators.numbergenerator.numeric;
 
-import net.datafaker.Faker;
-import lombok.extern.slf4j.Slf4j;
-import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
-
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import lombok.extern.slf4j.Slf4j;
+import net.datafaker.Faker;
+import ru.nsu.datagen.dataGenerator.generators.numbergenerator.ValueGeneratorAC;
 
 @Slf4j
 public class IntegerValueGenerator extends ValueGeneratorAC {
@@ -40,18 +41,38 @@ public class IntegerValueGenerator extends ValueGeneratorAC {
             left = Integer.MIN_VALUE;
             right = Integer.MAX_VALUE;
         }
+        List<Integer> existingValues = values.stream().collect(ArrayList::new, (list, obj) -> {
+            if (obj instanceof Integer val) {
+                list.add(val);
+            } else {
+                log.warn("Invalid value type in existing values for {} generation: {}, skipping", this.getClass().toString(), obj.getClass());
+            }
+        }, List::addAll);
+        Collections.sort(existingValues);
 
         long range = (long) right - (long) left;
         if (range >= count - 1) {
-            for (int i = 0; i < count; i++) {
-                values.add(left + i);
+            int candidate = left;
+
+            while (values.size() < count) {
+                if (!existingValues.isEmpty() && existingValues.getFirst() == candidate) {
+                    existingValues.removeFirst();
+                } else {
+                    values.add(candidate);
+                }
+                candidate++;
             }
-            Collections.shuffle(values);
         } else {
             log.warn("Requested count {} exceeds the number of unique values in the given range ({} to {}), adding more than right border", count, left, right);
             for (int i = 0; i < count; i++) {
+                int toAdd = left + i;
+                if (!existingValues.isEmpty() && existingValues.getFirst() == toAdd){
+                    existingValues.removeFirst();
+                    continue;
+                }
                 values.add(left + i);
             }
         }
+        Collections.shuffle(values);
     }
 }

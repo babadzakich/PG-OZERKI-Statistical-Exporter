@@ -1,0 +1,11 @@
+dbname: src
+username: postgres
+host: localhost
+port: 5432
+schema-file: src_schema.sql
+stats-file: src_stats.csv
+explainfile: src_explain.json
+query-file: src_query.sql
+constr-file: src_constr.csv
+index-file: src_indexes.sql
+no-checks:

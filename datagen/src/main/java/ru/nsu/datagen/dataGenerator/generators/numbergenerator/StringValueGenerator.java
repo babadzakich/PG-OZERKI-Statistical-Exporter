@@ -1,9 +1,13 @@
 package ru.nsu.datagen.dataGenerator.generators.numbergenerator;
 
-import net.datafaker.Faker;
-import lombok.extern.slf4j.Slf4j;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
-import java.util.*;
+import lombok.extern.slf4j.Slf4j;
+import net.datafaker.Faker;
 
 @Slf4j
 public class StringValueGenerator extends ValueGeneratorAC {
@@ -102,7 +106,7 @@ public class StringValueGenerator extends ValueGeneratorAC {
         Set<Object> uniqueValues = new HashSet<>(values);
         int maxAttempts = count * 100;
         int attempts = 0;
-        int i = 0;
+        int i = values.size();
 
         while (i < count && attempts < maxAttempts) {
             String value = (String) generateValue(left, right);
