@@ -17,7 +17,7 @@
 
 ## Сборка
 
-1. Перенести папку **pg_ozerki**  в **src/bin/** в дереве исходников **PostgreSQL**
+1. Перенести папку **app/pg_ozerki**  в **src/bin/** в дереве исходников **PostgreSQL**
 2. Из неё запустить 
     ```bash
     make install
