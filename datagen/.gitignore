@@ -6,9 +6,12 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+
+*.yaml
+!example_config.yaml
 .env
 ./scripts
-./scripts/
+*/scripts/
 ### IntelliJ IDEA ###
 .idea/modules.xml
 .idea/jarRepositories.xml
@@ -45,3 +48,4 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+/scripts/

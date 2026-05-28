@@ -1,0 +1,21 @@
+schema: flights/flights_schema.sql
+statistic: flights/flights_stats.csv
+query_path: flights/flights_query.sql
+source_plan_path: flights/flights.json
+constraints_path: flights/flight_constr.csv
+index_path: flights/flight_indexes.sql
+glob_store_threads: 5
+table_store_threads: 6
+tables:
+  - name: segments
+    schema: bookings
+    expectedCount: 50000
+    uniques:
+      - [ticket_no, flight_id]
+  - name: flights
+    schema: bookings
+    expectedCount: 21758
+    uniques:
+      - [route_no, scheduled_departure]
+    pk:
+      - flight_id

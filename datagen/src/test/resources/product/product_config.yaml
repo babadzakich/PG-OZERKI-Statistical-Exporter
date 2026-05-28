@@ -1,0 +1,19 @@
+schema: schema.sql
+statistic: stats.csv
+query_path: product/product_query.sql
+source_plan_path: product/product_join.json
+thread_count: 1
+tables:
+  - name: product_review
+    schema: public
+    expectedCount: 500000
+    uniques:
+      - [product_id, user_id]
+    pk:
+      - id
+
+  - name: meta
+    schema: public
+    expectedCount: 500000
+    pk:
+      - id

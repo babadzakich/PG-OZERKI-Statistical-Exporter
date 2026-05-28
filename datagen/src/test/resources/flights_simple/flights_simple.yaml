@@ -1,0 +1,13 @@
+schema: flights_simple/flights_simple_schema.sql
+statistic: flights_simple/flights_simple_stats.csv
+query_path: flights_simple/flights_simple_query.sql
+source_plan_path: flights_simple/flights_simple.json
+thread_count: 1
+tables:
+  - name: flights
+    schema: bookings
+    expectedCount: 21758
+    uniques:
+      - [route_no, scheduled_departure]
+    pk:
+      - flight_id

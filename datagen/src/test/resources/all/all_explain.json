@@ -1,0 +1,311 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Nested Loop",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Join Type": "Inner",
+      "Startup Cost": 0.00,
+      "Total Cost": 458691346545385735642453691596800.00,
+      "Plan Rows": 36693620974151875539002696986001408,
+      "Plan Width": 538,
+      "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed", "airports_data.airport_code", "airports_data.airport_name", "airports_data.city", "airports_data.country", "airports_data.coordinates", "airports_data.timezone", "bookings.book_ref", "bookings.book_date", "bookings.total_amount", "flights.flight_id", "flights.route_no", "flights.status", "flights.scheduled_departure", "flights.scheduled_arrival", "flights.actual_departure", "flights.actual_arrival", "routes.route_no", "routes.validity", "routes.departure_airport", "routes.arrival_airport", "routes.airplane_code", "routes.days_of_week", "routes.scheduled_time", "routes.duration", "seats.airplane_code", "seats.seat_no", "seats.fare_conditions", "segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+      "Inner Unique": false,
+      "Plans": [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Inner",
+          "Startup Cost": 0.00,
+          "Total Cost": 21084368487410769661509238784.00,
+          "Plan Rows": 1686442732519159126370042249216,
+          "Plan Width": 487,
+          "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed", "airports_data.airport_code", "airports_data.airport_name", "airports_data.city", "airports_data.country", "airports_data.coordinates", "airports_data.timezone", "bookings.book_ref", "bookings.book_date", "bookings.total_amount", "routes.route_no", "routes.validity", "routes.departure_airport", "routes.arrival_airport", "routes.airplane_code", "routes.days_of_week", "routes.scheduled_time", "routes.duration", "seats.airplane_code", "seats.seat_no", "seats.fare_conditions", "segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+          "Inner Unique": false,
+          "Plans": [
+            {
+              "Node Type": "Nested Loop",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Join Type": "Inner",
+              "Startup Cost": 0.00,
+              "Total Cost": 3834330921274767356985344.00,
+              "Plan Rows": 306570211328696496726999040,
+              "Plan Width": 297,
+              "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed", "bookings.book_ref", "bookings.book_date", "bookings.total_amount", "routes.route_no", "routes.validity", "routes.departure_airport", "routes.arrival_airport", "routes.airplane_code", "routes.days_of_week", "routes.scheduled_time", "routes.duration", "seats.airplane_code", "seats.seat_no", "seats.fare_conditions", "segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+              "Inner Unique": false,
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 2203279666061096779776.00,
+                  "Plan Rows": 176088576294483912556544,
+                  "Plan Width": 282,
+                  "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed", "bookings.book_ref", "bookings.book_date", "bookings.total_amount", "routes.route_no", "routes.validity", "routes.departure_airport", "routes.arrival_airport", "routes.airplane_code", "routes.days_of_week", "routes.scheduled_time", "routes.duration", "segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+                  "Inner Unique": false,
+                  "Plans": [
+                    {
+                      "Node Type": "Nested Loop",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Join Type": "Inner",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 2172462380047641344.00,
+                      "Plan Rows": 151539222284409569280,
+                      "Plan Width": 179,
+                      "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed", "bookings.book_ref", "bookings.book_date", "bookings.total_amount", "segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+                      "Inner Unique": false,
+                      "Plans": [
+                        {
+                          "Node Type": "Nested Loop",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Join Type": "Inner",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 278222101492521920.00,
+                          "Plan Rows": 15153922228440954880,
+                          "Plan Width": 104,
+                          "Output": ["bookings.book_ref", "bookings.book_date", "bookings.total_amount", "segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+                          "Inner Unique": false,
+                          "Plans": [
+                            {
+                              "Node Type": "Nested Loop",
+                              "Parent Relationship": "Outer",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Join Type": "Inner",
+                              "Startup Cost": 0.00,
+                              "Total Cost": 226635981901.92,
+                              "Plan Rows": 11720940734029,
+                              "Plan Width": 83,
+                              "Output": ["segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price", "tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"],
+                              "Inner Unique": false,
+                              "Plans": [
+                                {
+                                  "Node Type": "Seq Scan",
+                                  "Parent Relationship": "Outer",
+                                  "Parallel Aware": false,
+                                  "Async Capable": false,
+                                  "Relation Name": "tickets",
+                                  "Schema": "bookings",
+                                  "Alias": "tickets",
+                                  "Startup Cost": 0.00,
+                                  "Total Cost": 60483.47,
+                                  "Plan Rows": 2973947,
+                                  "Plan Width": 52,
+                                  "Output": ["tickets.ticket_no", "tickets.book_ref", "tickets.passenger_id", "tickets.passenger_name", "tickets.outbound"]
+                                },
+                                {
+                                  "Node Type": "Materialize",
+                                  "Parent Relationship": "Inner",
+                                  "Parallel Aware": false,
+                                  "Async Capable": false,
+                                  "Startup Cost": 0.00,
+                                  "Total Cost": 118964.11,
+                                  "Plan Rows": 3941207,
+                                  "Plan Width": 31,
+                                  "Output": ["segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price"],
+                                  "Plans": [
+                                    {
+                                      "Node Type": "Seq Scan",
+                                      "Parent Relationship": "Outer",
+                                      "Parallel Aware": false,
+                                      "Async Capable": false,
+                                      "Relation Name": "segments",
+                                      "Schema": "bookings",
+                                      "Alias": "segments",
+                                      "Startup Cost": 0.00,
+                                      "Total Cost": 72316.07,
+                                      "Plan Rows": 3941207,
+                                      "Plan Width": 31,
+                                      "Output": ["segments.ticket_no", "segments.flight_id", "segments.fare_conditions", "segments.price"]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Node Type": "Materialize",
+                              "Parent Relationship": "Inner",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Startup Cost": 0.00,
+                              "Total Cost": 35209.40,
+                              "Plan Rows": 1292893,
+                              "Plan Width": 21,
+                              "Output": ["bookings.book_ref", "bookings.book_date", "bookings.total_amount"],
+                              "Plans": [
+                                {
+                                  "Node Type": "Seq Scan",
+                                  "Parent Relationship": "Outer",
+                                  "Parallel Aware": false,
+                                  "Async Capable": false,
+                                  "Relation Name": "bookings",
+                                  "Schema": "bookings",
+                                  "Alias": "bookings",
+                                  "Startup Cost": 0.00,
+                                  "Total Cost": 21168.93,
+                                  "Plan Rows": 1292893,
+                                  "Plan Width": 21,
+                                  "Output": ["bookings.book_ref", "bookings.book_date", "bookings.total_amount"]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "Node Type": "Materialize",
+                          "Parent Relationship": "Inner",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Startup Cost": 0.00,
+                          "Total Cost": 1.15,
+                          "Plan Rows": 10,
+                          "Plan Width": 75,
+                          "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed"],
+                          "Plans": [
+                            {
+                              "Node Type": "Seq Scan",
+                              "Parent Relationship": "Outer",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Relation Name": "airplanes_data",
+                              "Schema": "bookings",
+                              "Alias": "airplanes_data",
+                              "Startup Cost": 0.00,
+                              "Total Cost": 1.10,
+                              "Plan Rows": 10,
+                              "Plan Width": 75,
+                              "Output": ["airplanes_data.airplane_code", "airplanes_data.model", "airplanes_data.range", "airplanes_data.speed"]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Materialize",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Startup Cost": 0.00,
+                      "Total Cost": 37.43,
+                      "Plan Rows": 1162,
+                      "Plan Width": 103,
+                      "Output": ["routes.route_no", "routes.validity", "routes.departure_airport", "routes.arrival_airport", "routes.airplane_code", "routes.days_of_week", "routes.scheduled_time", "routes.duration"],
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Relation Name": "routes",
+                          "Schema": "bookings",
+                          "Alias": "routes",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 31.62,
+                          "Plan Rows": 1162,
+                          "Plan Width": 103,
+                          "Output": ["routes.route_no", "routes.validity", "routes.departure_airport", "routes.arrival_airport", "routes.airplane_code", "routes.days_of_week", "routes.scheduled_time", "routes.duration"]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Node Type": "Materialize",
+                  "Parent Relationship": "Inner",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 0.00,
+                  "Total Cost": 36.12,
+                  "Plan Rows": 1741,
+                  "Plan Width": 15,
+                  "Output": ["seats.airplane_code", "seats.seat_no", "seats.fare_conditions"],
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "seats",
+                      "Schema": "bookings",
+                      "Alias": "seats",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 27.41,
+                      "Plan Rows": 1741,
+                      "Plan Width": 15,
+                      "Output": ["seats.airplane_code", "seats.seat_no", "seats.fare_conditions"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Materialize",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 0.00,
+              "Total Cost": 237.51,
+              "Plan Rows": 5501,
+              "Plan Width": 190,
+              "Output": ["airports_data.airport_code", "airports_data.airport_name", "airports_data.city", "airports_data.country", "airports_data.coordinates", "airports_data.timezone"],
+              "Plans": [
+                {
+                  "Node Type": "Seq Scan",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Relation Name": "airports_data",
+                  "Schema": "bookings",
+                  "Alias": "airports_data",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 210.01,
+                  "Plan Rows": 5501,
+                  "Plan Width": 190,
+                  "Output": ["airports_data.airport_code", "airports_data.airport_name", "airports_data.city", "airports_data.country", "airports_data.coordinates", "airports_data.timezone"]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Node Type": "Materialize",
+          "Parent Relationship": "Inner",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 0.00,
+          "Total Cost": 530.37,
+          "Plan Rows": 21758,
+          "Plan Width": 51,
+          "Output": ["flights.flight_id", "flights.route_no", "flights.status", "flights.scheduled_departure", "flights.scheduled_arrival", "flights.actual_departure", "flights.actual_arrival"],
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Relation Name": "flights",
+              "Schema": "bookings",
+              "Alias": "flights",
+              "Startup Cost": 0.00,
+              "Total Cost": 421.58,
+              "Plan Rows": 21758,
+              "Plan Width": 51,
+              "Output": ["flights.flight_id", "flights.route_no", "flights.status", "flights.scheduled_departure", "flights.scheduled_arrival", "flights.actual_departure", "flights.actual_arrival"]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

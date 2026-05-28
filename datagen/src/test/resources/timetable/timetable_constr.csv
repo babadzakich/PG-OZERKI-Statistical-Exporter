@@ -1,0 +1,21 @@
+constraint_name,type,columns
+airplanes_data_pkey,PK,bookings.airplanes_data.airplane_code
+airports_data_pkey,PK,bookings.airports_data.airport_code
+boarding_passes_ticket_no_flight_id_fkey,FK,"bookings.boarding_passes.ticket_no, bookings.boarding_passes.flight_id"
+boarding_passes_pkey,PK,"bookings.boarding_passes.ticket_no, bookings.boarding_passes.flight_id"
+boarding_passes_flight_id_seat_no_key,UNIQUE,"bookings.boarding_passes.flight_id, bookings.boarding_passes.seat_no"
+boarding_passes_flight_id_boarding_no_key,UNIQUE,"bookings.boarding_passes.flight_id, bookings.boarding_passes.boarding_no"
+bookings_pkey,PK,bookings.bookings.book_ref
+flights_pkey,PK,bookings.flights.flight_id
+flights_route_no_scheduled_departure_key,UNIQUE,"bookings.flights.route_no, bookings.flights.scheduled_departure"
+routes_arrival_airport_fkey,FK,bookings.routes.arrival_airport
+routes_airplane_code_fkey,FK,bookings.routes.airplane_code
+routes_departure_airport_fkey,FK,bookings.routes.departure_airport
+seats_airplane_code_fkey,FK,bookings.seats.airplane_code
+seats_pkey,PK,"bookings.seats.airplane_code, bookings.seats.seat_no"
+segments_ticket_no_fkey,FK,bookings.segments.ticket_no
+segments_flight_id_fkey,FK,bookings.segments.flight_id
+segments_pkey,PK,"bookings.segments.ticket_no, bookings.segments.flight_id"
+tickets_book_ref_fkey,FK,bookings.tickets.book_ref
+tickets_pkey,PK,bookings.tickets.ticket_no
+tickets_book_ref_passenger_id_outbound_key,UNIQUE,"bookings.tickets.book_ref, bookings.tickets.passenger_id, bookings.tickets.outbound"

@@ -1,0 +1,22 @@
+{
+  "Plan": {
+    "Node Type": "Index Scan",
+    "Parallel Aware": false,
+    "Async Capable": false,
+    "Scan Direction": "Forward",
+    "Index Name": "product_review_pkey",
+    "Relation Name": "product_review",
+    "Schema": "public",
+    "Alias": "product_review",
+    "Startup Cost": 0.43,
+    "Total Cost": 8.45,
+    "Plan Rows": 1,
+    "Plan Width": 12,
+    "Actual Startup Time": 0.015,
+    "Actual Total Time": 0.016,
+    "Actual Rows": 1,
+    "Actual Loops": 1,
+    "Index Cond": "(id = 100)",
+    "Plans": []
+  }
+}

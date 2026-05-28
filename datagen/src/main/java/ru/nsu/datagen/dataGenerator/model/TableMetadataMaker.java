@@ -1,156 +1,173 @@
 package ru.nsu.datagen.dataGenerator.model;
 
-import ru.nsu.datagen.dataGenerator.generators.fk.RelationshipType;
-
+import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
+import com.opencsv.CSVParserBuilder;
+import com.opencsv.CSVReaderBuilder;
+import com.opencsv.bean.CsvToBeanBuilder;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class TableMetadataMaker {
-    //private Map<String, List<String[]>> columnDataGroupedByTablename;
-   //private Map<String, List<String>> tableToColumnNames;
-
-//    public void TableMetadataMaker(List<String[]> rawData) {
-//        columnDataGroupedByTablename = new HashMap<>();
-//
-//        for(String[] line : rawData) {
-//            if (!columnDataGroupedByTablename.containsKey(line[1])) {
-//                columnDataGroupedByTablename.put(line[1], new ArrayList<>());
-//            }
-//            columnDataGroupedByTablename.get(line[1]).add(line);
-//        }
-//        processRawTableMetadata();
-//    }
-
-    public static List<TableMetadata> processRawTableMetadata(List<String[]> rawData) {
-        Map<String, List<ColumnMetadata>> columnDataGroupedByTablename = new HashMap<>();
-
-        for (String[] line : rawData) {
-            
-            ForeignKeyMetadata fkMetadata = line[6].contains("FK")
-                    ? new ForeignKeyMetadata(line[9], line[10], line[9].equals("NULL") ? null : RelationshipType.valueOf(line[8]))
-                    : null;
-            
-            int recordCountValue = Integer.parseInt(line[4]) == -1 ? 0 : Integer.parseInt(line[4]);
-            
-            double nullPercentageValue = (line[5] == null || line[5].isEmpty() || line[5].equals("NULL")) ? 0.0 : Double.parseDouble(line[5]);
-            ColumnMetadata columnMetadata = ColumnMetadata.builder()
-                .name(line[2])
-                .dataType(line[3])
-                
-                .isPrimaryKey(line[6].contains("PK"))
-                .isForeignKey(line[6].contains("FK"))
-                .isUnique(line[6].contains("UNIQUE"))
-                
-                .nullPercentage(nullPercentageValue)
-                .recordCount(recordCountValue)
-                .maxLength(line[7].equals("-1") ? -1 : Integer.parseInt(line[7])) // Обработка -1 для длины
-                .avgTupleSize((line[13].isEmpty() || line[13].equals("NULL")) ? -1 : Integer.parseInt(line[13]))
-                
-                .foreignKeyMetadata(fkMetadata)
-                .mvc(processMCV(line[11], line[12], recordCountValue, line[3]))
-                .ndistinct(Double.parseDouble(line[14]))
-                .build();
-            if (!columnDataGroupedByTablename.containsKey(line[1])) {
-                columnDataGroupedByTablename.put(line[1], new ArrayList<>());
+    public static Map<String, TableMetadata> processTableMetadata(Reader statReader, Reader constrReader) {
+        // Читаем CSV и превращаем его в список объектов ColumnMetadataCSV
+        List<ColumnMetadataCSV> csvData = new CsvToBeanBuilder<ColumnMetadataCSV>(statReader)
+                .withType(ColumnMetadataCSV.class)
+                .withSeparator(',')
+                .withIgnoreLeadingWhiteSpace(true)
+                .withEscapeChar('\0')
+                .build()
+                .parse();
+        List<ConstraintCSV> constrData = parseConstraintData(constrReader);
+        Map<String, List<List<String>>> compositeUniquePeersMap = new HashMap<>();
+        Map<String, List<List<String>>> compositeFkPeersMap = new HashMap<>();
+        constrData.forEach(constraint -> {
+            String[] columns = constraint.getColumns().split(",");
+            if (constraint.getType().equalsIgnoreCase("UNIQUE") || constraint.getType().equalsIgnoreCase("PK")) {
+                for (String column : columns) {
+                    compositeUniquePeersMap.computeIfAbsent(column.trim(), k -> new ArrayList<>()).add(
+                            Arrays.stream(columns)
+                                    .map(String::trim)
+                                    .collect(Collectors.toList())
+                    );
+                }
+            } else if (constraint.getType().equalsIgnoreCase("FK")) {
+                for (String column : columns) {
+                    compositeFkPeersMap.computeIfAbsent(column.trim(), k -> new ArrayList<>()).add(
+                            Arrays.stream(columns)
+                                    .map(String::trim)
+                                    .collect(Collectors.toList())
+                    );
+                }
             }
-            columnDataGroupedByTablename.get(line[1]).add(columnMetadata);
         }
 
-        List<TableMetadata> tableMetadataList = new ArrayList<>();
-        for (String tableName : columnDataGroupedByTablename.keySet()) {
-            Map<String, ColumnMetadata> columnMetadataMap = new HashMap<>();
-            columnDataGroupedByTablename.get(tableName).forEach(
-                    columnMetadata -> columnMetadataMap.put(columnMetadata.getName(), columnMetadata)
-            );
-            tableMetadataList.add(
-                    new TableMetadata(
-                            tableName,
-                            columnMetadataMap,
-                            columnDataGroupedByTablename.get(tableName).get(0).getRecordCount()
-                    )
-            );
-        }
+        );
 
-        return tableMetadataList;
-    }
+        var result =  csvData.stream()
+                .collect(Collectors.groupingBy(ColumnMetadataCSV::getTableName)) // Группируем по имени таблицы наши колонки из CSV
+                .entrySet().stream() // Тут мы получаем поток, где каждый энтри - это имя таблицы и список цсв колонок, относящихся к этой таблице
+                .map(entry -> { // Тут мы мапаем каждую группу колонок в объект TableMetadata
+                    String tableName = entry.getKey();
+                    List<ColumnMetadataCSV> tableCsvColumns = entry.getValue();
 
-    private static Map<String, Double> processMCV(String rawMCVArray, String rawMCFArray, int rowCount, String dataType) {
-        List<String> processedMCV = parsePgArrayString(rawMCVArray, dataType);
-        List<Double> processedMCF = parseMCFArray(rawMCFArray);
+                    Map<String, ColumnMetadata> columnMetadataMap = tableCsvColumns.stream() // Тут мы превращаем список колонок из CSV в мапу, где ключ - имя колонки, а значение - объект ColumnMetadata
+                            .map(col ->
+                                    col.transformToColumnMetadata(
+                                            compositeUniquePeersMap.getOrDefault(
+                                                col.getSchemaName() + "." + col.getTableName() + "." + col.getColumnName(), Collections.emptyList()
+                                            ),
+                                            compositeFkPeersMap.getOrDefault(
+                                                    col.getSchemaName() + "." + col.getTableName() + "." + col.getColumnName(), Collections.emptyList()
+                                            )
+                                    ))
+                            .collect(Collectors.toMap(ColumnMetadata::getName, column -> column));
 
-        Map<String, Double> resultDistribution = new HashMap<>();
-
-        for (int i = 0; i < processedMCV.size(); i++) {
-            resultDistribution.put(processedMCV.get(i), processedMCF.get(i));
-        }
-
-        return resultDistribution;
-    }
-
-    /**
-     * Парсит массив частот PostgreSQL (например, "{0.5,0.3,0.2}") в список Double.
-     */
-    private static List<Double> parseMCFArray(String arrayString) {
-        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
-            return List.of();
-        }
-
-        String cleanedString = arrayString.substring(1, arrayString.length() - 1);
-        if (cleanedString.isEmpty()) {
-            return List.of();
-        }
-
-        return Arrays.stream(cleanedString.split(","))
-                .map(String::trim)
-                .map(Double::parseDouble)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Парсит строку массива PostgreSQL (например, "{val1, "val 2", val3}") в список строк Java.
-     */
-    public static List<String> parsePgArrayString(String arrayString, String datatype) {
-        if (arrayString == null || arrayString.isEmpty() || "{}".equals(arrayString) || arrayString.equals("NULL")) {
-            return List.of(); // Возвращаем пустой список для пустых массивов
-        }
-
-        String cleanedString = arrayString.substring(1, arrayString.length() - 1);
-        if (cleanedString.isEmpty()) {
-            return List.of();
-        }
-        if (datatype.equals("integer[]")) {
-
-        }
-        // Разделение по ","
-        List<String> result = new ArrayList<>();
-        String[] parts = cleanedString.split(",");
-        
-        for (int i = 0; i < parts.length; i++) {
-            String part = parts[i];
-            
-            // Удаляем ведущую кавычку у первого элемента
-            if (i == 0 && part.startsWith("\"")) {
-                part = part.substring(1);
-            }
-            
-            // Удаляем завершающую кавычку у последнего элемента
-            if (i == parts.length - 1 && part.endsWith("\"")) {
-                part = part.substring(0, part.length() - 1);
-            }
-            
-            // Обрабатываем экранирование двойных кавычек
-            part = part.replace("\"\"", "\"");
-            
-            result.add(part);
-        }
-        
+                    int recordCount = tableCsvColumns.isEmpty() ? 0 : tableCsvColumns.getFirst().getRecordCount();
+                    String namespace = tableCsvColumns.isEmpty() ? "public" : tableCsvColumns.getFirst().getSchemaName();
+                    return new TableMetadata(tableName, columnMetadataMap, recordCount, namespace);
+                })
+                .collect(Collectors.toMap( tableMetadata -> tableMetadata.getNamespace() + "." + tableMetadata.getTableName(), table -> table)); // Тут мы превращаем поток TableMetadata в мапу, где ключ - имя таблицы, а значение - объект TableMetadata;
+        result.forEach((tableName, tableMetadata) -> {
+            Map<String, ColumnMetadata> columns = tableMetadata.getColumns();
+            columns.forEach((columnName, columnMetadata) -> {
+                if (columnMetadata.isForeignKey()) {
+                    columnMetadata.getForeignKeyMetadata().removeIf(ref -> {
+                        log.debug("Processing foreign key column {}.{}.{}", tableName, columnName, ref);
+                        String refTableKey = ref.getReferencedSchema() + "." + ref.getReferencedTable();
+                        log.debug("Ref table key {} {}", tableName, refTableKey);
+                        if (result.containsKey(refTableKey)) {
+                            log.debug("Table already exists in table {} {}", tableName, refTableKey);
+                            var refTable = result.get(refTableKey);
+                            if (refTable.getNamespace().equals(ref.getReferencedSchema())
+                                    && refTable.getColumns().get(ref.getReferencedColumn()) != null) {
+                                return false;
+                            }
+                        }
+                        log.warn("Removing foreign key reference from {}.{} to {}.{}.{} because referenced table or column does not exist",
+                                tableName, columnName, ref.getReferencedSchema(), ref.getReferencedTable(), ref.getReferencedColumn());
+                        return true;
+                    });
+                    if (columnMetadata.getForeignKeyMetadata().isEmpty()) {
+                        log.warn("Column {}.{}.{} is marked as foreign key but has no valid references. Marking as non-foreign key.",
+                                tableName, columnName, columnMetadata.getName());
+                        columnMetadata.setForeignKey(false);
+                    }
+                }
+            });
+            Set<String> actualRefTables = columns.values().stream()
+                    .filter(ColumnMetadata::isForeignKey)
+                    .map(ColumnMetadata::getForeignKeyMetadata)
+                    .filter(Objects::nonNull)
+                    .flatMap(Collection::stream)
+                    .map(fk -> fk.getReferencedSchema() + "." + fk.getReferencedTable())
+                    .collect(Collectors.toSet());
+            tableMetadata.setRefTables(actualRefTables);
+        });
         return result;
+    }
+
+    private static List<ConstraintCSV> parseConstraintData(Reader constrReader) {
+        try {
+            var csvReader = new CSVReaderBuilder(constrReader)
+                    .withCSVParser(new CSVParserBuilder()
+                            .withSeparator(',')
+                            .withIgnoreLeadingWhiteSpace(true)
+                            .build())
+                    .build();
+            List<String[]> rows = csvReader.readAll();
+            if (rows.isEmpty()) {
+                return List.of();
+            }
+
+            String[] headers = rows.getFirst();
+            Map<String, Integer> headerIndex = new HashMap<>();
+            for (int i = 0; i < headers.length; i++) {
+                headerIndex.put(headers[i].trim().toLowerCase(), i);
+            }
+
+            List<ConstraintCSV> constraints = new ArrayList<>();
+            for (int rowIndex = 1; rowIndex < rows.size(); rowIndex++) {
+                String[] row = rows.get(rowIndex);
+                String constraintName = getCsvValue(row, headerIndex, "constraint_name");
+                String type = getCsvValue(row, headerIndex, "type");
+                String columns = getCsvValue(row, headerIndex, "columns");
+
+                if (constraintName == null && type == null && columns == null) {
+                    continue;
+                }
+
+                constraints.add(new ConstraintCSV(constraintName, type, columns));
+            }
+            return constraints;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Cannot parse constraint CSV.", e);
+        }
+    }
+
+    private static String getCsvValue(String[] row, Map<String, Integer> headerIndex, String headerName) {
+        Integer index = headerIndex.get(headerName);
+        if (index == null || index >= row.length) {
+            return null;
+        }
+
+        String value = row[index];
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
