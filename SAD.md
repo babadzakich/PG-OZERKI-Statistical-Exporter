@@ -421,7 +421,6 @@ constraintFile: src_constr.csv
 
 batchSize:                50000
 generationThreadPoolSize: 4
-connectionPoolSize:       10
 globStoreThreads:         1
 tableStoreThreads:        1
 ```
