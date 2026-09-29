@@ -44,9 +44,7 @@ public class DependencyGraph {
                 .collect(HashMap::new, (map, entry) -> map.put(entry.getKey(), new TableDependency(entry.getValue())), HashMap::putAll);
         allTables.values().forEach(table -> {
             TableDependency currDependency = tableNodes.get(table.getFullName());
-            table.getRefTables().forEach(refTableKey -> {
-                tableNodes.get(refTableKey).addDependency(currDependency);
-            });
+            table.getRefTables().forEach(refTableKey -> tableNodes.get(refTableKey).addDependency(currDependency));
         });
     }
 
@@ -60,14 +58,12 @@ public class DependencyGraph {
         Graph<String, DefaultEdge> tablesGraph = new DefaultDirectedGraph<>(DefaultEdge.class);
 
         allTables.keySet().forEach(tablesGraph::addVertex);
-        allTables.forEach((tableName, table) -> {
-            table.getRefTables().forEach(refTable -> {
-                if (allTables.containsKey(refTable)) {
-                    tablesGraph.addVertex(refTable);
-                    tablesGraph.addEdge(tableName, refTable);
-                }
-            });
-        });
+        allTables.forEach((tableName, table) -> table.getRefTables().forEach(refTable -> {
+            if (allTables.containsKey(refTable)) {
+                tablesGraph.addVertex(refTable);
+                tablesGraph.addEdge(tableName, refTable);
+            }
+        }));
 
         ConnectivityInspector<String, DefaultEdge> inspector =
         new ConnectivityInspector<>(new AsUndirectedGraph<>(tablesGraph));
@@ -98,10 +94,8 @@ public class DependencyGraph {
         Map<TableDependency, Integer> inDegree = new HashMap<>();
         componentNodes.forEach(node -> inDegree.put(node, 0));
         
-        componentNodes.forEach(table -> {
-            table.getDependencies().stream().filter(dep -> componentNodes.contains(dep))
-            .forEach(dep -> inDegree.computeIfPresent(dep, (k, v) -> v + 1));
-        });
+        componentNodes.forEach(table -> table.getDependencies().stream().filter(componentNodes::contains)
+        .forEach(dep -> inDegree.computeIfPresent(dep, (k, v) -> v + 1)));
 
         List<TableDependency> currentLevel = inDegree.entrySet().stream()
             .filter(e -> e.getValue() == 0)
@@ -131,5 +125,24 @@ public class DependencyGraph {
         }
 
         return order;
+    }
+
+    /**
+     * Для каждой таблицы компоненты возвращает список таблиц, которые ссылаются на неё по FK
+     * (т.е. должны генерироваться после неё).
+     *
+     * @param component подмножество таблиц одной слабо связной компоненты
+     * @return {@code таблица -> зависящие от неё таблицы} (только внутри компоненты)
+     */
+    public Map<TableMetadata, List<TableMetadata>> getDependents(Set<TableMetadata> component) {
+        Map<TableMetadata, List<TableMetadata>> result = new HashMap<>();
+        for (TableMetadata table : component) {
+            List<TableMetadata> dependents = tableNodes.get(table.getFullName()).getDependencies().stream()
+                    .map(TableDependency::getTable)
+                    .filter(component::contains)
+                    .toList();
+            result.put(table, dependents);
+        }
+        return result;
     }
 }

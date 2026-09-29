@@ -22,8 +22,8 @@ import ru.nsu.datagen.dataGenerator.store.TableStore.StoreResult;
  * <ol>
  *   <li>Строит {@link DependencyGraph} по FK-зависимостям между таблицами.</li>
  *   <li>Разбивает граф на слабо связанные компоненты — они генерируются независимо и параллельно.</li>
- *   <li>Внутри каждой компоненты таблицы генерируются уровнями топологической сортировки:
- *       родительские таблицы всегда завершены до дочерних.</li>
+ *   <li>Внутри каждой компоненты каждая таблица запускается сразу после завершения всех своих
+ *       FK-родителей (без барьеров между уровнями топологической сортировки).</li>
  *   <li>Данные каждой таблицы вставляются батчами через {@link TableStore} (PostgreSQL COPY FROM STDIN).</li>
  *   <li>Строки, нарушающие constraint, повторно генерируются Markov-генератором (до 3 попыток).</li>
  * </ol>
@@ -56,84 +56,90 @@ public class DatabaseDataGenerator {
         Semaphore globalSemaphore = new Semaphore(globStoreThreads);
         List<CompletableFuture<Void>> storeFutures = components.stream()
                 .map(component -> {
-                    List<List<TableMetadata>> generationOrder = dependencyGraph.getGenerationOrder(component);
                     Map<String, List<Object>> generatedData = new ConcurrentHashMap<>();
 
-                    CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
-                    for (List<TableMetadata> level : generationOrder) {
-                        future = future.thenCompose(ignored -> {
-                            List<CompletableFuture<Void>> levelFutures = level.stream()
-                                    .map(table -> CompletableFuture.runAsync(() -> {
+                    Map<TableMetadata, List<TableMetadata>> parents = new HashMap<>();
+                    dependencyGraph.getDependents(component).forEach((parent, children) ->
+                            children.forEach(child -> parents.computeIfAbsent(child, k -> new ArrayList<>()).add(parent)));
 
-                                        try {
-                                            globalSemaphore.acquire();
-
-                                            DataGenerator dataGenerator = new DataGenerator(component, table);
-                                            log.info("Generate table: {}", table.getTableName());
-                                            int createdAmount = 0;
-                                            int emptyBatchCount = 0;
-                                            while (createdAmount < table.getRecordCount()) {
-                                                int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
-                                                System.err.println("toGenerate = " + toGenerate);
-
-                                                Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate, emptyBatchCount);
-                                                try {
-                                                    StoreResult result = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
-                                                    int stored = result.stored();
-
-                                                    // Retry rows that failed with constraint violations by regenerating Markov columns
-                                                    List<Integer> failedIndices = new ArrayList<>(result.failedIndices());
-                                                    Map<String, List<Object>> currentBatch = generatedTableData;
-                                                    for (int retry = 0; retry < 3 && !failedIndices.isEmpty(); retry++) {
-                                                        Map<String, List<Object>> retryBatch = extractRows(currentBatch, failedIndices);
-                                                        dataGenerator.regenerateMarkovColumns(retryBatch);
-                                                        StoreResult retryResult = tableStore.storeTable(table, retryBatch, 1);
-                                                        stored += retryResult.stored();
-                                                        failedIndices = new ArrayList<>(retryResult.failedIndices());
-                                                        currentBatch = retryBatch;
-                                                    }
-
-                                                    dataGenerator.removeUnaddedColumns(toGenerate - stored);
-                                                    createdAmount += stored;
-                                                    if (stored > 0) {
-                                                        generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
-                                                                generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
-                                                        );
-                                                    }
-                                                    if (stored == 0) {
-                                                        if (++emptyBatchCount > MAX_EMPTY_BATCH_COUNT) {
-                                                            log.error("Прервана генерация таблицы {}: {} пустых батчей подряд", table.getTableName(), emptyBatchCount);
-                                                            break;
-                                                        }
-                                                    } else {
-                                                        emptyBatchCount = 0;
-                                                    }
-                                                } catch (SQLException e) {
-                                                    log.warn("SQL error storing batch for table {}: sqlState={}, message={}",
-                                                            table.getTableName(), e.getSQLState(), e.getMessage());
-                                                }
-                                            }
-                                        } catch (InterruptedException e) {
-                                            log.error("Error in table {}: {}", table.getTableName(), e.getMessage());
-                                            throw new RuntimeException(e);
-                                        } catch (RuntimeException e) {
-                                            log.error("Unexpected error generating table {}: {}", table.getTableName(), e.getMessage(), e);
-                                            throw e;
-                                        } finally {
-                                            globalSemaphore.release();
-                                        }
-                                    }, executorService)).toList();
-
-
-                            return CompletableFuture.allOf(levelFutures.toArray(CompletableFuture[]::new));
-                        });
+                    Map<TableMetadata, CompletableFuture<Void>> tableFutures = new HashMap<>();
+                    for (List<TableMetadata> level : dependencyGraph.getGenerationOrder(component)) {
+                        for (TableMetadata table : level) {
+                            CompletableFuture<?>[] parentFutures = parents.getOrDefault(table, List.of()).stream()
+                                    .map(tableFutures::get)
+                                    .toArray(CompletableFuture[]::new);
+                            tableFutures.put(table, CompletableFuture.allOf(parentFutures).thenRunAsync(
+                                    () -> generateTable(component, table, generatedData, tableStore, globalSemaphore, batchSize, tableStoreThreads),
+                                    executorService));
+                        }
                     }
 
-                    return future;
-                }).toList(); 
+                    return CompletableFuture.allOf(tableFutures.values().toArray(CompletableFuture[]::new));
+                }).toList();
 
         CompletableFuture.allOf(storeFutures.toArray(CompletableFuture[]::new)).join();
         log.info("Data generation and storage completed.");
+    }
+
+    private static void generateTable(Set<TableMetadata> component, TableMetadata table, Map<String, List<Object>> generatedData,
+                                      TableStore tableStore, Semaphore globalSemaphore, int batchSize, int tableStoreThreads) {
+        try {
+            globalSemaphore.acquire();
+
+            DataGenerator dataGenerator = new DataGenerator(component, table);
+            log.info("Generate table: {}", table.getTableName());
+            int createdAmount = 0;
+            int emptyBatchCount = 0;
+            while (createdAmount < table.getRecordCount()) {
+                int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
+                System.err.println("toGenerate = " + toGenerate);
+
+                Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate, emptyBatchCount);
+                try {
+                    StoreResult result = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
+                    int stored = result.stored();
+
+                    // Retry rows that failed with constraint violations by regenerating Markov columns
+                    List<Integer> failedIndices = new ArrayList<>(result.failedIndices());
+                    Map<String, List<Object>> currentBatch = generatedTableData;
+                    for (int retry = 0; retry < 3 && !failedIndices.isEmpty(); retry++) {
+                        Map<String, List<Object>> retryBatch = extractRows(currentBatch, failedIndices);
+                        dataGenerator.regenerateMarkovColumns(retryBatch);
+                        StoreResult retryResult = tableStore.storeTable(table, retryBatch, 1);
+                        stored += retryResult.stored();
+                        failedIndices = new ArrayList<>(retryResult.failedIndices());
+                        currentBatch = retryBatch;
+                    }
+
+                    dataGenerator.removeUnaddedColumns(toGenerate - stored);
+                    createdAmount += stored;
+                    if (stored > 0) {
+                        generatedTableData.keySet().stream().filter(col -> table.getColumns().get(col).getReferencingColumns() != null).forEach(colName ->
+                                generatedData.computeIfAbsent(table.getFullName() + "." + colName, k -> new ArrayList<>()).addAll(generatedTableData.get(colName))
+                        );
+                    }
+                    if (stored == 0) {
+                        if (++emptyBatchCount > MAX_EMPTY_BATCH_COUNT) {
+                            log.error("Прервана генерация таблицы {}: {} пустых батчей подряд", table.getTableName(), emptyBatchCount);
+                            break;
+                        }
+                    } else {
+                        emptyBatchCount = 0;
+                    }
+                } catch (SQLException e) {
+                    log.warn("SQL error storing batch for table {}: sqlState={}, message={}",
+                            table.getTableName(), e.getSQLState(), e.getMessage());
+                }
+            }
+        } catch (InterruptedException e) {
+            log.error("Error in table {}: {}", table.getTableName(), e.getMessage());
+            throw new RuntimeException(e);
+        } catch (RuntimeException e) {
+            log.error("Unexpected error generating table {}: {}", table.getTableName(), e.getMessage(), e);
+            throw e;
+        } finally {
+            globalSemaphore.release();
+        }
     }
 
     private static Map<String, List<Object>> extractRows(Map<String, List<Object>> data, List<Integer> indices) {
