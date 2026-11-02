@@ -9,6 +9,7 @@ import java.util.Map;
 import org.yaml.snakeyaml.Yaml;
 
 import lombok.Getter;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 
 @Getter
 public class Config {
@@ -22,6 +23,7 @@ public class Config {
     private final int tableStoreThreads;
     private final String indexPath;
     private final int batchSize;
+    private final GeneratorsTypes uniqueGenerator;
 
     private final List<TableHolder> tables;
 
@@ -76,6 +78,10 @@ public class Config {
             this.tableStoreThreads = (int) configMap.get("table_store_threads");
             this.indexPath = (String) configMap.get("index_path");
             this.batchSize = (int) configMap.get("batch_size");
+            Object uniqueGeneratorRaw = configMap.get("unique_generator");
+            this.uniqueGenerator = uniqueGeneratorRaw == null
+                    ? GeneratorsTypes.MARKOV
+                    : GeneratorsTypes.parse(uniqueGeneratorRaw.toString());
         }
     }
 

@@ -13,7 +13,6 @@ import ru.nsu.datagen.dataGenerator.generators.fk.ForeignKeyGeneratorFactory;
 import ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.UniqueKeyGeneratorChooser;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
-import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator;
 import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator;
 import ru.nsu.datagen.dataGenerator.model.ColumnMetadata;
 import ru.nsu.datagen.dataGenerator.model.ReferencingTreeNode;
@@ -28,7 +27,9 @@ import ru.nsu.datagen.dataGenerator.model.batchmodel.ColumnBatchState;
  * <ul>
  *   <li><b>Unique / PK</b> ({@code isPrimaryKey || isUnique || ndistinct == -1}) —
  *       {@link ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.SimpleUniqueGenerator}
- *       для одиночной колонки или {@link ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator}
+ *       для одиночной колонки или генератор типа {@code compositeUniqueGeneratorType}
+ *       ({@link ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.MarkovGenerator} /
+ *       {@link ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.CartesianUniqueGenerator})
  *       для составного ключа.</li>
  *   <li><b>FK</b> — генератор из {@link ForeignKeyGeneratorFactory} (one-to-one или one-to-many).</li>
  *   <li><b>Обычная</b> — {@link ru.nsu.datagen.dataGenerator.generators.normal.StatTypeBasedGenerator}
@@ -40,12 +41,15 @@ public class DataGenerator {
     private final ForeignKeyGeneratorFactory fkGeneratorFactory = ForeignKeyGeneratorFactory.getInstance();
     private final Map<String, TableMetadata> allTablesMap;
     private final List<ColumnBatchState> columnBatchStates = new ArrayList<>();
+    private final GeneratorsTypes compositeUniqueGeneratorType;
 
     /**
      * @param allTablesSet все таблицы компоненты зависимостей (нужны для построения referencing-деревьев)
      * @param mainTable    таблица, для которой будет генерироваться этот экземпляр
+     * @param compositeUniqueGeneratorType генератор для составных UNIQUE/PK ключей
      */
-    public DataGenerator(Set<TableMetadata> allTablesSet, TableMetadata mainTable) {
+    public DataGenerator(Set<TableMetadata> allTablesSet, TableMetadata mainTable, GeneratorsTypes compositeUniqueGeneratorType) {
+        this.compositeUniqueGeneratorType = compositeUniqueGeneratorType;
         allTablesMap = allTablesSet.stream().collect(HashMap::new, (m, t) -> m.put(t.getFullName(), t), HashMap::putAll);
     }
 
@@ -183,7 +187,8 @@ public class DataGenerator {
 
         if (uniqueColumns.size() > 1) {
             return new ColumnBatchState(
-                    new MarkovGenerator(uniqueColumns, table.getRecordCount(), referencingTrees, existingData),
+                    UniqueKeyGeneratorChooser.create(uniqueColumns, compositeUniqueGeneratorType,
+                            table.getRecordCount(), referencingTrees, existingData),
                     uniqueColumns
             );
         }

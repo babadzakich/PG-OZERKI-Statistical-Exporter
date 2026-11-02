@@ -15,6 +15,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.argValidation.Arguments;
 import ru.nsu.datagen.dataGenerator.DatabaseDataGenerator;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.importer.Importer;
 
@@ -66,7 +67,8 @@ public class Pipeline {
 
             try (HikariDataSource dataSource = new HikariDataSource(hikariConfig)) {
                 Map<String, TableMetadata> rawImportedData = Importer.startImport(args.schemaPath, args.statPath, args.constraintFile, dataSource.getConnection());
-                DatabaseDataGenerator.generateData(rawImportedData, dataSource, generationExecutor, args.batchSize, args.globStoreThreads, args.tableStoreThreads);
+                DatabaseDataGenerator.generateData(rawImportedData, dataSource, generationExecutor, args.batchSize, args.globStoreThreads, args.tableStoreThreads,
+                        GeneratorsTypes.parse(args.uniqueGenerator));
                 Optional.ofNullable(args.indexFile).ifPresent(path -> {
                     try {
                         Importer.importSchemas(path, dataSource.getConnection().createStatement());

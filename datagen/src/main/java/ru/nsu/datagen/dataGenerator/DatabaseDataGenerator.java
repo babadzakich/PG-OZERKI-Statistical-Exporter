@@ -10,6 +10,7 @@ import com.zaxxer.hikari.HikariDataSource;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.dataGenerator.generators.DataGenerator;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.dataGenerator.graph.DependencyGraph;
 import ru.nsu.datagen.dataGenerator.model.TableMetadata;
 import ru.nsu.datagen.dataGenerator.store.TableStore;
@@ -44,9 +45,10 @@ public class DatabaseDataGenerator {
      * @param batchSize         максимальный размер одного батча генерации
      * @param globStoreThreads  максимальное число таблиц, одновременно пишущих в БД
      * @param tableStoreThreads число параллельных COPY-потоков на одну таблицу
+     * @param uniqueGeneratorType генератор для составных UNIQUE/PK ключей
      * @throws IOException при ошибке I/O (в текущей реализации не выбрасывается)
      */
-    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads) throws IOException {
+    public static void generateData(Map<String, TableMetadata> tableMetadataList, HikariDataSource dataSource, ExecutorService executorService, int batchSize, int globStoreThreads, int tableStoreThreads, GeneratorsTypes uniqueGeneratorType) throws IOException {
         // Fill dependency graph
         DependencyGraph dependencyGraph = new DependencyGraph(tableMetadataList);
         // Get generation order
@@ -68,7 +70,7 @@ public class DatabaseDataGenerator {
                                         try {
                                             globalSemaphore.acquire();
 
-                                            DataGenerator dataGenerator = new DataGenerator(component, table);
+                                            DataGenerator dataGenerator = new DataGenerator(component, table, uniqueGeneratorType);
                                             log.info("Generate table: {}", table.getTableName());
                                             int createdAmount = 0;
                                             int emptyBatchCount = 0;

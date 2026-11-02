@@ -39,6 +39,10 @@ public class Arguments {
     @Parameter(names = "-tableStoreThreads")
     public Integer tableStoreThreads = 1;
 
+    /** Генератор составных уникальных ключей: markov или cartesian. */
+    @Parameter(names = "-uniqueGenerator")
+    public String uniqueGenerator;
+
     @Parameter(names = "-help", help = true)
     public boolean help;
 

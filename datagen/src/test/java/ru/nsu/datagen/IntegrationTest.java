@@ -142,7 +142,8 @@ public class IntegrationTest {
             System.out.println("✓ Импорт схемы и статистики выполнен успешно");
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             // Генерация данных
-            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, batchSize, globStoreThreads, tableStoreThreads);
+            DatabaseDataGenerator.generateData(importedData, dataSource, executorService, batchSize, globStoreThreads, tableStoreThreads,
+                    config.getUniqueGenerator());
             System.out.println("✓ Генерация данных завершена");
 
 

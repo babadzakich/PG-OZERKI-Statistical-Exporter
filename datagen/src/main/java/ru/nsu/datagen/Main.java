@@ -11,6 +11,7 @@ import com.beust.jcommander.JCommander;
 
 import lombok.extern.slf4j.Slf4j;
 import ru.nsu.datagen.argValidation.Arguments;
+import ru.nsu.datagen.dataGenerator.generators.unique.uniquegenerators.GeneratorsTypes;
 import ru.nsu.datagen.pipeline.Pipeline;
 
 /**
@@ -80,6 +81,7 @@ public class Main {
             args.globStoreThreads = configArgs.globStoreThreads != null ? Math.min(Runtime.getRuntime().availableProcessors(), configArgs.globStoreThreads) :
                     Math.min(Runtime.getRuntime().availableProcessors(), args.globStoreThreads);
             args.tableStoreThreads = configArgs.tableStoreThreads != null ? configArgs.tableStoreThreads : args.tableStoreThreads;
+            if (args.uniqueGenerator == null) args.uniqueGenerator = configArgs.uniqueGenerator;
         }
     }
 
@@ -97,6 +99,13 @@ public class Main {
 
         if (!missing.isEmpty()) {
             throw new IllegalArgumentException("Missing required arguments: " + missing);
+        }
+
+        if (args.uniqueGenerator == null) {
+            args.uniqueGenerator = GeneratorsTypes.MARKOV.name();
+        }
+        if (GeneratorsTypes.parse(args.uniqueGenerator) == GeneratorsTypes.SIMPLE) {
+            throw new IllegalArgumentException("-uniqueGenerator SIMPLE is for single-column keys only, use MARKOV or CARTESIAN");
         }
     }
 }
