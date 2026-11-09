@@ -76,7 +76,7 @@ public class DatabaseDataGenerator {
                                                 int toGenerate = Math.min(batchSize, table.getRecordCount() - createdAmount);
                                                 System.err.println("toGenerate = " + toGenerate);
 
-                                                Map<String, List<Object>> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate, emptyBatchCount);
+                                                Map<String, List<Object >> generatedTableData = dataGenerator.generateBatchTableData(table, generatedData, toGenerate, emptyBatchCount);
                                                 try {
                                                     StoreResult result = tableStore.storeTable(table, generatedTableData, tableStoreThreads);
                                                     int stored = result.stored();

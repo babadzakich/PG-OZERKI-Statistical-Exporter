@@ -8,6 +8,6 @@ import lombok.Getter;
 public class FilterClause {
     private final String    column;     // "status"
     private final FilterOp  op;         // EQUALS, GT, LT, ANY, IS_NULL, LIKE...
-    private final Object    value;      // "Arrived", 18, List("Arrived","Departed")
+    private final Object    value;
     private final boolean   isLiteral;
 }

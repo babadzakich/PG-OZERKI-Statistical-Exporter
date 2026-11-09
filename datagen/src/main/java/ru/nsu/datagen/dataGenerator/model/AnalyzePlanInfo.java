@@ -3,6 +3,7 @@ package ru.nsu.datagen.dataGenerator.model;
 import lombok.Builder;
 import lombok.Getter;
 import ru.nsu.datagen.importer.explainanalyze.ScanType;
+import java.util.List;
 
 @Getter
 @Builder
@@ -17,4 +18,5 @@ public class AnalyzePlanInfo {
     private final long   ndistinct;
     private final double joinFactor;
     private final String sourceNodeType;
+    private final List<PredicateObservation> predicateObservations;
 }

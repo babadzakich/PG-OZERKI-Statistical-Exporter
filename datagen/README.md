@@ -27,6 +27,7 @@ java -jar ./build/libs/datagen-1.0-SNAPSHOT.jar -config <путь_к_файлу_
 * **generationPoolThreadSize** - размер пула потоков для генерации
 * **globStoreThreads** - количество потоков сохранения для всех таблиц
 * **tableStoreThreads** - количество потоков сохранения для одной таблицы
+* **uniqueGenerator** - генератор составных уникальных ключей: `markov` (по умолчанию) или `cartesian`
 
 Например:
 ```bash
@@ -49,4 +50,5 @@ batchSize: 50000
 generationThreadPoolSize: 4
 globStoreThreads: 1
 tableStoreThreads: 1
+uniqueGenerator: markov
 ```

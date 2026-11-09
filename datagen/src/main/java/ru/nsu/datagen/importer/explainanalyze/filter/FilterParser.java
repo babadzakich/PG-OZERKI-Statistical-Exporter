@@ -4,171 +4,81 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import static java.util.Optional.empty;
-
 public class FilterParser {
     public static Optional<FilterExpression> parse(String raw) {
-        if (raw == null || raw.isBlank()) return empty();
-
-        // снимаем внешние скобки: "(status = 'Arrived'::text)" -> "status = 'Arrived'::text"
-        String stripped = stripOuterParens(raw.trim());
-
-        return Optional.of(parseExpression(stripped));
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        try { return Optional.of(parseExpression(raw.trim())); }
+        catch (IllegalArgumentException unsupported) { return Optional.empty(); }
     }
 
-    private static String stripOuterParens(String trim) {
-        if (trim.startsWith("(")) trim = trim.substring(1);
-        if (trim.endsWith(")")) trim = trim.substring(0, trim.length() - 1);
-        return trim;
-    }
-
-    private static FilterExpression parseExpression(String expr) {
-        // сначала ищем AND/OR на верхнем уровне (не внутри скобок)
-        int andIdx = findTopLevelOp(expr, "AND");
-        int orIdx  = findTopLevelOp(expr, "OR");
-
-        if (andIdx != -1) {
-            return splitByOp(expr, andIdx, "AND", FilterExpression.LogicOp.AND);
-        }
-        if (orIdx != -1) {
-            return splitByOp(expr, orIdx, "OR", FilterExpression.LogicOp.OR);
-        }
-
-        // простой предикат — парсим как FilterClause
+    private static FilterExpression parseExpression(String raw) {
+        String expr = stripOuterParens(raw.trim());
+        int idx = findTopLevel(expr, "OR");
+        if (idx >= 0) return binary(expr, idx, "OR", FilterExpression.LogicOp.OR);
+        idx = findTopLevel(expr, "AND");
+        if (idx >= 0) return binary(expr, idx, "AND", FilterExpression.LogicOp.AND);
         FilterClause clause = parseClause(expr);
-        return FilterExpression.builder()
-                .clauses(List.of(clause))
-                .children(List.of())
-                .build();
+        return FilterExpression.builder().clauses(List.of(clause)).children(List.of()).build();
+    }
+
+    private static FilterExpression binary(String expr, int idx, String op, FilterExpression.LogicOp logic) {
+        int rightStart = idx + op.length();
+        return FilterExpression.builder().clauses(List.of())
+                .children(List.of(parseExpression(expr.substring(0, idx)), parseExpression(expr.substring(rightStart))))
+                .logicOp(logic).build();
     }
 
     private static FilterClause parseClause(String expr) {
-        if (expr.matches("(?i).+\\s+IS\\s+NULL"))
-            return buildNullClause(expr, FilterOp.IS_NULL);
-        if (expr.matches("(?i).+\\s+IS\\s+NOT\\s+NULL"))
-            return buildNullClause(expr, FilterOp.IS_NOT_NULL);
-
-        // ANY: status = ANY ('{Arrived,Departed}'::text[])
-        if (expr.contains("= ANY"))
-            return parseAnyClause(expr);
-
-//        if (expr.toUpperCase().contains("BETWEEN"))
-//            return parseBetweenClause(expr);
-//
-//        if (expr.toUpperCase().contains(" LIKE "))
-//            return parseLikeClause(expr, FilterOp.LIKE);
-//        if (expr.toUpperCase().contains(" ILIKE "))
-//            return parseLikeClause(expr, FilterOp.ILIKE);
-
-        return parseSimpleClause(expr);
-    }
-
-    private static FilterClause buildNullClause(String expr, FilterOp filterOp) {
-        String column = expr.replaceAll("(?i)(IS\\s+NOT\\s+NULL|IS\\s+NULL)", "").trim();
-        return FilterClause.builder()
-                .column(cleanColumn(column))
-                .op(filterOp)
-                .build();
-    }
-
-    private static FilterClause parseSimpleClause(String expr) {
-        // порядок важен — сначала двухсимвольные
-        String[][] ops = {{"!=", "NOT_EQUALS"}, {"<>", "NOT_EQUALS"},
-                {">=", "GTE"}, {"<=", "LTE"},
-                {">",  "GT"},  {"<",  "LT"},
-                {"=",  "EQUALS"}};
-
-        for (String[] op : ops) {
-            int idx = expr.indexOf(op[0]);
-            if (idx == -1) continue;
-
-            String col = expr.substring(0, idx).trim();
-            String val = expr.substring(idx + op[0].length()).trim();
-
-            return FilterClause.builder()
-                    .column(cleanColumn(col))
-                    .op(FilterOp.valueOf(op[1]))
-                    .value(parseValue(val))
-                    .isLiteral(isLiteral(val))
-                    .build();
+        if (expr.matches("(?is).+\\s+IS\\s+NOT\\s+NULL")) return nullClause(expr, FilterOp.IS_NOT_NULL);
+        if (expr.matches("(?is).+\\s+IS\\s+NULL")) return nullClause(expr, FilterOp.IS_NULL);
+        if (expr.matches("(?is)^NOT\\b.*")) throw new IllegalArgumentException("NOT unsupported");
+        if (expr.matches("(?is).*=\\s*ANY\\s*\\(.*\\)")) return parseAny(expr);
+        String[][] ops = {{"!=", "NOT_EQUALS"}, {"<>", "NOT_EQUALS"}, {">=", "GTE"}, {"<=", "LTE"}, {"=", "EQUALS"}, {">", "GT"}, {"<", "LT"}};
+        for (String[] item : ops) {
+            int idx = findOutsideQuotes(expr, item[0]);
+            if (idx < 1) continue;
+            String col = expr.substring(0, idx).trim(), raw = expr.substring(idx + item[0].length()).trim();
+            if (col.isEmpty() || raw.isEmpty()) break;
+            Object value = parseValue(raw);
+            return FilterClause.builder().column(cleanColumn(col)).op(FilterOp.valueOf(item[1]))
+                    .value(value).isLiteral(isLiteral(raw)).build();
         }
-        throw new IllegalArgumentException("Cannot parse filter clause: " + expr);
+        throw new IllegalArgumentException("Unsupported filter: " + expr);
     }
 
-    private static FilterClause parseAnyClause(String expr) {
-        // "status = ANY ('{Arrived,Departed}'::text[])"
-        int eqIdx  = expr.indexOf("= ANY");
-        String col = cleanColumn(expr.substring(0, eqIdx).trim());
-
-        // вытаскиваем '{Arrived,Departed}' из скобок
-        String inner = expr.substring(expr.indexOf('(') + 1, expr.lastIndexOf(')'));
-        // убираем ::text[] и фигурные скобки
-        inner = inner.replaceAll("::[\\w\\[\\]]+", "").trim();
-        inner = inner.replaceAll("[{}']", "");
-
-        List<String> values = Arrays.asList(inner.split(","));
-
-        return FilterClause.builder()
-                .column(col)
-                .op(FilterOp.ANY)
-                .value(values)
-                .isLiteral(true)
-                .build();
+    private static FilterClause nullClause(String expr, FilterOp op) {
+        String col = expr.replaceFirst("(?is)\\s+IS\\s+(NOT\\s+)?NULL$", "").trim();
+        return FilterClause.builder().column(cleanColumn(col)).op(op).isLiteral(true).build();
     }
 
-    private static FilterExpression splitByOp(String expr, int opIdx, String opStr, FilterExpression.LogicOp logicOp) {
-        String left = expr.substring(0, opIdx).trim();
-        String right = expr.substring(opIdx + opStr.length() + 2).trim(); // +2 для пробелов вокруг оператора
-
-        FilterExpression leftExpr = parseExpression(left);
-        FilterExpression rightExpr = parseExpression(right);
-
-        return FilterExpression.builder()
-                .clauses(List.of())
-                .children(List.of(leftExpr, rightExpr))
-                .logicOp(logicOp)
-                .build();
+    private static FilterClause parseAny(String expr) {
+        int idx = expr.toUpperCase().indexOf("= ANY");
+        String col = cleanColumn(expr.substring(0, idx).trim());
+        String inner = expr.substring(expr.indexOf('(', idx) + 1, expr.lastIndexOf(')')).replaceAll("::[\\w\\[\\]]+", "").trim();
+        if (inner.startsWith("'{") && inner.endsWith("}'")) inner = inner.substring(2, inner.length() - 2);
+        else throw new IllegalArgumentException("Unsupported ANY value");
+        return FilterClause.builder().column(col).op(FilterOp.ANY).value(Arrays.asList(inner.split(","))).isLiteral(true).build();
     }
 
-    // ищем AND/OR на верхнем уровне — не внутри скобок
-    private static int findTopLevelOp(String expr, String op) {
-        int depth = 0;
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (depth == 0 && expr.startsWith(" " + op + " ", i - 1)) {
-                return i - 1;
-            }
-        }
+    private static String stripOuterParens(String s) {
+        while (s.startsWith("(") && matchingClose(s, 0) == s.length() - 1) s = s.substring(1, s.length() - 1).trim();
+        return s;
+    }
+
+    private static int matchingClose(String s, int start) {
+        int depth = 0; boolean quote = false;
+        for (int i = start; i < s.length(); i++) { char c = s.charAt(i); if (c == '\'' && (i == 0 || s.charAt(i-1) != '\\')) quote = !quote; if (!quote) { if (c == '(') depth++; if (c == ')' && --depth == 0) return i; } }
         return -1;
     }
 
-    // убираем ::text, ::integer и прочие касты постгреса
-    private static Object parseValue(String raw) {
-        String cleaned = raw.replaceAll("::[\\w\\[\\]]+", "").trim();
-        // убираем кавычки если строка
-        if (cleaned.startsWith("'") && cleaned.endsWith("'"))
-            return cleaned.substring(1, cleaned.length() - 1);
-        // число
-        try { return Long.parseLong(cleaned); } catch (NumberFormatException ignored) {}
-        try { return Double.parseDouble(cleaned); } catch (NumberFormatException ignored) {}
-        return cleaned;
+    private static int findTopLevel(String s, String op) {
+        int depth = 0; boolean quote = false;
+        for (int i=0;i<s.length();i++) { char c=s.charAt(i); if(c=='\'' && (i==0||s.charAt(i-1)!='\\')) quote=!quote; if(quote) continue;
+            if(c=='(') depth++; else if(c==')') depth--; else if(depth==0 && i>0 && i+op.length()<s.length() && Character.isWhitespace(s.charAt(i-1)) && s.regionMatches(true,i,op,0,op.length()) && Character.isWhitespace(s.charAt(i+op.length()))) return i;
+        } return -1;
     }
-
-    private static String cleanColumn(String col) {
-        // убираем алиас таблицы: "f.status" -> "status"
-        return col.contains(".") ? col.substring(col.lastIndexOf('.') + 1) : col;
-    }
-
-    private static boolean isLiteral(String val) {
-        // если содержит точку и не число — скорее всего ссылка на колонку (r.departure_airport)
-        String cleaned = val.replaceAll("::[\\w\\[\\]]+", "").trim();
-        if (cleaned.contains(".")) {
-            try { Double.parseDouble(cleaned); return true; }
-            catch (NumberFormatException e) { return false; }
-        }
-        return true;
-    }
-
+    private static int findOutsideQuotes(String s, String token) { boolean quote=false; for(int i=0;i<=s.length()-token.length();i++){char c=s.charAt(i);if(c=='\'') quote=!quote; if(!quote && s.startsWith(token,i)) return i;} return -1; }
+    private static Object parseValue(String raw) { String s=raw.replaceAll("::[\\w\\[\\]]+", "").trim(); if(s.startsWith("'")&&s.endsWith("'")) return s.substring(1,s.length()-1).replace("''", "'"); try{return Long.parseLong(s);}catch(NumberFormatException ignored){} try{return Double.parseDouble(s);}catch(NumberFormatException ignored){} if(s.matches("[\\w$]+\\.[\\w$]+")) throw new IllegalArgumentException("Column reference unsupported"); return s; }
+    private static String cleanColumn(String col) { return col.contains(".") ? col.substring(col.lastIndexOf('.')+1) : col; }
+    private static boolean isLiteral(String raw) { try { parseValue(raw); return true; } catch (IllegalArgumentException e) { return false; } }
 }
